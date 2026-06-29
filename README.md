@@ -26,37 +26,36 @@ This keeps project administration visible. Toolchain files, build glue, product 
 
 Ticket-style branch names such as `XX-123-short-description` are optional, but git-stack can use them to automate stack ids and conservative finalize lookups. It does not require a particular merge strategy; explicit finalization works with merge commits, rebase merges, squash merges, tags, or pinned revisions.
 
-`git-stack` does not create pull requests itself. It prepares consistent branches and manifest state, then lets tools such as Azure CLI, GitHub CLI, GitLab CLI, or repository scripts create PRs explicitly - if required.
+`git-stack` does not create pull requests itself. It prepares consistent branches and manifest state, then optionally allows tools such as Azure CLI, GitHub CLI, GitLab CLI, or repository scripts create PRs explicitly.
 
 ## Alternatives And Tradeoffs
 
 ### Monorepo
-
-A monorepo is often the simplest answer when one organization owns the code, build, permissions, and release cadence. The friction starts when shared components need independent ownership, independent history, different access rules, or reuse by projects that should not inherit the whole repository.
+A [monorepo](https://en.wikipedia.org/wiki/Monorepo) is often the simplest answer when one organization owns the code, build, permissions, and release cadence. The friction starts when shared components need independent ownership, independent history, different access rules, or reuse by projects that should not inherit the whole repository.
 
 `git-stack` keeps those components in separate repositories while giving developers one materialized workspace and one project-level manifest.
 
 ### Git Submodules
 
-Submodules are built into Git and are good for pinning external repositories. Their common pain is workflow overhead: contributors need submodule-specific commands, parent reviews often show only a gitlink pointer change, and cross-repository work is easy to split incorrectly between the submodule and the parent.
+[Submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules) are built into Git and are good for pinning external repositories. Their common pain is workflow overhead: contributors need submodule-specific commands, parent reviews often show only a gitlink pointer change, and cross-repository work is easy to split incorrectly between the submodule and the parent.
 
 `git-stack` makes the manifest a normal text file, keeps module paths ignored by the outer repository, and provides explicit commands for syncing, publishing module work, finalizing landed changes, and checking available upstream movement.
 
 ### Git Subtree
 
-Subtree is useful when vendored source should become part of one repository's history and review flow. The tradeoff is that ownership boundaries blur: copied source lives in the consumer repository, history grows there, and upstream contribution requires subtree discipline.
+[Subtree](https://github.com/git/git/blob/master/contrib/subtree/git-subtree.txt) is useful when vendored source should become part of one repository's history and review flow. The tradeoff is that ownership boundaries blur: copied source lives in the consumer repository, history grows there, and upstream contribution requires subtree discipline.
 
 `git-stack` does not vendor module source into the outer repository. Stack modules stay as standalone repositories, and the outer repository records which module revisions belong to the project.
 
 ### git-subrepo
 
-`git-subrepo` improves the copied-source model by adding commands and metadata for pulling from and pushing back to an upstream repository. It is a good fit when the consumer repository should contain the source directly, but still needs a path back upstream.
+[`Subrepo`](https://github.com/ingydotnet/git-subrepo) improves the copied-source model by adding commands and metadata for pulling from and pushing back to an upstream repository. It is a good fit when the consumer repository should contain the source directly, but still needs a path back upstream.
 
 `git-stack` chooses a different model: source is not copied into the outer repository at all. Developers work in real nested repositories, and the manifest records the combined project state.
 
 ### Android repo
 
-Android `repo` is powerful and proven for AOSP-scale workspaces. It is also tailored to Android's ecosystem, XML manifests, and Gerrit-centered workflows.
+Android [`repo`](https://source.android.com/docs/setup/reference/repo) is powerful and proven for AOSP-scale workspaces. It is also tailored to Android's ecosystem, XML manifests, and Gerrit-centered workflows.
 
 `git-stack` borrows the useful workspace idea but keeps the shape narrower: plain Git remotes, a readable `.stack` manifest, and commands that fit pull-request-based or script-driven project administration.
 
@@ -64,7 +63,7 @@ Android `repo` is powerful and proven for AOSP-scale workspaces. It is also tail
 
 | Topic | Monorepo | Submodules | Subtree / subrepo | git-stack |
 | --- | --- | --- | --- | --- |
-| Best fit | One shared ownership boundary | Source in pinned external repositories | Vendored source in one repository | Shared source across many normal repositories |
+| Best fit | One shared ownership boundary | Source in pinned external repositories | Vendored source in one repository | Easy sehared source across many normal repositories |
 | Source location | One repository | Nested repository checkout | Copied into consumer history | Nested stack module repository |
 | Project state | Repository commit | Gitlink plus `.gitmodules` | Consumer commits plus metadata | Text entries in `.stack` |
 | Get workspace | Clone once | Clone plus submodule init/update | Clone once | Clone outer repo, then `git-stack sync` |
@@ -77,21 +76,14 @@ Android `repo` is powerful and proven for AOSP-scale workspaces. It is also tail
 
 This section is intentionally short until the project has its own public GitHub or Codeberg repository with installation packages or release artifacts.
 
+
 - Git.
-- A POSIX-like shell for `bin/git-stack`; Git Bash is sufficient on Windows.
+- A POSIX-like shell for `bin/git-stack`; Git Bash, or even bysybox is sufficient on Windows.
 - Read access to every module repository listed in `.stack`.
 - Write access to module repositories only when using `upload`.
 - `git-stack` available on `PATH`, or invoked directly from the checkout.
 
-Credential handling is delegated to Git. Do not store provider tokens in `.stack`.
-
-## References And Related Tools
-
-- [Monorepo](https://en.wikipedia.org/wiki/Monorepo)
-- [Git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
-- [Git subtree](https://github.com/git/git/blob/master/contrib/subtree/git-subtree.txt)
-- [git-subrepo](https://github.com/ingydotnet/git-subrepo)
-- [Android repo](https://source.android.com/docs/setup/reference/repo)
+Credential handling is delegated to Git. Does not store provider tokens in `.stack`.
 
 ## Installation And Invocation
 
