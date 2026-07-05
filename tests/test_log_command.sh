@@ -29,58 +29,58 @@ make_bare_remote "$remote_two" "$seed_two"
 make_repo "$outer"
 
 cd "$outer"
-"$GIT_STACK" init >/dev/null
-"$GIT_STACK" add "$remote_one" libs/one >/dev/null
-"$GIT_STACK" add "$remote_two" libs/two >/dev/null
+"$GIT_LEGO" init >/dev/null
+"$GIT_LEGO" add "$remote_one" libs/one >/dev/null
+"$GIT_LEGO" add "$remote_two" libs/two >/dev/null
 (cd "$outer" && git_config)
-git add .stack .gitignore
+git add .gitlego .gitignore .gitattributes
 GIT_AUTHOR_DATE="2030-01-01T00:00:00+0000" GIT_COMMITTER_DATE="2030-01-01T00:00:00+0000" \
     git commit -m "LOG-100 outer baseline" >/dev/null
 
-commit_with_date "$outer/libs/one" file.txt "one" "LOG-101 module one" "2030-01-02T00:00:00+0000"
-commit_with_date "$outer/libs/two" file.txt "two" "LOG-102 module two" "2030-01-03T00:00:00+0000"
+commit_with_date "$outer/libs/one" file.txt "one" "LOG-101 subproject one" "2030-01-02T00:00:00+0000"
+commit_with_date "$outer/libs/two" file.txt "two" "LOG-102 subproject two" "2030-01-03T00:00:00+0000"
 
-"$GIT_STACK" log --max-count 3 >log.out
+"$GIT_LEGO" log --max-count 3 >log.out
 sed -n '1p' log.out >first.txt
 sed -n '2p' log.out >second.txt
 sed -n '3p' log.out >third.txt
 assert_file_contains first.txt "libs/two"
-assert_file_contains first.txt "LOG-102 module two"
+assert_file_contains first.txt "LOG-102 subproject two"
 assert_file_contains second.txt "libs/one"
-assert_file_contains second.txt "LOG-101 module one"
+assert_file_contains second.txt "LOG-101 subproject one"
 assert_file_contains third.txt "."
 assert_file_contains third.txt "LOG-100 outer baseline"
 
-"$GIT_STACK" log --max-count 1 --oneline >oneline.out
+"$GIT_LEGO" log --max-count 1 --oneline >oneline.out
 assert_file_contains oneline.out "libs/two"
-assert_file_contains oneline.out "LOG-102 module two"
+assert_file_contains oneline.out "LOG-102 subproject two"
 
-"$GIT_STACK" log --module . --max-count 5 >module_root.out
+"$GIT_LEGO" log --subproject . --max-count 5 >module_root.out
 assert_file_contains module_root.out "LOG-100 outer baseline"
 assert_file_not_contains module_root.out "libs/one"
 assert_file_not_contains module_root.out "libs/two"
 
-"$GIT_STACK" log --module libs/one --max-count 5 >module_one.out
+"$GIT_LEGO" log --subproject libs/one --max-count 5 >module_one.out
 assert_file_contains module_one.out "libs/one"
-assert_file_contains module_one.out "LOG-101 module one"
+assert_file_contains module_one.out "LOG-101 subproject one"
 assert_file_not_contains module_one.out "libs/two"
 
-"$GIT_STACK" log --since "2030-01-02T12:00:00+0000" --max-count 5 >since.out
-assert_file_contains since.out "LOG-102 module two"
-assert_file_not_contains since.out "LOG-101 module one"
+"$GIT_LEGO" log --since "2030-01-02T12:00:00+0000" --max-count 5 >since.out
+assert_file_contains since.out "LOG-102 subproject two"
+assert_file_not_contains since.out "LOG-101 subproject one"
 assert_file_not_contains since.out "LOG-100 outer baseline"
 
 rm -rf libs/two
-"$GIT_STACK" log --module libs/two >missing.out 2>missing.err
+"$GIT_LEGO" log --subproject libs/two >missing.out 2>missing.err
 assert_file_contains missing.err "Warning: missing repository for log: libs/two"
 
-if "$GIT_STACK" log --max-count 0 >bad_count.out 2>bad_count.err; then
+if "$GIT_LEGO" log --max-count 0 >bad_count.out 2>bad_count.err; then
     echo "log should reject invalid max-count" >&2
     exit 1
 fi
 assert_file_contains bad_count.err "Error: --max-count must be a positive integer"
 
-if "$GIT_STACK" log --bad-option >bad_option.out 2>bad_option.err; then
+if "$GIT_LEGO" log --bad-option >bad_option.out 2>bad_option.err; then
     echo "log should reject unknown options" >&2
     exit 1
 fi

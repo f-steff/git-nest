@@ -27,20 +27,20 @@ root=$(test_workspace busybox_compat)
 outer="$root/outer"
 mkdir -p "$outer"
 
-script=$(to_windows_path "$GIT_STACK")
+script=$(to_windows_path "$GIT_LEGO")
 outer_dir=$(to_windows_path "$outer")
 
 # Run the real entrypoint under BusyBox sh. This verifies the script remains
-# parseable and usable in a smaller shell while using a minimal scratch stack.
+# parseable and usable in a smaller shell while using a minimal scratch project.
 "$busybox" sh -c '
     set -eu
     cd "$1"
-    test "$("$2" version)" = "git-stack 0.4.1"
+    test "$("$2" version)" = "git-lego 0.7.0"
     "$2" --help >/dev/null
     "$2" init >/dev/null
-    test -f .stack
-    test ! -f .stack-rc
+    test -f .gitlego
+    test ! -f .gitlego-rc
     test -f .gitignore
     "$2" init --rc >/dev/null
-    test -f .stack-rc
+    test -f .gitlego-rc
 ' busybox-test "$outer_dir" "$script"

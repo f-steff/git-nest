@@ -9,25 +9,25 @@ remote="$work/remotes/foo.git"
 seed="$work/seed/foo"
 outer="$work/outer"
 
-# Build one module remote and one outer workspace fixture.
+# Build one subproject remote and one outer workspace fixture.
 mkdir -p "$work/remotes" "$work/seed"
 make_bare_remote "$remote" "$seed"
 make_repo "$outer"
 
-# Initialize, add the module, commit workspace metadata, and start a stack branch.
+# Initialize, add the subproject, commit workspace metadata, and start a project branch.
 cd "$outer"
-"$GIT_STACK" init >/dev/null
-test ! -f .stack-rc
-"$GIT_STACK" init --rc >/dev/null
-test -f .stack-rc
-"$GIT_STACK" add "$remote" libs/foo >/dev/null
-git add .stack .gitignore .stack-rc
+"$GIT_LEGO" init >/dev/null
+test ! -f .gitlego-rc
+"$GIT_LEGO" init --rc >/dev/null
+test -f .gitlego-rc
+"$GIT_LEGO" add "$remote" libs/foo >/dev/null
+git add .gitlego .gitignore .gitattributes .gitattributes .gitlego-rc
 git commit -m "initial workspace" >/dev/null
-"$GIT_STACK" start XX-123-short-description >/dev/null
+"$GIT_LEGO" start XX-123-short-description >/dev/null
 
-# Verify init/add/start wrote the expected files, manifest state, and module branch.
-test -f .stack
+# Verify init/add/start wrote the expected files, manifest state, and subproject branch.
+test -f .gitlego
 assert_file_contains .gitignore "libs/foo/"
-assert_file_contains .stack '[module "libs/foo"]'
-assert_file_contains .stack 'branch=XX-123-short-description'
+assert_file_contains .gitlego '[subproject "libs/foo"]'
+assert_file_contains .gitlego 'branch=XX-123-short-description'
 test "$(git -C libs/foo branch --show-current)" = "XX-123-short-description"

@@ -1,29 +1,29 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Structure & Subproject Organization
 
-This repository contains the behavior contract in `docs/implementation-summary.md`, the user manual in `README.md`, maintainer guidance in `docs/maintainer.md`, and a user-facing AI skill in `skills/git-stack/`.
+This repository contains the behavior contract in `docs/implementation-summary.md`, the user manual in `README.md`, maintainer guidance in `docs/maintainer.md`, and a user-facing AI skill in `skills/git-lego/`.
 
 Keep implementation files organized by responsibility:
 
-- `bin/git-stack`: main executable shell entrypoint.
-- `bin/git-stack.bat`: thin polyglot launcher that works from `cmd.exe` and sh/bash contexts, then forwards to the shell script.
-- `bin/git_stack.sh`: command, manifest, Git, branching, and finalize helpers sourced by the entrypoint.
+- `bin/git-lego`: main executable shell entrypoint.
+- `bin/git-lego.bat`: thin polyglot launcher that works from `cmd.exe` and sh/bash contexts, then forwards to the shell script.
+- `bin/git_lego.sh`: command, manifest, Git, branching, and finalize helpers sourced by the entrypoint.
 - `tests/*.sh`: shell-based integration tests using temporary repositories.
 - `docs/`: user-facing and technical documentation.
-- `skills/git-stack/`: portable AI skill for agents working in projects that consume git-stack.
+- `skills/git-lego/`: portable AI skill for agents working in projects that consume git-lego.
 
 The source of truth for behavior is `docs/implementation-summary.md`; the earlier submodule script was only a style and portability reference.
 
 ## Build, Test, and Development Commands
 
-- `sh bin/git-stack --help`: verify command discovery and help output.
-- `sh bin/git-stack init`: exercise initialization in a scratch workspace.
+- `sh bin/git-lego --help`: verify command discovery and help output.
+- `sh bin/git-lego init`: exercise initialization in a scratch workspace.
 - `sh tests/<test-name>.sh`: run an individual integration test.
-- `sh tests/run-all.sh`: run the full shell test suite from Git Bash or another POSIX-like shell. The runner resets `${TMPDIR:-/tmp}/git-stack-test-workspaces` at startup and leaves generated repositories in numbered folders such as `test_01_auto_finalize/`.
+- `sh tests/run-all.sh`: run the full shell test suite from Git Bash or another POSIX-like shell. The runner resets `${TMPDIR:-/tmp}/git-lego-test-workspaces` at startup and leaves generated repositories in numbered folders such as `test_01_auto_finalize/`.
 - `tests\run-all.bat`: run the same suite from `cmd.exe` through Git Bash.
 
-No package manager build is expected for v0.4. The tool should remain script-friendly and runnable directly from the checkout.
+No package manager build is expected for v0.5. The tool should remain script-friendly and runnable directly from the checkout.
 
 ## Coding Style & Naming Conventions
 
@@ -33,7 +33,7 @@ Use lowercase function names with underscores, quote variables, fail with clear 
 
 ## Testing Guidelines
 
-Tests should be integration-oriented and create local bare Git repositories as remotes under the configured `TEST_ROOT`, which defaults outside the repository. Cover both clean paths and failure paths for `init`, `add`, `start`, `upload`, `finalize`, and `sync`, including startup from empty folders and sync with partial module failures. Name tests by behavior, such as `test_finalize_revision.sh` or `test_upload_records_pending.sh`.
+Tests should be integration-oriented and create local bare Git repositories as remotes under the configured `TEST_ROOT`, which defaults outside the repository. Cover both clean paths and failure paths for `init`, `add`, `start`, `upload`, `finalize`, and `sync`, including startup from empty folders and sync with partial subproject failures. Name tests by behavior, such as `test_finalize_revision.sh` or `test_upload_records_pending.sh`.
 
 ## Commit & Pull Request Guidelines
 
@@ -41,4 +41,4 @@ Use concise, imperative commit subjects. When work is tied to a ticket, start wi
 
 ## Security & Configuration Tips
 
-Do not store provider tokens or credentials in `.stack`. Keep provider integration optional, and prefer `.stack-rc` or environment variables for local configuration. Finalized module entries must pin `revision=<sha>` and must not depend only on moving branch names.
+Do not store provider tokens or credentials in `.gitlego`. Keep provider integration optional, and prefer `.gitlego-rc` or environment variables for local configuration. Finalized subproject entries must pin `revision=<sha>` and must not depend only on moving branch names.

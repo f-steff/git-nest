@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/f-steff/git-lego/schemas/git-lego-output-v1.schema.json",
+  "title": "git-lego command output v1",
+  "type": "object",
+  "required": ["version", "command", "recursive", "ok", "subprojects", "errors", "warnings"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "command": {
+      "type": "string",
+      "enum": ["status", "verify", "outdated", "no-pending"]
+    },
+    "recursive": { "type": "boolean" },
+    "ok": { "type": "boolean" },
+    "subprojects": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/row" }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "row": {
+      "type": "object",
+      "required": ["code", "path", "state", "target", "current", "expected", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 1 },
+        "path": { "type": "string" },
+        "state": { "type": "string" },
+        "target": { "type": "string" },
+        "current": { "type": "string" },
+        "expected": { "type": "string" },
+        "detail": { "type": "string" }
+      }
+    }
+  }
+}

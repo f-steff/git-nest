@@ -5,19 +5,19 @@ set -eu
 # Resolve paths from the runner location so the suite works from any cwd.
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-TEST_ROOT=${TEST_ROOT:-"${TMPDIR:-/tmp}/git-stack-test-workspaces"}
+TEST_ROOT=${TEST_ROOT:-"${TMPDIR:-/tmp}/git-lego-test-workspaces"}
 PATH="$REPO_ROOT/bin:$PATH"
 export PATH
 
-# Make Git's external-command discovery find the workspace git-stack binary.
-chmod +x "$REPO_ROOT/bin/git-stack" 2>/dev/null || true
+# Make Git's external-command discovery find the workspace git-lego binary.
+chmod +x "$REPO_ROOT/bin/git-lego" 2>/dev/null || true
 
 # Clean only the known persistent test workspace root, then leave new fixtures
 # in place after the run for inspection. Keep it outside the tool repository so
 # startup tests in non-Git folders are not pulled up to the tool repo root.
 case "$TEST_ROOT" in
     "$REPO_ROOT"|"$REPO_ROOT"/*) echo "Refusing to use test root inside repository: $TEST_ROOT" >&2; exit 1 ;;
-    */git-stack-test-workspaces) rm -rf "$TEST_ROOT" ;;
+    */git-lego-test-workspaces) rm -rf "$TEST_ROOT" ;;
     *) echo "Refusing to remove unexpected test root: $TEST_ROOT" >&2; exit 1 ;;
 esac
 mkdir -p "$TEST_ROOT"
@@ -28,6 +28,10 @@ underline_for() {
 
 print_summary_row() {
     printf '| %-4s | %-38s | %-7s | %8s |\n' "$1" "$2" "$3" "$4"
+}
+
+print_result() {
+    printf '\nResult: %s (%s)\n' "$1" "$2"
 }
 
 results="$TEST_ROOT/.run-all-results"
@@ -60,6 +64,7 @@ for t in "$SCRIPT_DIR"/test_*.sh; do
     end=$(date +%s)
     elapsed=$((end - start))
     cat "$output"
+    print_result "$status" "${elapsed}s"
 
     case "$status" in
         PASS) passed=$((passed + 1)) ;;
@@ -79,10 +84,10 @@ printf '\n%s\n' "$heading"
 underline_for "$heading"
 start=$(date +%s)
 if {
-    sh "$REPO_ROOT/bin/git-stack" --help >/dev/null
-    test "$(sh "$REPO_ROOT/bin/git-stack" version)" = "git-stack 0.4.1"
-    test "$(sh "$REPO_ROOT/bin/git-stack" --version)" = "git-stack 0.4.1"
-    test "$(git stack version)" = "git-stack 0.4.1"
+    sh "$REPO_ROOT/bin/git-lego" --help >/dev/null
+    test "$(sh "$REPO_ROOT/bin/git-lego" version)" = "git-lego 0.7.0"
+    test "$(sh "$REPO_ROOT/bin/git-lego" --version)" = "git-lego 0.7.0"
+    test "$(git lego version)" = "git-lego 0.7.0"
 } >"$output" 2>&1 </dev/null; then
     status=PASS
 else
@@ -91,6 +96,7 @@ fi
 end=$(date +%s)
 elapsed=$((end - start))
 cat "$output"
+print_result "$status" "${elapsed}s"
 case "$status" in
     PASS) passed=$((passed + 1)) ;;
     FAIL) failed=$((failed + 1)) ;;

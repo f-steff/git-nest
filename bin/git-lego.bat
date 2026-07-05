@@ -2,8 +2,8 @@
 @echo off
 rem Polyglot launcher for cmd.exe and sh/bash users. This lets the same file be
 rem called from Windows batch contexts and cross-platform IDE build hooks while
-rem still delegating behavior to the adjacent shell entrypoint, bin\git-stack.
-rem If that file is not next to this wrapper, PATH is searched for git-stack.
+rem still delegating behavior to the adjacent shell entrypoint, bin\git-lego.
+rem If that file is not next to this wrapper, PATH is searched for git-lego.
 rem The batch side otherwise only finds Git Bash, converts the script path, and
 rem forwards all arguments.
 setlocal EnableExtensions
@@ -22,16 +22,16 @@ if not defined BASH_EXE (
     exit /b 3
 )
 
-set "SCRIPT=%~dp0git-stack"
+set "SCRIPT=%~dp0git-lego"
 if not exist "%SCRIPT%" (
     set "SCRIPT="
-    for /f "delims=" %%I in ('where git-stack 2^>nul') do (
+    for /f "delims=" %%I in ('where git-lego 2^>nul') do (
         if not defined SCRIPT set "SCRIPT=%%~fI"
     )
 )
 
 if not defined SCRIPT (
-    echo Error: Could not locate git-stack next to this wrapper or on PATH.
+    echo Error: Could not locate git-lego next to this wrapper or on PATH.
     exit /b 2
 )
 
@@ -46,4 +46,4 @@ BATCH
 # post-build hooks on Windows, Linux, and macOS while still routing all behavior
 # through the canonical POSIX entrypoint next to it.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-exec "$script_dir/git-stack" "$@"
+exec "$script_dir/git-lego" "$@"

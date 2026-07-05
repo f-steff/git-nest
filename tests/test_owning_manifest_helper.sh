@@ -1,0 +1,71 @@
+#!/bin/sh
+
+set -eu
+. "$(dirname "$0")/helper.sh"
+test_begin owning_manifest_helper
+
+root=$(test_workspace owning_manifest_helper)
+outer="$root/outer"
+outside="$root/outside"
+
+make_repo "$outer"
+mkdir -p "$outside"
+
+cd "$outer"
+"$GIT_LEGO" init >/dev/null
+mkdir -p src/deep nested/sub
+printf 'content\n' >src/deep/file.txt
+git add .gitlego .gitignore .gitattributes src/deep/file.txt
+git commit -m "outer project" >/dev/null
+
+outer_manifest=$(CDPATH= cd -- "$outer" && pwd)/.gitlego
+
+[ "$("$GIT_LEGO" __owning-manifest)" = "$outer_manifest" ] || {
+    echo "owning manifest from project root should be the root manifest" >&2
+    exit 1
+}
+
+from_subdir=$(cd src/deep && "$GIT_LEGO" __owning-manifest)
+[ "$from_subdir" = "$outer_manifest" ] || {
+    echo "owning manifest from a subdirectory should be the root manifest" >&2
+    exit 1
+}
+
+from_file=$("$GIT_LEGO" __owning-manifest src/deep/file.txt)
+[ "$from_file" = "$outer_manifest" ] || {
+    echo "owning manifest from an explicit file path should use the file's directory" >&2
+    exit 1
+}
+
+cat >nested/.gitlego <<EOF
+# git-lego manifest
+
+[project]
+version=1
+EOF
+nested_manifest=$(CDPATH= cd -- "$outer/nested" && pwd)/.gitlego
+from_nested=$(cd nested/sub && "$GIT_LEGO" __owning-manifest)
+[ "$from_nested" = "$nested_manifest" ] || {
+    echo "owning manifest inside nested territory should be the nested manifest" >&2
+    exit 1
+}
+
+if (cd "$root" && ln -s outer/src/deep linked-deep) >/dev/null 2>&1 && [ -L "$root/linked-deep" ]; then
+    from_symlink=$("$GIT_LEGO" __owning-manifest "$root/linked-deep")
+    [ "$from_symlink" = "$outer_manifest" ] || {
+        echo "owning manifest from a symlink into the project should resolve to the project manifest" >&2
+        exit 1
+    }
+fi
+
+if "$GIT_LEGO" __owning-manifest "$outer/missing" >missing.out 2>missing.err; then
+    echo "owning manifest should refuse missing explicit paths" >&2
+    exit 1
+fi
+assert_file_contains missing.err 'does not exist'
+
+if (cd "$outside" && "$GIT_LEGO" __owning-manifest >outside.out 2>outside.err); then
+    echo "owning manifest should fail outside a git-lego project" >&2
+    exit 1
+fi
+assert_file_contains "$outside/outside.err" 'not inside a git-lego project'

@@ -3,8 +3,8 @@
 set -eu
 
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-GIT_STACK="$REPO_ROOT/bin/git-stack"
-TEST_ROOT=${TEST_ROOT:-"${TMPDIR:-/tmp}/git-stack-test-workspaces"}
+GIT_LEGO="$REPO_ROOT/bin/git-lego"
+TEST_ROOT=${TEST_ROOT:-"${TMPDIR:-/tmp}/git-lego-test-workspaces"}
 
 # Keep test output deterministic regardless of a developer's global Git config.
 # The overrides also apply to repositories cloned during tests.
@@ -46,8 +46,8 @@ test_workspace() {
 
 # Configure commit identity for local repositories created by tests.
 git_config() {
-    git config user.name "git-stack test"
-    git config user.email "git-stack@example.invalid"
+    git config user.name "git-lego test"
+    git config user.email "git-lego@example.invalid"
     git config core.autocrlf false
     git config core.eol lf
     git config core.safecrlf false
@@ -95,6 +95,21 @@ assert_file_not_contains() {
     text=$2
     if grep -F -- "$text" "$file" >/dev/null; then
         printf 'Expected %s not to contain: %s\n' "$file" "$text" >&2
+        exit 1
+    fi
+}
+
+assert_exit_code() {
+    expected=$1
+    shift
+    set +e
+    "$@"
+    actual=$?
+    set -e
+    if [ "$actual" -ne "$expected" ]; then
+        printf 'Expected exit code %s, got %s for:' "$expected" "$actual" >&2
+        printf ' %s' "$@" >&2
+        printf '\n' >&2
         exit 1
     fi
 }
