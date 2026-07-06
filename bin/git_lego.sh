@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# git-lego 0.7.0
+# git-lego 0.7.1
 #
 # Lightweight multi-repository workspace coordination for ordinary Git remotes.
 # A project root repository tracks a manifest of nested subproject repositories,
@@ -19,10 +19,12 @@
 
 MANIFEST_FILE=${GIT_LEGO_MANIFEST:-.gitlego}
 CONFIG_FILE=${GIT_LEGO_CONFIG:-.gitlego-rc}
-GIT_LEGO_VERSION=0.7.0
+GIT_LEGO_VERSION=0.7.1
 MANIFEST_SCHEMA_VERSION=1
 JSON_SCHEMA_VERSION=1
 GITATTRIBUTES_GUARD='.gitlego text eol=lf'
+GITATTRIBUTES_BEGIN='# BEGIN git-lego attributes'
+GITATTRIBUTES_END='# END git-lego attributes'
 GITIGNORE_GIT_DIR_GUARD_ONE='**/.git/'
 GITIGNORE_GIT_DIR_GUARD_TWO='**/.git'
 OLD_HOOK_WARNING_PRINTED=0
@@ -31,6 +33,8 @@ MANIFEST_LOCK_PATH=
 GIT_LEGO_EXIT_HANDLER_INSTALLED=0
 GIT_LEGO_NO_FETCH=0
 GIT_LEGO_BASE_OVERRIDES=
+GIT_LEGO_DRY_RUN=0
+GIT_LEGO_JSON_DRY_RUN=0
 
 EXIT_ISSUES=1
 EXIT_USAGE=2
@@ -89,7 +93,7 @@ cleanup_manifest_lock() {
 
 install_exit_handler() {
     [ "$GIT_LEGO_EXIT_HANDLER_INSTALLED" -eq 0 ] || return 0
-    trap 'cleanup_manifest_lock' EXIT
+    trap 'status=$?; cleanup_manifest_lock; exit $status' EXIT
     trap 'cleanup_manifest_lock; trap - INT; kill -INT $$' INT
     trap 'cleanup_manifest_lock; trap - TERM; kill -TERM $$' TERM
     GIT_LEGO_EXIT_HANDLER_INSTALLED=1
@@ -252,6 +256,9 @@ emit_json_result() {
     fi
     printf '{"version":%s,"command":' "$JSON_SCHEMA_VERSION"
     json_string "$command"
+    if [ "$GIT_LEGO_JSON_DRY_RUN" -eq 1 ]; then
+        printf ',"dry_run":true'
+    fi
     printf ',"recursive":'
     [ "$recursive" -eq 1 ] && printf 'true' || printf 'false'
     printf ',"ok":'
@@ -306,8 +313,8 @@ Usage:
   git-lego diff [--since <ref>] [--stat] [--json | --json-pretty]
   git-lego log [--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]
   git-lego start <ticket-and-slug|.> [--stash-dirty|--discard-dirty|--cancel-dirty] [--hooks] [--sure]
-  git-lego snapshot [--recursive] [--quiet] [--no-fetch] [--base <subproject>=<ref>]
-  git-lego upload [--finalize] [--no-fetch] [--base <subproject>=<ref>]
+  git-lego snapshot [--recursive] [--quiet] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
+  git-lego upload [--finalize] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
   git-lego freeze [--force] [--only <path>[,<path>...]] [--dry-run]
   git-lego install-hooks
   git-lego remove-hooks
@@ -318,9 +325,10 @@ Usage:
   git-lego no-pending [--json | --json-pretty]
   git-lego config <get|set|list|unset> ...
   git-lego update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]
-  git-lego finalize <subproject> [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]
+  git-lego finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]
   git-lego cleanup-branches
-  git-lego sync [--recursive] [--prune] [--force]
+  git-lego sync [--recursive] [--prune] [--force] [--dry-run]
+  git-lego doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]
   git-lego completion <bash|zsh|fish>
   git-lego export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]
   git-lego extract <path> <remote-url> [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run]
@@ -381,16 +389,18 @@ Commands:
           --cancel-dirty fails if any repository is dirty.
           --hooks installs managed hooks.
           --sure confirms startup in a non-Git folder with subdirectories.
-  snapshot [--recursive] [--quiet] [--no-fetch] [--base <subproject>=<ref>]
+  snapshot [--recursive] [--quiet] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
       Snapshot local manifest state without pushing.
           --recursive includes nested projects.
           --quiet suppresses skip warnings for dirty subprojects.
+          --dry-run prints planned manifest changes without writing.
           --no-fetch uses local refs for base detection.
           --base sets an explicit base ref for one subproject.
-  upload [--finalize] [--no-fetch] [--base <subproject>=<ref>]
+  upload [--finalize] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
       Push changed subproject branches and the outer branch. By default records
-      pending subproject state.
+          pending subproject state.
           --finalize pins pushed subproject commits directly.
+          --dry-run prints planned pushes and manifest changes without writing.
           --no-fetch uses local refs for base detection.
           --base sets an explicit base ref for one subproject.
   freeze [--force] [--only <path>[,<path>...]] [--dry-run]
@@ -421,19 +431,23 @@ Commands:
           --tag pins a tag and records the tag name.
           --branch retargets before resolving the selected revision.
           --no-fetch resolves only local refs.
-  finalize <subproject> [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]
+  finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]
       Convert a pending subproject to a pinned revision.
           --revision pins an explicit commit.
           --tag pins a tag and records the tag name.
           --use-target-head pins the target branch head.
+          --dry-run prints planned manifest/cleanup changes without writing.
           --cleanup deletes the local pending branch after finalization.
   cleanup-branches
       Delete local branches recorded as finalized cleanup hints.
-  sync [--recursive] [--prune] [--force]
+  sync [--recursive] [--prune] [--force] [--dry-run]
       Clone/fetch subprojects and restore the manifest state.
           --recursive includes nested projects.
           --prune removes stale local-state paths after review when sync suggests it.
           --force proceeds when a tag moved away from the recorded revision.
+          --dry-run prints planned clone/fetch/checkout/prune actions without writing.
+  doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]
+      Report environment and workspace health without modifying files.
   completion <bash|zsh|fish>
       Print a shell completion script to stdout.
   export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]
@@ -499,6 +513,7 @@ git_lego_main() {
         finalize) enter_project_root_required; cmd_finalize "$@" ;;
         cleanup-branches) enter_project_root_required; cmd_cleanup_branches "$@" ;;
         sync) enter_project_root_required; cmd_sync "$@" ;;
+        doctor) cmd_doctor "$@" ;;
         completion) cmd_completion "$@" ;;
         export) enter_project_root_required; cmd_export "$@" ;;
         extract) enter_project_root_required; cmd_extract "$@" ;;
@@ -631,9 +646,23 @@ ensure_outer_repo() {
 gitattributes_has_guard() {
     [ -f .gitattributes ] || return 1
     awk '
-        /^[[:space:]]*\.gitlego[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { found=1 }
-        END { exit !found }
+        /^[[:space:]]*\.gitlego[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { gitlego=1 }
+        /^[[:space:]]*\.gitlego-rc[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { rc=1 }
+        /^[[:space:]]*bin\/git-lego[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { entrypoint=1 }
+        /^[[:space:]]*bin\/git_lego\.sh[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { shell=1 }
+        /^[[:space:]]*bin\/git-lego\.bat[[:space:]]+text[[:space:]]+eol=crlf[[:space:]]*$/ { batch=1 }
+        END { exit !(gitlego && rc && entrypoint && shell && batch) }
     ' .gitattributes
+}
+
+print_gitattributes_guard() {
+    printf '%s\n' "$GITATTRIBUTES_BEGIN"
+    printf '%s\n' "$GITATTRIBUTES_GUARD"
+    printf '.gitlego-rc text eol=lf\n'
+    printf 'bin/git-lego text eol=lf\n'
+    printf 'bin/git_lego.sh text eol=lf\n'
+    printf 'bin/git-lego.bat text eol=crlf\n'
+    printf '%s\n' "$GITATTRIBUTES_END"
 }
 
 ensure_gitattributes_guard() {
@@ -641,20 +670,35 @@ ensure_gitattributes_guard() {
         return 0
     fi
     if [ ! -f .gitattributes ]; then
-        printf '%s\n' "$GITATTRIBUTES_GUARD" >.gitattributes
+        print_gitattributes_guard >.gitattributes
         return
     fi
     tmp=$(tmp_for .gitattributes)
     {
-        printf '%s\n' "$GITATTRIBUTES_GUARD"
-        cat .gitattributes
+        print_gitattributes_guard
+        awk '
+            /^[[:space:]]*# BEGIN git-lego attributes[[:space:]]*$/ { in_block=1; next }
+            /^[[:space:]]*# END git-lego attributes[[:space:]]*$/ { in_block=0; next }
+            in_block { next }
+            {
+                trimmed=$0
+                sub(/^[[:space:]]+/, "", trimmed)
+                sub(/[[:space:]]+$/, "", trimmed)
+                if (trimmed ~ /^\.gitlego([[:space:]]|$)/) next
+                if (trimmed ~ /^\.gitlego-rc([[:space:]]|$)/) next
+                if (trimmed ~ /^bin\/git-lego([[:space:]]|$)/) next
+                if (trimmed ~ /^bin\/git_lego\.sh([[:space:]]|$)/) next
+                if (trimmed ~ /^bin\/git-lego\.bat([[:space:]]|$)/) next
+                print
+            }
+        ' .gitattributes
     } >"$tmp"
     mv "$tmp" .gitattributes
 }
 
 warn_missing_gitattributes_guard() {
     gitattributes_has_guard && return 0
-    warn "missing .gitattributes entry: $GITATTRIBUTES_GUARD; run git-lego init to add it"
+    warn "missing or stale git-lego .gitattributes guard; run git-lego init to repair it"
 }
 
 warn_old_managed_hooks() {
@@ -735,12 +779,23 @@ ensure_config() {
 
 # Normalize subproject paths so manifest section names are stable across platforms.
 normalize_path() {
-    printf '%s\n' "$1" | sed 's#\\#/#g; s#//*#/#g; s#/$##'
+    printf '%s\n' "$1" | sed 's#//*#/#g; s#/$##'
+}
+
+reject_backslash_path() {
+    case "$1" in
+        *[\\]*)
+            suggested=$(printf '%s\n' "$1" | tr '\\' '/')
+            usage_error "subproject paths must use forward slashes; got \"$1\". Use \"$suggested\"."
+            ;;
+    esac
 }
 
 path_is_relative_safe() {
     case "$1" in
         ""|/*|[A-Za-z]:*|../*|*/../*|..|.) return 1 ;;
+        .git|.gitlego|.gitlego.lock|.gitlego-rc|.gitignore|.gitattributes) return 1 ;;
+        .git/*|*/.git|*/.git/*) return 1 ;;
         *) return 0 ;;
     esac
 }
@@ -1734,7 +1789,9 @@ add_base_override() {
         *=*) ;;
         *) usage_error "--base requires <subproject>=<ref>" ;;
     esac
-    path=$(normalize_path "${value%%=*}")
+    path_arg=${value%%=*}
+    reject_backslash_path "$path_arg"
+    path=$(normalize_path "$path_arg")
     ref=${value#*=}
     [ -n "$path" ] || usage_error "--base requires a subproject path"
     [ -n "$ref" ] || usage_error "--base requires a ref"
@@ -1858,6 +1915,7 @@ cmd_add() {
     done
     [ $# -eq 2 ] || die "usage: git-lego add [--clone <full|partial>] <repo> <path>"
     repo=$1
+    reject_backslash_path "$2"
     path=$(normalize_path "$2")
     ensure_outer_repo
     acquire_manifest_lock
@@ -1879,7 +1937,7 @@ cmd_add() {
     ensure_gitignore_hygiene
     ensure_gitignore_entry "$path"
 
-    fetch_quiet "$path"
+    [ "$GIT_LEGO_DRY_RUN" -eq 1 ] || fetch_quiet "$path"
     target=$(default_target_branch "$path")
     revision=$(resolve_head_commit "$path" "cannot add subproject $path")
     manifest_write_subproject "$path" "$repo" tracked "$target" "$revision" "$clone_mode"
@@ -1986,6 +2044,7 @@ cmd_remove() {
         esac
     done
     [ -n "$path_arg" ] || usage_error "usage: git-lego remove <path> [--force] [--keep-files]"
+    reject_backslash_path "$path_arg"
     path=$(normalize_path "$path_arg")
     acquire_manifest_lock
     ensure_manifest
@@ -2018,6 +2077,7 @@ cmd_mv() {
     if [ "${1:-}" = "--url" ]; then
         [ $# -eq 3 ] || usage_error "usage: git-lego mv --url <new-url> <path>"
         new_url=$2
+        reject_backslash_path "$3"
         path=$(normalize_path "$3")
         acquire_manifest_lock
         ensure_manifest
@@ -2053,6 +2113,8 @@ cmd_mv() {
         esac
     done
     [ -n "${old_arg:-}" ] && [ -n "${new_arg:-}" ] || usage_error "usage: git-lego mv <old-path> <new-path> [--force]"
+    reject_backslash_path "$old_arg"
+    reject_backslash_path "$new_arg"
     old_path=$(normalize_path "$old_arg")
     new_path=$(normalize_path "$new_arg")
     acquire_manifest_lock
@@ -2143,6 +2205,7 @@ path_in_only_list() {
     old_ifs=$IFS
     IFS=,
     for item in $list; do
+        reject_backslash_path "$item"
         item=$(normalize_path "$item")
         if [ "$item" = "$path" ]; then
             IFS=$old_ifs
@@ -2159,6 +2222,7 @@ validate_only_list_boundaries() {
     old_ifs=$IFS
     IFS=,
     for item in $list; do
+        reject_backslash_path "$item"
         item=$(normalize_path "$item")
         [ -n "$item" ] || continue
         assert_path_not_inside_nested_project "$item"
@@ -3011,6 +3075,7 @@ cmd_log() {
                 if [ "$2" = "." ]; then
                     subproject_filter=.
                 else
+                    reject_backslash_path "$2"
                     subproject_filter=$(normalize_path "$2")
                     [ -n "$(subproject_repo "$subproject_filter" || true)" ] ||
                         die "--subproject must be . or a subproject path in $MANIFEST_FILE"
@@ -3168,16 +3233,58 @@ preflight_subproject_snapshot() {
 
 snapshot_current() {
     quiet=$1
+    dry_run=${2:-0}
     ensure_outer_repo
-    acquire_manifest_lock
+    [ "$dry_run" -eq 1 ] || acquire_manifest_lock
     ensure_manifest
     validate_manifest_schema
     branch=$(current_branch)
     [ "$branch" != "HEAD" ] || die "snapshot requires the outer repository to be on a named branch"
     ticket=$(ticket_from_branch "$branch")
     manifest_subprojects | while IFS= read -r path; do
-        preflight_subproject_snapshot "$path"
+        if [ "$dry_run" -eq 1 ]; then
+            [ -d "$path/.git" ] || continue
+            repo_has_dirty "$path" && continue
+            repo=$(subproject_repo "$path")
+            require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-lego add again or fix the manifest"
+        else
+            preflight_subproject_snapshot "$path"
+        fi
     done
+    if [ "$dry_run" -eq 1 ]; then
+        old_id=$(manifest_get project id || true)
+        old_branch=$(manifest_get project branch || true)
+        printf '[dry-run] project id: %s -> %s\n' "${old_id:-<unset>}" "${ticket:-<unset>}"
+        printf '[dry-run] project branch: %s -> %s\n' "${old_branch:-<unset>}" "$branch"
+        manifest_subprojects | while IFS= read -r path; do
+            [ -d "$path/.git" ] || continue
+            if repo_has_dirty "$path"; then
+                [ "$quiet" -eq 1 ] || printf '[dry-run] %s: would skip dirty subproject\n' "$path"
+                continue
+            fi
+            target=$(subproject_key "$path" target_branch || true)
+            [ -n "$target" ] || target=$(default_target_branch "$path")
+            mod_branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+            [ -n "$mod_branch" ] || continue
+            if count=$(subproject_work_count "$path" "$target" 2>/dev/null); then
+                if [ "$count" -gt 0 ]; then
+                    base=$(base_for_subproject "$path" "$target" 2>/dev/null || printf 'unknown')
+                    pushed=$(resolve_head_commit "$path" "cannot snapshot subproject $path")
+                    old_pending=$(subproject_key "$path" pending_branch || true)
+                    old_base=$(subproject_key "$path" base_revision || true)
+                    old_pushed=$(subproject_key "$path" pushed_commit || true)
+                    printf '[dry-run] %s target_branch: %s -> %s\n' "$path" "${target:-<unset>}" "$target"
+                    printf '[dry-run] %s pending_branch: %s -> %s\n' "$path" "${old_pending:-<unset>}" "$mod_branch"
+                    printf '[dry-run] %s base_revision: %s -> %s\n' "$path" "${old_base:-<unset>}" "$base"
+                    printf '[dry-run] %s pushed_commit: %s -> %s\n' "$path" "${old_pushed:-<unset>}" "$pushed"
+                fi
+            else
+                printf '[dry-run] %s pending state: unknown; real run would fetch first if needed\n' "$path"
+            fi
+        done
+        clear_base_overrides
+        return 0
+    fi
     manifest_write_project "$ticket" "$branch"
     manifest_subprojects | while IFS= read -r path; do
         record_subproject_if_needed "$path" "$quiet"
@@ -3190,13 +3297,14 @@ snapshot_recursive() {
     label=$1
     visited=$2
     quiet=$3
+    dry_run=${4:-0}
     root_abs=$(abs_path_for .)
     if grep -F -x "$root_abs" "$visited" >/dev/null 2>&1; then
         return 0
     fi
     printf '%s\n' "$root_abs" >>"$visited"
     [ "$quiet" -eq 1 ] || printf 'Snapshotting project: %s\n' "$label"
-    snapshot_current "$quiet"
+    snapshot_current "$quiet" "$dry_run"
     cleanup_manifest_lock
 
     subprojects_tmp=$(tmp_for "$MANIFEST_FILE.snapshot_recursive")
@@ -3208,7 +3316,7 @@ snapshot_recursive() {
             child_label=$(join_project_label "$label" "$path")
             (
                 cd "$path" || exit 1
-                snapshot_recursive "$child_label" "$visited" "$quiet"
+                snapshot_recursive "$child_label" "$visited" "$quiet" "$dry_run"
             ) || rc=1
         fi
     done <"$subprojects_tmp"
@@ -3220,11 +3328,13 @@ snapshot_recursive() {
 cmd_snapshot() {
     quiet=0
     recursive=0
+    dry_run=0
     clear_base_overrides
     while [ $# -gt 0 ]; do
         case "$1" in
             --recursive) recursive=1; shift ;;
             --quiet) quiet=1; shift ;;
+            --dry-run) dry_run=1; GIT_LEGO_DRY_RUN=1; shift ;;
             --no-fetch) GIT_LEGO_NO_FETCH=1; shift ;;
             --base)
                 [ $# -ge 2 ] || usage_error "--base requires <subproject>=<ref>"
@@ -3237,12 +3347,12 @@ cmd_snapshot() {
     if [ "$recursive" -eq 1 ]; then
         visited=$(mktemp)
         : >"$visited"
-        snapshot_recursive "." "$visited" "$quiet"
+        snapshot_recursive "." "$visited" "$quiet" "$dry_run"
         rc=$?
         rm -f "$visited"
         return "$rc"
     fi
-    snapshot_current "$quiet"
+    snapshot_current "$quiet" "$dry_run"
     [ "$quiet" -eq 1 ] || notice_nested_snapshot_candidates
 }
 
@@ -3257,7 +3367,7 @@ base_for_subproject() {
         return
     fi
     fetch_note=
-    if [ "$GIT_LEGO_NO_FETCH" -eq 0 ]; then
+    if [ "$GIT_LEGO_NO_FETCH" -eq 0 ] && [ "$GIT_LEGO_DRY_RUN" -eq 0 ]; then
         fetch_note=$(fetch_quiet "$path" 2>&1 || true)
     fi
     if git -C "$path" rev-parse --verify "origin/$target^{commit}" >/dev/null 2>&1; then
@@ -3269,7 +3379,9 @@ base_for_subproject() {
     else
         printf 'Error: cannot calculate base revision for %s\n' "$path" >&2
         printf '  requested target ref: %s\n' "$target" >&2
-        if [ "$GIT_LEGO_NO_FETCH" -eq 1 ]; then
+        if [ "$GIT_LEGO_DRY_RUN" -eq 1 ]; then
+            printf '  dry-run does not fetch; the real run would fetch first if needed\n' >&2
+        elif [ "$GIT_LEGO_NO_FETCH" -eq 1 ]; then
             printf '  fetch was skipped by --no-fetch and no local target ref resolved\n' >&2
         elif [ -n "$fetch_note" ]; then
             printf '  fetch result: %s\n' "$fetch_note" >&2
@@ -3314,11 +3426,17 @@ commit_manifest_if_needed() {
 # Push changed subproject branches, record pending/finalized state, and push the outer branch.
 cmd_upload() {
     finalize=0
+    dry_run=0
     clear_base_overrides
     while [ $# -gt 0 ]; do
         case "$1" in
             --finalize)
                 finalize=1
+                shift
+                ;;
+            --dry-run)
+                dry_run=1
+                GIT_LEGO_DRY_RUN=1
                 shift
                 ;;
             --no-fetch)
@@ -3333,7 +3451,7 @@ cmd_upload() {
             *) usage_error "unknown upload option: $1" ;;
         esac
     done
-    acquire_manifest_lock
+    [ "$dry_run" -eq 1 ] || acquire_manifest_lock
     ensure_manifest
     validate_manifest_schema
     branch=$(current_branch)
@@ -3350,8 +3468,13 @@ cmd_upload() {
         [ -z "$dirty" ] || die "subproject $path has uncommitted changes; commit or stash before upload"
     done <"$subprojects_tmp"
 
+    upload_plan=$(tmp_for "$MANIFEST_FILE.upload_plan")
+    : >"$upload_plan"
+
     # Candidate branches from start are skipped unless they have commits ahead
-    # of the target branch. The subproject's actual branch name is recorded.
+    # of the target branch. Preflight every changed subproject before pushing or
+    # rewriting the manifest so one bad repository does not strand earlier ones
+    # in a surprising partially uploaded state.
     while IFS= read -r path; do
         [ -d "$path/.git" ] || continue
         repo=$(subproject_repo "$path")
@@ -3359,14 +3482,42 @@ cmd_upload() {
         target=$(subproject_key "$path" target_branch || true)
         [ -n "$target" ] || target=$(default_target_branch "$path")
         mod_branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-        work_count=$(subproject_work_count "$path" "$target")
+        if [ "$dry_run" -eq 1 ]; then
+            if ! work_count=$(subproject_work_count "$path" "$target" 2>/dev/null); then
+                printf '[dry-run] %s upload state: unknown; real run would fetch first if needed\n' "$path"
+                continue
+            fi
+        else
+            work_count=$(subproject_work_count "$path" "$target")
+        fi
         if [ "$work_count" -gt 0 ]; then
             [ -n "$mod_branch" ] || die "subproject $path has committed work on detached HEAD; check out a branch before upload"
             base=$(base_for_subproject "$path" "$target")
             pushed=$(resolve_head_commit "$path" "cannot upload subproject $path")
-            remote_exists "$path" || die "subproject $path has no origin remote"
-            git -C "$path" push -u origin "HEAD:$mod_branch" ||
-                git_error "failed to push subproject $path branch $mod_branch to origin"
+            remote_exists "$path" || die "subproject $path has no origin remote; restore or add origin, then rerun git-lego upload"
+            if [ "$dry_run" -eq 1 ]; then
+                printf '[dry-run] would push subproject %s branch %s with refspec HEAD:%s\n' "$path" "$mod_branch" "$mod_branch"
+                if [ "$finalize" -eq 1 ]; then
+                    printf '[dry-run] would finalize %s at %s from branch %s\n' "$path" "$pushed" "$mod_branch"
+                else
+                    printf '[dry-run] would record pending %s target=%s branch=%s base=%s pushed=%s\n' "$path" "$target" "$mod_branch" "$base" "$pushed"
+                fi
+                continue
+            fi
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$path" "$repo" "$target" "$mod_branch" "$base" "$pushed" >>"$upload_plan"
+        fi
+    done <"$subprojects_tmp"
+
+    if [ "$dry_run" -eq 0 ]; then
+        while IFS='	' read -r path repo target mod_branch base pushed; do
+            [ -n "$path" ] || continue
+            if ! git -C "$path" push -u origin "HEAD:$mod_branch"; then
+                printf 'Error: failed to push subproject %s branch %s to origin\n' "$path" "$mod_branch" >&2
+                printf '  recovery: fix the remote, credentials, or rejected branch, then rerun git-lego upload.\n' >&2
+                printf '  note: any subproject branches already pushed by this run may remain on their remotes; rerunning upload will reuse the current manifest and branch state.\n' >&2
+                rm -f "$upload_plan" "$subprojects_tmp"
+                return "$EXIT_GIT"
+            fi
             if [ "$finalize" -eq 1 ]; then
                 manifest_write_subproject "$path" "$repo" finalized "$pushed" "" "$mod_branch"
                 printf 'Uploaded and finalized subproject %s branch %s at %.12s.\n' "$path" "$mod_branch" "$pushed"
@@ -3374,17 +3525,26 @@ cmd_upload() {
                 manifest_write_subproject "$path" "$repo" pending "$target" "$mod_branch" "$base" "$pushed"
                 printf 'Uploaded subproject %s branch %s at %.12s.\n' "$path" "$mod_branch" "$pushed"
             fi
-        fi
-    done <"$subprojects_tmp"
+        done <"$upload_plan"
+    fi
+    rm -f "$upload_plan"
     rm -f "$subprojects_tmp"
 
     # The outer push is best-effort when no origin is configured; subproject pushes
     # remain strict because pending manifest state points at those branches.
-    commit_manifest_if_needed "$branch"
-    if remote_exists .; then
-        git push -u origin "HEAD:$branch" || git_error "failed to push outer branch $branch to origin"
+    if [ "$dry_run" -eq 1 ]; then
+        if remote_exists .; then
+            printf '[dry-run] would push outer branch %s with refspec HEAD:%s\n' "$branch" "$branch"
+        else
+            printf '[dry-run] outer repository has no origin remote; would skip outer push\n'
+        fi
     else
-        warn "outer repository has no origin remote; skipped outer push"
+        commit_manifest_if_needed "$branch"
+        if remote_exists .; then
+            git push -u origin "HEAD:$branch" || git_error "failed to push outer branch $branch to origin"
+        else
+            warn "outer repository has no origin remote; skipped outer push"
+        fi
     fi
     clear_base_overrides
 }
@@ -3572,6 +3732,7 @@ cmd_config() {
     case "$action" in
         get)
             [ $# -eq 2 ] || usage_error "usage: git-lego config get <path> clone-mode"
+            reject_backslash_path "$1"
             path=$(normalize_path "$1")
             key=$2
             manifest_key=$(config_manifest_key "$key") || usage_error "unknown config key: $key"
@@ -3583,6 +3744,7 @@ cmd_config() {
             ;;
         set)
             [ $# -eq 3 ] || usage_error "usage: git-lego config set <path> clone-mode <value>"
+            reject_backslash_path "$1"
             path=$(normalize_path "$1")
             key=$2
             value=$3
@@ -3597,6 +3759,7 @@ cmd_config() {
         list)
             [ $# -le 1 ] || usage_error "usage: git-lego config list [<path>]"
             if [ $# -eq 1 ]; then
+                reject_backslash_path "$1"
                 path=$(normalize_path "$1")
                 assert_path_not_inside_nested_project "$path"
                 ensure_manifest_subproject_path "$path"
@@ -3616,6 +3779,7 @@ cmd_config() {
             ;;
         unset)
             [ $# -eq 2 ] || usage_error "usage: git-lego config unset <path> clone-mode"
+            reject_backslash_path "$1"
             path=$(normalize_path "$1")
             key=$2
             manifest_key=$(config_manifest_key "$key") || usage_error "unknown config key: $key"
@@ -4075,6 +4239,7 @@ cmd_cleanup_branches() {
 # Update one clean, non-pending subproject to another recorded version.
 cmd_update() {
     [ $# -ge 1 ] || die "usage: git-lego update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
+    reject_backslash_path "$1"
     path=$(normalize_path "$1")
     shift
     acquire_manifest_lock
@@ -4185,7 +4350,7 @@ auto_finalize_revision() {
     [ -n "$ticket" ] || ticket=$(ticket_from_branch "$(subproject_key "$path" pending_branch || true)")
     [ -n "$ticket" ] || die "auto-finalize needs a project id; use --revision, --tag, or --use-target-head"
     base=$(subproject_key "$path" base_revision || true)
-    fetch_quiet "$path"
+    [ "$GIT_LEGO_DRY_RUN" -eq 1 ] || fetch_quiet "$path"
     git -C "$path" rev-parse --verify "origin/$target^{commit}" >/dev/null 2>&1 ||
         die "auto-finalize cannot find origin/$target for $path; fetch the subproject or use --revision/--tag"
     range=
@@ -4205,27 +4370,25 @@ auto_finalize_revision() {
 
 # Convert a subproject from pending to finalized state using an explicit or auto selector.
 cmd_finalize() {
-    [ $# -ge 1 ] || die "usage: git-lego finalize <subproject> [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]"
+    [ $# -ge 1 ] || die "usage: git-lego finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]"
+    reject_backslash_path "$1"
     path=$(normalize_path "$1")
     shift
-    acquire_manifest_lock
-    ensure_manifest
-    validate_manifest_schema
-    assert_path_not_inside_nested_project "$path"
-    [ -d "$path/.git" ] || die "$path is not a checked-out subproject"
-    repo=$(subproject_repo "$path")
-    [ -n "$repo" ] || die "$path is not in $MANIFEST_FILE"
-    target=$(subproject_key "$path" target_branch || true)
-    [ -n "$target" ] || target=main
 
     mode=auto
     value=
     cleanup=0
+    dry_run=0
 
     # Selectors are mutually exclusive so the manifest gets one clear source of
     # truth: explicit revision, explicit tag, target head, or conservative auto.
     while [ $# -gt 0 ]; do
         case "$1" in
+            --dry-run)
+                dry_run=1
+                GIT_LEGO_DRY_RUN=1
+                shift
+                ;;
             --cleanup)
                 cleanup=1
                 shift
@@ -4253,6 +4416,16 @@ cmd_finalize() {
         esac
     done
 
+    [ "$dry_run" -eq 1 ] || acquire_manifest_lock
+    ensure_manifest
+    validate_manifest_schema
+    assert_path_not_inside_nested_project "$path"
+    [ -d "$path/.git" ] || die "$path is not a checked-out subproject"
+    repo=$(subproject_repo "$path")
+    [ -n "$repo" ] || die "$path is not in $MANIFEST_FILE"
+    target=$(subproject_key "$path" target_branch || true)
+    [ -n "$target" ] || target=main
+
     tag=
     # Every path resolves to a concrete commit before the manifest is touched.
     case "$mode" in
@@ -4264,15 +4437,45 @@ cmd_finalize() {
             revision=$(resolve_commit "$path" "$value" "cannot finalize $path with --tag")
             ;;
         target_head)
-            revision=$(resolve_target_ref "$path" "$target")
+            if [ "$dry_run" -eq 1 ]; then
+                remote_tmp=$(tmp_for "$MANIFEST_FILE.finalize_target")
+                remote_revision=$(remote_branch_commit "$repo" "$target" "$remote_tmp" || true)
+                rm -f "$remote_tmp"
+                if [ -n "$remote_revision" ]; then
+                    revision=$remote_revision
+                else
+                    revision=$(resolve_target_ref "$path" "$target" 0)
+                fi
+            else
+                revision=$(resolve_target_ref "$path" "$target")
+            fi
             ;;
         auto)
-            revision=$(auto_finalize_revision "$path" "$target")
+            if [ "$dry_run" -eq 1 ]; then
+                if git -C "$path" rev-parse --verify "origin/$target^{commit}" >/dev/null 2>&1; then
+                    revision=$(auto_finalize_revision "$path" "$target")
+                else
+                    revision=unknown
+                    printf '[dry-run] %s auto-finalize revision: unknown; real run would fetch first if needed\n' "$path"
+                fi
+            else
+                revision=$(auto_finalize_revision "$path" "$target")
+            fi
             ;;
     esac
     require_value "$revision" "finalize produced an empty revision for $path; use --revision <sha>"
 
     old_pending=$(subproject_key "$path" pending_branch || true)
+    if [ "$dry_run" -eq 1 ]; then
+        old_revision=$(subproject_key "$path" revision || true)
+        old_tag=$(subproject_key "$path" tag || true)
+        printf '[dry-run] %s revision: %s -> %s\n' "$path" "${old_revision:-<unset>}" "$revision"
+        printf '[dry-run] %s tag: %s -> %s\n' "$path" "${old_tag:-<unset>}" "${tag:-<unset>}"
+        if [ "$cleanup" -eq 1 ] && [ -n "$old_pending" ]; then
+            printf '[dry-run] would delete local branch %s in %s\n' "$old_pending" "$path"
+        fi
+        return 0
+    fi
     manifest_write_subproject "$path" "$repo" finalized "$revision" "$tag" "$old_pending"
 
     # Cleanup is local-only: remote review branches and untracked files are not
@@ -4287,6 +4490,7 @@ cmd_finalize() {
 sync_current() {
     prune=${1:-0}
     force=${2:-0}
+    dry_run=${3:-0}
     ensure_manifest
     subprojects_tmp=$(tmp_for "$MANIFEST_FILE.sync")
     failures_tmp=$(tmp_for "$MANIFEST_FILE.sync_failures")
@@ -4294,7 +4498,15 @@ sync_current() {
     : >"$failures_tmp"
     rc=0
 
-    reconcile_stale_subprojects "$prune"
+    if [ "$dry_run" -eq 1 ]; then
+        if [ "$prune" -eq 1 ]; then
+            printf '[dry-run] would reconcile stale subprojects with prune enabled\n'
+        else
+            printf '[dry-run] would inspect stale subprojects for reconciliation\n'
+        fi
+    else
+        reconcile_stale_subprojects "$prune"
+    fi
 
     while IFS= read -r path; do
         [ -n "$path" ] || continue
@@ -4303,6 +4515,40 @@ sync_current() {
             [ -n "$repo" ] || die "missing repo for $path"
             created=0
             clone_mode=$(effective_clone_mode "$path")
+            pending=$(subproject_key "$path" pending_branch || true)
+            tag=$(subproject_key "$path" tag || true)
+            revision=$(subproject_key "$path" revision || true)
+            target=$(subproject_key "$path" target_branch || true)
+            [ -n "$target" ] || target=main
+            if [ "$dry_run" -eq 1 ]; then
+                if [ ! -d "$path/.git" ]; then
+                    printf '[dry-run] would clone %s into %s using clone=%s\n' "$repo" "$path" "$clone_mode"
+                else
+                    printf '[dry-run] would fetch %s before sync\n' "$path"
+                fi
+                if [ -n "$pending" ]; then
+                    printf '[dry-run] would check out pending branch %s in %s\n' "$pending" "$path"
+                elif [ -n "$tag" ]; then
+                    remote_tag=unknown
+                    if [ -n "$revision" ]; then
+                        tag_tmp=$(tmp_for "$MANIFEST_FILE.sync_tag")
+                        remote_tag=$(remote_tag_commit "$repo" "$tag" "$tag_tmp" || printf 'unknown')
+                        rm -f "$tag_tmp"
+                        if [ "$remote_tag" != unknown ] && [ "$remote_tag" != "$revision" ] && [ "$force" -eq 0 ]; then
+                            printf 'Error: tag/revision mismatch for %s\n' "$path" >&2
+                            exit "$EXIT_ISSUES"
+                        fi
+                    fi
+                    printf '[dry-run] would check out tag %s in %s (remote=%s)\n' "$tag" "$path" "$remote_tag"
+                elif [ -n "$revision" ]; then
+                    printf '[dry-run] would check out revision %s in %s\n' "$revision" "$path"
+                elif [ ! -d "$path/.git" ] && [ "$clone_mode" = partial ]; then
+                    printf '[dry-run] would check out target branch %s in %s after partial clone\n' "$target" "$path"
+                else
+                    printf '[dry-run] would leave checkout state unchanged for %s\n' "$path"
+                fi
+                exit 0
+            fi
             if [ ! -d "$path/.git" ]; then
                 clone_subproject "$repo" "$path" "$clone_mode" 1
                 created=1
@@ -4311,12 +4557,6 @@ sync_current() {
                 install_hooks_in_repo_if_project_managed "$path"
             fi
             fetch_quiet "$path"
-            pending=$(subproject_key "$path" pending_branch || true)
-            tag=$(subproject_key "$path" tag || true)
-            revision=$(subproject_key "$path" revision || true)
-            target=$(subproject_key "$path" target_branch || true)
-            [ -n "$target" ] || target=main
-
             # Pending branches take precedence because they represent work still in
             # review; finalized tags/revisions are checked out only after pending is gone.
             if [ -n "$pending" ]; then
@@ -4369,11 +4609,12 @@ sync_current() {
         while IFS= read -r path; do
             [ -n "$path" ] && printf '  %s\n' "$path" >&2
         done <"$failures_tmp"
+        printf 'Recovery: review the error for each listed subproject, fix the manifest, remote access, or local checkout, then rerun git-lego sync. Run git-lego verify for a read-only consistency report.\n' >&2
         rm -f "$failures_tmp"
         return 1
     fi
     rm -f "$failures_tmp"
-    write_materialized_state
+    [ "$dry_run" -eq 1 ] || write_materialized_state
 }
 
 # Recursively sync the current project and nested project roots.
@@ -4382,13 +4623,14 @@ sync_recursive() {
     visited=$2
     prune=${3:-0}
     force=${4:-0}
+    dry_run=${5:-0}
     root_abs=$(abs_path_for .)
     if grep -F -x "$root_abs" "$visited" >/dev/null 2>&1; then
         return 0
     fi
     printf '%s\n' "$root_abs" >>"$visited"
     printf 'Syncing project: %s\n' "$label"
-    sync_current "$prune" "$force" || return 1
+    sync_current "$prune" "$force" "$dry_run" || return 1
 
     subprojects_tmp=$(tmp_for "$MANIFEST_FILE.sync_recursive")
     manifest_subprojects >"$subprojects_tmp"
@@ -4399,7 +4641,7 @@ sync_recursive() {
             child_label=$(join_project_label "$label" "$path")
             (
                 cd "$path" || exit 1
-                sync_recursive "$child_label" "$visited" "$prune" "$force"
+                sync_recursive "$child_label" "$visited" "$prune" "$force" "$dry_run"
             ) || rc=1
         fi
     done <"$subprojects_tmp"
@@ -4412,28 +4654,242 @@ cmd_sync() {
     recursive=0
     prune=0
     force=0
+    dry_run=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --recursive) recursive=1; shift ;;
             --prune) prune=1; shift ;;
             --force) force=1; shift ;;
+            --dry-run) dry_run=1; GIT_LEGO_DRY_RUN=1; shift ;;
             *) usage_error "unknown sync option: $1" ;;
         esac
     done
     if [ "$recursive" -eq 1 ]; then
         visited=$(mktemp)
         : >"$visited"
-        sync_recursive "." "$visited" "$prune" "$force"
+        sync_recursive "." "$visited" "$prune" "$force" "$dry_run"
         rc=$?
         rm -f "$visited"
         return "$rc"
     fi
-    sync_current "$prune" "$force"
+    sync_current "$prune" "$force" "$dry_run"
     notice_nested_projects
 }
 
+doctor_add_check() {
+    file=$1
+    code=$2
+    name=$3
+    detail=$4
+    printf '%s\t%s\t%s\n' "$code" "$name" "$detail" >>"$file"
+}
+
+doctor_code_to_status() {
+    case "$1" in
+        I) printf 'info\n' ;;
+        W) printf 'warn\n' ;;
+        E) printf 'error\n' ;;
+        *) printf 'info\n' ;;
+    esac
+}
+
+emit_doctor_json() {
+    checks=$1
+    ok=$2
+    pretty=$3
+    if [ "$pretty" -eq 1 ]; then
+        compact=$(mktemp)
+        emit_doctor_json "$checks" "$ok" 0 >"$compact"
+        if command -v python >/dev/null 2>&1; then
+            python -m json.tool "$compact"
+        elif command -v python3 >/dev/null 2>&1; then
+            python3 -m json.tool "$compact"
+        else
+            cat "$compact"
+        fi
+        rm -f "$compact"
+        return
+    fi
+    printf '{"version":%s,"command":"doctor","recursive":false,"ok":' "$JSON_SCHEMA_VERSION"
+    [ "$ok" -eq 1 ] && printf 'true' || printf 'false'
+    printf ',"subprojects":[],"errors":[],"warnings":[],"checks":['
+    first=1
+    while IFS='	' read -r code name detail; do
+        [ -n "$code" ] || continue
+        [ "$first" -eq 1 ] || printf ','
+        first=0
+        printf '{"code":'
+        json_string "$code"
+        printf ',"name":'
+        json_string "$name"
+        printf ',"status":'
+        json_string "$(doctor_code_to_status "$code")"
+        printf ',"detail":'
+        json_string "$detail"
+        printf '}'
+    done <"$checks"
+    printf ']}'
+}
+
+doctor_hook_status() {
+    repo=$1
+    hook=$2
+    hook_file=$(hook_path_for "$repo" "$hook" 2>/dev/null || true)
+    [ -n "$hook_file" ] || { printf 'absent\n'; return; }
+    [ -f "$hook_file" ] || { printf 'absent\n'; return; }
+    if grep -F '# git-lego managed hook' "$hook_file" >/dev/null 2>&1; then
+        printf 'installed\n'
+    else
+        printf 'unmanaged\n'
+    fi
+}
+
+doctor_ls_remote() {
+    repo=$1
+    timeout_seconds=$2
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$timeout_seconds" git ls-remote --exit-code "$repo" HEAD >/dev/null 2>&1
+    else
+        git ls-remote --exit-code "$repo" HEAD >/dev/null 2>&1
+    fi
+}
+
+cmd_doctor() {
+    json=0
+    json_pretty=0
+    offline=0
+    timeout_seconds=5
+    use_exit_code=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json) json=1; shift ;;
+            --json-pretty) json=1; json_pretty=1; shift ;;
+            --offline) offline=1; shift ;;
+            --timeout)
+                [ $# -ge 2 ] || usage_error "--timeout requires seconds"
+                timeout_seconds=$2
+                case "$timeout_seconds" in
+                    *[!0-9]*|"") usage_error "--timeout requires a positive integer" ;;
+                esac
+                [ "$timeout_seconds" -gt 0 ] || usage_error "--timeout requires a positive integer"
+                shift 2
+                ;;
+            --exit-code) use_exit_code=1; shift ;;
+            *) usage_error "unknown doctor option: $1" ;;
+        esac
+    done
+
+    require_git
+    root=$(find_project_root 2>/dev/null || true)
+    [ -n "$root" ] || precondition_error "not inside a git-lego workspace; run git-lego init or cd to a project"
+    cd "$root" || die "cannot enter project root $root"
+
+    checks=$(mktemp)
+    : >"$checks"
+
+    git_version=$(git --version 2>/dev/null | sed 's/^git version //')
+    [ -n "$git_version" ] && doctor_add_check "$checks" I git-version "git $git_version; minimum supported version is 2.20" ||
+        doctor_add_check "$checks" E git-version "git is not available"
+
+    shell_name=${BASH_VERSION:+bash}
+    [ -n "$shell_name" ] || shell_name=sh
+    doctor_add_check "$checks" I shell "running under $shell_name"
+
+    if [ -f "$MANIFEST_FILE" ]; then
+        errors=$(tmp_for "$MANIFEST_FILE.doctor_schema")
+        if ( validate_manifest_schema ) >"$errors" 2>&1; then
+            doctor_add_check "$checks" I manifest "$MANIFEST_FILE is present and parseable"
+        else
+            detail=$(tr '\n' ' ' <"$errors" | sed 's/[[:space:]][[:space:]]*/ /g')
+            doctor_add_check "$checks" E manifest "$detail"
+        fi
+        rm -f "$errors"
+    else
+        doctor_add_check "$checks" E manifest "$MANIFEST_FILE is missing"
+    fi
+
+    if [ -d "$MANIFEST_FILE.lock" ]; then
+        pid=$(sed -n 's/^pid=//p' "$MANIFEST_FILE.lock/info" 2>/dev/null | sed -n '1p')
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            doctor_add_check "$checks" W lock "$MANIFEST_FILE.lock exists and pid $pid appears alive"
+        else
+            doctor_add_check "$checks" W lock "$MANIFEST_FILE.lock appears stale; remove it if no git-lego process is running"
+        fi
+    else
+        doctor_add_check "$checks" I lock "no manifest lock present"
+    fi
+
+    if gitattributes_has_guard; then
+        doctor_add_check "$checks" I gitattributes "git-lego attributes guard present"
+    else
+        doctor_add_check "$checks" W gitattributes "missing or stale git-lego attributes guard; run git-lego init to repair it"
+    fi
+
+    if [ -f .gitignore ]; then
+        grep -F '.gitlego-extract-backup/' .gitignore >/dev/null 2>&1 &&
+            doctor_add_check "$checks" I extract-backup-ignore ".gitlego-extract-backup/ ignored" ||
+            doctor_add_check "$checks" I extract-backup-ignore ".gitlego-extract-backup/ ignore entry absent"
+        grep -F '.gitlego-absorb-backup/' .gitignore >/dev/null 2>&1 &&
+            doctor_add_check "$checks" I absorb-backup-ignore ".gitlego-absorb-backup/ ignored" ||
+            doctor_add_check "$checks" I absorb-backup-ignore ".gitlego-absorb-backup/ ignore entry absent"
+    else
+        doctor_add_check "$checks" W gitignore ".gitignore is missing"
+    fi
+
+    for repo in . $(manifest_subprojects 2>/dev/null); do
+        [ "$repo" = "." ] || [ -d "$repo/.git" ] || continue
+        for hook in post-checkout post-commit pre-push; do
+            status=$(doctor_hook_status "$repo" "$hook")
+            case "$status" in
+                unmanaged) code=W ;;
+                *) code=I ;;
+            esac
+            doctor_add_check "$checks" "$code" "hook:$repo:$hook" "$status"
+        done
+    done
+
+    if [ "$offline" -eq 1 ]; then
+        doctor_add_check "$checks" I remotes "remote reachability skipped by --offline"
+    else
+        manifest_subprojects 2>/dev/null | while IFS= read -r path; do
+            repo=$(subproject_repo "$path" || true)
+            [ -n "$repo" ] || continue
+            if doctor_ls_remote "$repo" "$timeout_seconds"; then
+                doctor_add_check "$checks" I "remote:$path" "reachable"
+            else
+                doctor_add_check "$checks" W "remote:$path" "unreachable within ${timeout_seconds}s or authentication failed"
+            fi
+        done
+    fi
+
+    if command -v git-filter-repo >/dev/null 2>&1; then
+        doctor_add_check "$checks" I git-filter-repo "available"
+    else
+        doctor_add_check "$checks" I git-filter-repo "not found; required only for extract --preserve-history"
+    fi
+
+    if grep -E '^(W|E)	' "$checks" >/dev/null 2>&1; then
+        ok=0
+    else
+        ok=1
+    fi
+
+    if [ "$json" -eq 1 ]; then
+        emit_doctor_json "$checks" "$ok" "$json_pretty"
+    else
+        while IFS='	' read -r code name detail; do
+            [ -n "$code" ] && printf '%s\t%s\t%s\n' "$code" "$name" "$detail"
+        done <"$checks"
+    fi
+    rm -f "$checks"
+    if [ "$use_exit_code" -eq 1 ] && [ "$ok" -eq 0 ]; then
+        return "$EXIT_ISSUES"
+    fi
+    return 0
+}
+
 git_lego_command_names() {
-    printf '%s\n' "init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync completion export extract absorb version"
+    printf '%s\n' "init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version"
 }
 
 # Internal completion data endpoint used by generated shell completion scripts.
@@ -4459,7 +4915,7 @@ _git_lego_complete()
     local cur cmd commands subprojects
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
-    commands="init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync completion export extract absorb version"
+    commands="init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -4491,7 +4947,10 @@ _git_lego_complete()
             COMPREPLY=( $(compgen -W "--recursive --json --json-pretty" -- "$cur") )
             ;;
         sync)
-            COMPREPLY=( $(compgen -W "--recursive --prune --force" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--recursive --prune --force --dry-run" -- "$cur") )
+            ;;
+        doctor)
+            COMPREPLY=( $(compgen -W "--json --json-pretty --offline --timeout --exit-code" -- "$cur") )
             ;;
         diff)
             COMPREPLY=( $(compgen -W "--since --stat --json --json-pretty" -- "$cur") )
@@ -4503,10 +4962,10 @@ _git_lego_complete()
             COMPREPLY=( $(compgen -W "--stash-dirty --discard-dirty --cancel-dirty --hooks --sure" -- "$cur") )
             ;;
         snapshot)
-            COMPREPLY=( $(compgen -W "--recursive --quiet --no-fetch --base" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--recursive --quiet --dry-run --no-fetch --base" -- "$cur") )
             ;;
         upload)
-            COMPREPLY=( $(compgen -W "--finalize --no-fetch --base" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--finalize --dry-run --no-fetch --base" -- "$cur") )
             ;;
         freeze)
             COMPREPLY=( $(compgen -W "--force --only --dry-run" -- "$cur") )
@@ -4526,7 +4985,7 @@ _git_lego_complete()
             ;;
         remove|rm|mv|update|finalize)
             subprojects="$(git-lego __complete subprojects 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "$subprojects --force --keep-files --url --remote --target-head --revision --tag --branch --no-fetch --cleanup --use-target-head" -- "$cur") )
+            COMPREPLY=( $(compgen -W "$subprojects --force --keep-files --url --remote --target-head --revision --tag --branch --no-fetch --dry-run --cleanup --use-target-head" -- "$cur") )
             ;;
     esac
 }
@@ -4542,7 +5001,7 @@ completion_zsh() {
 _git_lego()
 {
     local -a commands subprojects
-    commands=(init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync completion export extract absorb version)
+    commands=(init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version)
 
     if (( CURRENT == 2 )); then
         _describe 'git-lego command' commands
@@ -4573,7 +5032,10 @@ _git_lego()
             _arguments '--recursive[include nested projects]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
             ;;
         sync)
-            _arguments '--recursive[include nested projects]' '--prune[remove reviewed stale paths]' '--force[proceed past tag drift warnings]'
+            _arguments '--recursive[include nested projects]' '--prune[remove reviewed stale paths]' '--force[proceed past tag drift warnings]' '--dry-run[show planned actions without writing]'
+            ;;
+        doctor)
+            _arguments '--json[print JSON]' '--json-pretty[print formatted JSON]' '--offline[skip remote checks]' '--timeout[remote timeout seconds]:seconds:' '--exit-code[return nonzero for warnings or errors]'
             ;;
         diff)
             _arguments '--since[read manifest from ref]:ref:' '--stat[include file statistics]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
@@ -4585,10 +5047,10 @@ _git_lego()
             _arguments '--stash-dirty[stash dirty repositories]' '--discard-dirty[discard tracked edits]' '--cancel-dirty[fail on dirty repositories]' '--hooks[install managed hooks]' '--sure[confirm noninteractive startup]'
             ;;
         snapshot)
-            _arguments '--recursive[include nested projects]' '--quiet[suppress dirty skip warnings]' '--no-fetch[use local refs]' '--base[set explicit base]:subproject=ref:'
+            _arguments '--recursive[include nested projects]' '--quiet[suppress dirty skip warnings]' '--dry-run[show planned changes without writing]' '--no-fetch[use local refs]' '--base[set explicit base]:subproject=ref:'
             ;;
         upload)
-            _arguments '--finalize[pin pushed commits directly]' '--no-fetch[use local refs]' '--base[set explicit base]:subproject=ref:'
+            _arguments '--finalize[pin pushed commits directly]' '--dry-run[show planned pushes without writing]' '--no-fetch[use local refs]' '--base[set explicit base]:subproject=ref:'
             ;;
         freeze)
             _arguments '--force[freeze dirty subprojects]' '--only[limit paths]:paths:' '--dry-run[show changes without writing]'
@@ -4620,7 +5082,7 @@ function __git_lego_subprojects
     git-lego __complete subprojects 2>/dev/null
 end
 
-complete -c git-lego -f -n "__fish_use_subcommand" -a "init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync completion export extract absorb version"
+complete -c git-lego -f -n "__fish_use_subcommand" -a "init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version"
 complete -c git-lego -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
 complete -c git-lego -f -n "__fish_seen_subcommand_from export" -a "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir"
 complete -c git-lego -f -n "__fish_seen_subcommand_from extract" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run full partial"
@@ -4628,12 +5090,13 @@ complete -c git-lego -f -n "__fish_seen_subcommand_from absorb" -a "--commit --m
 complete -c git-lego -f -n "__fish_seen_subcommand_from status" -a "--recursive --porcelain --json --json-pretty --exit-code"
 complete -c git-lego -f -n "__fish_seen_subcommand_from outdated" -a "--recursive --porcelain --json --json-pretty"
 complete -c git-lego -f -n "__fish_seen_subcommand_from verify" -a "--recursive --json --json-pretty"
-complete -c git-lego -f -n "__fish_seen_subcommand_from sync" -a "--recursive --prune --force"
+complete -c git-lego -f -n "__fish_seen_subcommand_from sync" -a "--recursive --prune --force --dry-run"
+complete -c git-lego -f -n "__fish_seen_subcommand_from doctor" -a "--json --json-pretty --offline --timeout --exit-code"
 complete -c git-lego -f -n "__fish_seen_subcommand_from diff" -a "--since --stat --json --json-pretty"
 complete -c git-lego -f -n "__fish_seen_subcommand_from log" -a "--max-count --since --until --subproject --oneline --recursive"
 complete -c git-lego -f -n "__fish_seen_subcommand_from start" -a "--stash-dirty --discard-dirty --cancel-dirty --hooks --sure"
-complete -c git-lego -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --no-fetch --base"
-complete -c git-lego -f -n "__fish_seen_subcommand_from upload" -a "--finalize --no-fetch --base"
+complete -c git-lego -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --dry-run --no-fetch --base"
+complete -c git-lego -f -n "__fish_seen_subcommand_from upload" -a "--finalize --dry-run --no-fetch --base"
 complete -c git-lego -f -n "__fish_seen_subcommand_from freeze" -a "--force --only --dry-run"
 complete -c git-lego -f -n "__fish_seen_subcommand_from foreach-modified" -a "--continue-on-error --porcelain --json --json-pretty"
 complete -c git-lego -f -n "__fish_seen_subcommand_from foreach-clean" -a "--continue-on-error --porcelain --json --json-pretty"
@@ -5015,6 +5478,7 @@ cmd_extract() {
         esac
     done
     [ -n "$path_arg" ] && [ -n "$repo_arg" ] || usage_error "usage: git-lego extract <path> <remote-url> [options]"
+    reject_backslash_path "$path_arg"
     path=$(normalize_path "$path_arg")
     [ -n "$message" ] || message="Extract $path"
 
@@ -5054,7 +5518,7 @@ cmd_extract() {
         fi
         if [ -s "$remote_refs" ]; then
             rm -f "$remote_refs"
-            precondition_error "extract remote $repo_arg is not empty; overriding non-empty remotes is deliberately not implemented in 0.7.0"
+            precondition_error "extract remote $repo_arg is not empty; overriding non-empty remotes is deliberately not implemented"
         fi
         rm -f "$remote_refs"
     fi
@@ -5120,6 +5584,7 @@ cmd_absorb() {
         esac
     done
     [ -n "$path_arg" ] || usage_error "usage: git-lego absorb <path> [options]"
+    reject_backslash_path "$path_arg"
     path=$(normalize_path "$path_arg")
     [ -n "$message" ] || message="Absorb subproject $path"
 
@@ -5150,7 +5615,8 @@ cmd_absorb() {
     write_materialized_state
     stage_outer_paths "$MANIFEST_FILE" .gitignore "$path"
     if [ "$commit_after" -eq 1 ]; then
-        git commit -m "$message" || git_error "failed to commit absorbed subproject $path"
+        git commit -m "$message" ||
+            git_error "failed to commit absorbed subproject $path; staged files remain and backup is in $backup. Fix the commit problem and run git commit, or restore $backup/.git to $path/.git and revert the staged manifest changes"
     fi
     rm -rf -- "$backup"
     rmdir .gitlego-absorb-backup 2>/dev/null || true

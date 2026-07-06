@@ -1,5 +1,20 @@
 # Version History
 
+## 0.7.1 - 2026-07-04
+
+Polish and hardening release. No breaking changes.
+
+- Added: `git-lego doctor` command for environmental preflight checks.
+- Added: `--dry-run` support on `sync`, `snapshot`, `upload`, and `finalize`.
+- Added: README "Limitations And Non-Goals" section.
+- Added: README "Recovery Cookbook" section.
+- Added: README per-command side-effect matrix.
+- Hardened: backslash path refusal across write-side commands that accept subproject paths.
+- Hardened: reserved-name and `.git` segment refusal for subproject paths.
+- Hardened: `git-lego init` now repairs the managed `.gitattributes` block for git-lego line endings.
+- Documentation: README, skill guidance, technical notes, implementation summary, AGENTS.md, and maintainer guide updated for 0.7.1.
+- Schema: `git-lego-output-v1.schema.json` extended to cover `doctor` output and dry-run markers, backward-compatible.
+
 ## 0.7.0 - 2026-07-03
 
 - Added project-boundary checks so write-side commands refuse parent-to-nested-project path crossings:

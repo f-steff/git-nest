@@ -1,6 +1,6 @@
 # git-lego Technical Notes
 
-`git-lego` 0.7.0 is a small Git orchestration tool for workspaces that contain one outer coordination repository and multiple nested subproject repositories. It borrows the useful workspace idea from Android `repo`, but v0.7 intentionally avoids Gerrit, XML manifests, PR creation, copy/link file features, mirror management, and Android-specific storage layouts.
+`git-lego` 0.7.1 is a small Git orchestration tool for workspaces that contain one outer coordination repository and multiple nested subproject repositories. It borrows the useful workspace idea from Android `repo`, but keeps the implementation focused on plain Git remotes, a readable manifest, and script-friendly shell behavior.
 
 ## Workflow
 
@@ -22,13 +22,19 @@ Branches created by `git-lego start` are candidate branches. A subproject become
 
 `git-lego extract <path> <remote-url>` converts an outer-repository tracked directory into a managed subproject at the same path. Default mode creates a fresh subproject commit from current files; `--preserve-history` uses `git-filter-repo` when installed. `git-lego absorb <path>` converts a managed subproject back into ordinary outer-repository files and leaves the remote untouched.
 
+`git-lego doctor` reports environment and workspace-health checks that do not overlap with `verify`: Git version, shell, manifest presence/parseability, lock state, `.gitattributes` guard, backup ignore hints, managed hooks, optional remote reachability, and `git-filter-repo` availability.
+
 ## Manifest
 
 State is stored in `.gitlego` using INI-style sections with mandatory manifest schema `version=1` in `[project]`. Unknown sections and unknown keys are accepted and preserved where practical so extension data can coexist with git-lego state. Optional local configuration is stored in `.gitlego-rc`; `rc` is used in the conventional runtime/configuration sense. Pending subprojects contain `target_branch`, `pending_branch`, `base_revision`, and `pushed_commit`. Finalized subprojects contain a pinned `revision`, optionally with `tag`. A subproject is considered pending whenever `pending_branch` is present.
 
-Commands that require a workspace walk upward from the current directory to find the nearest `.gitlego`, then run from that project root. This keeps subproject paths stable even when the command is invoked from deep inside a subproject checkout. If a checked-out subproject is also a project root, it is a nested project; workspace-wide state commands (`status`, `outdated`, `verify`, and `no-pending`) use `--recursive` to include nested projects. `snapshot --recursive` is the only write-side command that intentionally walks downward to refresh checked-out nested project manifests.
+Commands that require a workspace walk upward from the current directory to find the nearest `.gitlego`, then run from that project root. This keeps subproject paths stable even when the command is invoked from deep inside a subproject checkout. If a checked-out subproject is also a project root, it is a nested project; workspace-wide state commands (`status`, `outdated`, and `verify`) use `--recursive` to include nested projects. `no-pending` is scoped to the current project. `snapshot --recursive` is the only write-side command that intentionally walks downward to refresh checked-out nested project manifests.
 
 Write-side path commands refuse to cross from a parent project into a nested project. Exact tracked subproject paths remain valid from the parent, but paths below a nested project must be handled from that nested project root.
+
+Write-side path commands require manifest-canonical forward slashes. Backslash-separated paths are refused before normalization so Windows typos do not silently become different manifest entries.
+
+`init` owns a small managed `.gitattributes` block for git-lego files. It removes stale git-lego-owned entries or old managed blocks, then writes canonical attributes for `.gitlego`, `.gitlego-rc`, `bin/git-lego`, `bin/git_lego.sh`, and `bin/git-lego.bat`. Unrelated project attributes are preserved.
 
 Write-side commands share one upward-only manifest lookup helper, `find_owning_manifest [<path>]`. It resolves an explicit path first, starts from the file's parent directory when a file is passed, and returns the nearest `.gitlego` found while walking toward the filesystem root.
 
@@ -40,15 +46,25 @@ Auto-finalize is conservative and only accepts one commit candidate containing t
 
 ## Error Handling
 
-Manifest writes validate required values before mutating state. Pending entries require `target_branch`, `pending_branch`, `base_revision`, and `pushed_commit`; finalized entries require a resolved commit `revision`. Missing refs, empty SHAs, malformed subproject entries, invalid clone modes, dirty subprojects during upload, detached changed subprojects, unsafe nested boundary crossings, and failed checkout/push operations exit nonzero with an `Error:` message. `sync` is deliberately different for subproject clone/checkout failures: it attempts every subproject, reports failed paths, and then exits nonzero.
+Manifest writes validate required values before mutating state. Pending entries require `target_branch`, `pending_branch`, `base_revision`, and `pushed_commit`; finalized entries require a resolved commit `revision`. Missing refs, empty SHAs, malformed subproject entries, invalid clone modes, dirty subprojects during upload, detached changed subprojects, unsafe nested boundary crossings, and failed checkout/push operations exit nonzero with an `Error:` message. `upload` preflights every changed subproject before any real push so predictable failures such as a missing `origin` do not leave earlier subprojects pushed or pending. `sync` is deliberately different for subproject clone/checkout failures: it attempts every subproject, reports failed paths, prints recovery guidance, and then exits nonzero.
 
-`git-lego verify` is read-only. It validates manifest/config consistency, subproject remotes, resolvable refs, finalized checkout commits, and clone-mode drift. Dirty subprojects are warnings unless they prevent Git inspection. `git-lego outdated` is also read-only, but it contacts remotes and reports upstream movement instead of validating the current checkout. `status`, `verify`, `outdated`, and `no-pending` support JSON output; the shared JSON shape is versioned separately from the manifest schema.
+`git-lego verify` is read-only. It validates manifest/config consistency, subproject remotes, resolvable refs, finalized checkout commits, and clone-mode drift. Dirty subprojects are warnings unless they prevent Git inspection. `git-lego outdated` is also read-only, but it contacts remotes and reports upstream movement instead of validating the current checkout. `status`, `verify`, `outdated`, `diff`, `foreach-modified`, `foreach-clean`, and `no-pending` support JSON output; the shared JSON shape is versioned separately from the manifest schema.
 
 Mutating commands that write `.gitlego` acquire `.gitlego.lock` for the command duration. The lock is an atomic directory containing PID/timestamp metadata and is released through the central exit trap.
 
-## Unsupported Repo Commands
+### Dry-Run Semantics
 
-`git-lego` is inspired by Android `repo`, but it does not aim for command parity. v0.7 does not support Gerrit-backed `repo upload`, `repo download`, `repo prune`, XML manifests, `copyfile`, `linkfile`, manifest include/layering features, mirror management, or Android `.repo/` storage behavior.
+`sync --dry-run`, `snapshot --dry-run`, `upload --dry-run`, and `finalize --dry-run` perform normal validation and print planned actions with `[dry-run]` prefixes, but do not write the manifest, push, checkout, clone, delete branches, or run `git fetch`.
+
+Dry-run remote SHA queries use `git ls-remote`, which is read-only and does not update `.git/` remote-tracking refs. If a check genuinely requires a real fetch, dry-run skips that check, reports the affected field as unknown, and notes that the real run would fetch first. A successful dry-run is a planning result, not a guarantee that a later real run will still succeed after remotes or local state change.
+
+### Doctor Semantics
+
+`doctor` human output uses `I`, `W`, and `E` status codes for info, warn, and error. JSON output uses `"info"`, `"warn"`, and `"error"` in each check object. `doctor --exit-code` returns nonzero only when at least one warning or error is present; informational checks never make the command fail. `doctor --offline` skips remote reachability, and `--timeout <seconds>` controls remote `ls-remote` checks when a `timeout` command is available.
+
+## Repo Comparison Notes
+
+`git-lego` is inspired by Android `repo`, but it does not share repo's XML manifest parser, Gerrit assumptions, or `.repo/` storage layout. Compatibility-sensitive differences should be documented in README limitations and covered by tests when they affect observable behavior.
 
 Android `repo forall` and Git's `git submodule foreach` are useful comparisons. Both are explicit iteration commands: they run a supplied shell command inside each project or submodule. They are not before/after hooks whose position in another command changes execution order.
 
@@ -65,8 +81,10 @@ Commands:
 
 - `git-lego foreach -- <command> [args...]`: runs the command in every checked-out subproject listed in `.gitlego`.
 - `git-lego foreach-pending -- <command> [args...]`: runs the command only in pending subprojects, defined as subproject sections containing `pending_branch=...`.
+- `git-lego foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]`: lists or runs commands in dirty checked-out subprojects.
+- `git-lego foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]`: lists or runs commands in clean checked-out subprojects.
 
-For this tool, "modified" means pending in the project manifest, not merely a dirty working tree. PR creation remains explicit and external to `upload`; `git-lego` provides the iteration context, while tools such as `az` create the PRs.
+PR creation remains explicit and external to `upload`; `git-lego` provides the iteration context, while tools such as `az` create the PRs. Use `foreach-pending` for manifest-pending review branches, and use `foreach-modified` for dirty working trees.
 
 The command is executed directly from each subproject directory. Use `sh -c '...'` when shell features such as redirection, pipes, or variable expansion are needed. Each command receives environment variables including `GIT_LEGO_ROOT`, `GIT_LEGO_SUBPROJECT_PATH`, `GIT_LEGO_SUBPROJECT_ABSPATH`, `GIT_LEGO_SUBPROJECT_REPO`, `GIT_LEGO_BRANCH`, `GIT_LEGO_TARGET_BRANCH`, `GIT_LEGO_PENDING_BRANCH`, `GIT_LEGO_BASE_REVISION`, `GIT_LEGO_PUSHED_COMMIT`, `GIT_LEGO_REVISION`, and `GIT_LEGO_TAG`.
 
@@ -93,13 +111,15 @@ Finalization can preserve cleanup hints for local pending branches. Use `git-leg
 Integration tests use persistent local repositories under `${TMPDIR:-/tmp}/git-lego-test-workspaces` by default so generated outer workspaces, remotes, seeds, and subprojects can be inspected after a run. Use the suite runner:
 
 ```sh
-sh tests/run-all.sh
+sh tests/run-all-tests.sh
 ```
 
 From `cmd.exe`, use the polyglot batch launcher:
 
 ```bat
-tests\run-all.bat
+tests\run-all-tests.bat
 ```
 
-Both runners remove the test root once at the start of the suite, recreate it, run every `tests/test_*.sh` with stdin closed, and leave all test repositories in numbered folders such as `test_01_auto_finalize/`. The suite prints a blank-line-separated and underlined `TEST nn name` heading for each test, then ends with a summary table containing status, execution time, and executed/passed/failed/skipped totals. Individual tests create their own subdirectory through `tests/helper.sh` and should not delete test output themselves. Test Git commands override line-ending config so local `core.autocrlf` settings do not add CRLF warnings.
+Both runners remove the test root once at the start of the suite, recreate it, run every `tests/test_*.sh` with stdin closed, stream each test's output while capturing a per-test log, and leave all test repositories in numbered folders such as `test_01_command_finalize_auto_no_pending/`. The full suite is long-running and may exceed 10 minutes. The suite prints a blank-line-separated and underlined `TEST nn name` heading for each test, appends an ignored root-level `test-result.md` as each test completes, then ends with a summary table containing status, execution time, total execution time, and executed/passed/failed/skipped totals. Individual tests create their own subdirectory through `tests/helper.sh` and should not delete test output themselves. Test Git commands override line-ending config so local `core.autocrlf` settings do not add CRLF warnings.
+
+Test files are organized around feature prefixes: `test_command_*`, `test_command_option_*`, `test_symmetry_*`, `test_workflow_*`, `test_contract_*`, and `test_platform_*`. New tests must not use milestone labels such as `wave` or `vawe`. Tests should use the shared narration helpers to explain the scenario, show important commands, state expected results in plain English, and summarize results while keeping full command output captured for diagnostics. Unexpected assertion results should include `UNEXPECTED RESULT:`. The runner fails any active test that produces no output for more than `TEST_WATCHDOG_SECONDS` seconds, default 180, and stops the suite after the first hung test.

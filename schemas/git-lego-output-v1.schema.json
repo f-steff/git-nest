@@ -9,8 +9,9 @@
     "version": { "const": 1 },
     "command": {
       "type": "string",
-      "enum": ["status", "verify", "outdated", "no-pending"]
+      "enum": ["status", "verify", "outdated", "diff", "foreach-modified", "foreach-clean", "no-pending", "doctor"]
     },
+    "dry_run": { "type": "boolean" },
     "recursive": { "type": "boolean" },
     "ok": { "type": "boolean" },
     "subprojects": {
@@ -24,9 +25,24 @@
     "warnings": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/check" }
     }
   },
   "$defs": {
+    "check": {
+      "type": "object",
+      "required": ["code", "name", "status", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "enum": ["I", "W", "E"] },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["info", "warn", "error"] },
+        "detail": { "type": "string" }
+      }
+    },
     "row": {
       "type": "object",
       "required": ["code", "path", "state", "target", "current", "expected", "detail"],

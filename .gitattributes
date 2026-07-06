@@ -1,5 +1,14 @@
+# Keep repository text stable across Windows, Linux, and macOS.
+* text=auto eol=lf
+
+# Manifest and shell-facing files must stay LF.
 .gitlego text eol=lf
-* text=auto
+.gitattributes text eol=lf
+.gitignore text eol=lf
 *.sh text eol=lf
 bin/git-lego text eol=lf
+bin/git_lego.sh text eol=lf
+
+# Batch files are intentionally CRLF for cmd.exe.
 *.bat text eol=crlf
+*.cmd text eol=crlf

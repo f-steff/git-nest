@@ -1,6 +1,6 @@
 # git-lego
 
-Version 0.7.0<br>
+Version 0.7.1<br>
 **Copyright (c) 2026 Flemming Steffensen**<br>
 License: MIT License<br>
 SPDX-License-Identifier: MIT<br>
@@ -15,7 +15,24 @@ Documentation map:
 
 - This `README.md` is the user manual. It explains the motivation, requirements, installation, workspace layout, commands, examples, CI usage, and comparisons with submodules, subtrees, and git-subrepo.
 - [`docs/implementation-summary.md`](docs/implementation-summary.md) is the concise implementation reference. It records the current behavior contract, manifest fields, command guarantees, error handling, and test coverage.
+- [`docs/prioritized-gaps.md`](docs/prioritized-gaps.md) tracks larger reliability or workflow gaps that need separate design work.
 - [`MANIFEST.md`](MANIFEST.md) documents `.gitlego` manifest schema version 1.
+- [`version.md`](version.md) lists release-level changes.
+
+## Current 0.7 Capabilities
+
+The project has changed substantially since the 0.4 series. The current tool is no longer just an init/add/start/upload/finalize/sync wrapper; it also includes:
+
+- the `git-lego` rename from the earlier `git-stack` name, with project/subproject terminology replacing stack/module terminology;
+- manifest schema validation, `.gitlego.lock` protection for manifest writers, `.gitlego` LF normalization, and `.gitignore` guards for nested `.git` directories;
+- script-facing porcelain and JSON output for status-style commands, plus documented exit-code conventions;
+- workspace maintenance commands such as `remove`, `rm`, `mv`, `clone`, `freeze`, `config`, `diff`, `foreach-modified`, and `foreach-clean`;
+- shell completion generation for Bash, Zsh, and Fish;
+- source export through `export`, including `MANIFEST.lock`, deterministic archive options, and dirty-worktree protection;
+- project-boundary-safe `extract` and `absorb` workflows for moving source between the outer repository and managed subprojects;
+- `doctor` for environment/workspace preflight checks, plus dry-run planning for `sync`, `snapshot`, `upload`, and `finalize`.
+
+When upgrading an older workspace, review `.gitlego` changes carefully, run `git-lego verify`, and prefer `git-lego sync` before editing subprojects. Older command names such as `available`, `record`, and `check` have been replaced by `outdated`, `snapshot`, and `no-pending`.
 
 ## Shared Source Without Repository Drama
 
@@ -81,7 +98,7 @@ This section is intentionally short until the project has its own public GitHub 
 
 
 - Git.
-- A POSIX-like shell for `bin/git-lego`; Git Bash, or even busybox is sufficient on Windows.
+- A POSIX-like shell for `bin/git-lego`; Git Bash is the normal Windows runtime used by `bin/git-lego.bat`. BusyBox `sh` compatibility is tested when BusyBox is available.
 - Read access to every subproject repository listed in `.gitlego`.
 - Write access to subproject repositories only when using `upload`.
 - `git-lego` on `PATH`, or invoked directly from the checkout.
@@ -137,6 +154,7 @@ A workspace has:
 - an outer Git repository
 - `.gitlego` tracked by the outer repository, using manifest schema `version=1`
 - optional `.gitlego-rc` for local git-lego configuration; `rc` is used in the usual "run/configuration commands" sense
+- a managed `.gitattributes` block that pins `.gitlego`, `.gitlego-rc`, and git-lego scripts to cross-platform line endings
 - `.gitignore` entries that ignore subproject contents
 - one nested Git repository per subproject
 
@@ -152,7 +170,47 @@ Terminology:
 
 The outer repository tracks coordination files and local workspace files. Source that is shared with other projects usually remains in subprojects.
 
-Example project project:
+```mermaid
+flowchart TB
+  outer["Outer Git repository<br/>(project root)"]
+  manifest[".gitlego<br/>tracked manifest"]
+  attrs[".gitattributes<br/>line-ending guard"]
+  ignore[".gitignore<br/>subproject ignores"]
+  docs["README.md and project files"]
+
+  products["products/"]
+  rover["products/rover-control/<br/>subproject checkout"]
+  firmware["firmware/"]
+  boards["firmware/boards/"]
+  motor["firmware/boards/motor-controller/<br/>subproject checkout"]
+  shared["shared/"]
+  protocol["shared/protocol/<br/>subproject checkout"]
+
+  roverRemote[("application repository")]
+  motorRemote[("firmware repository")]
+  protocolRemote[("protocol repository")]
+
+  outer --> manifest
+  outer --> attrs
+  outer --> ignore
+  outer --> docs
+  outer --> products
+  products --> rover
+  outer --> firmware
+  firmware --> boards
+  boards --> motor
+  outer --> shared
+  shared --> protocol
+
+  manifest -. controls path .-> rover
+  manifest -. controls path .-> motor
+  manifest -. controls path .-> protocol
+  rover -. git remote .-> roverRemote
+  motor -. git remote .-> motorRemote
+  protocol -. git remote .-> protocolRemote
+```
+
+Example project:
 
 ```text
 acme-robot-project/                         # outer repository
@@ -203,12 +261,13 @@ Workspace-wide state commands that can safely include nested projects support `-
 git-lego status --recursive --porcelain
 git-lego outdated --recursive --porcelain
 git-lego verify --recursive
-git-lego no-pending --recursive
 ```
 
-Without `--recursive`, these commands print a `Notice:` when they discover nested projects so you can choose whether to include them.
+Without `--recursive`, recursive-capable commands print a `Notice:` when they discover nested projects so you can choose whether to include them. `no-pending` is scoped to the current project; run it from each nested project that has its own merge gate.
 
 Write-side commands operate only on the current project boundary. From the parent project, commands such as `add`, `remove`, `mv`, `config`, `update`, `finalize`, `snapshot`, `freeze`, `extract`, and `absorb` refuse paths inside a nested project. Run the command from inside the nested project instead, or use `snapshot --recursive` when the operation is specifically a recursive local manifest refresh. Current-project commands such as `diff`, `foreach-*`, and `export` stay scoped to the project where you run them.
+
+Subproject paths passed to write-side commands must use forward slashes, even on Windows. For example, use `libs/foo`, not `libs\foo`. Backslash paths are refused with exit code 2 so the manifest's canonical path form stays clear when users grep or edit `.gitlego` by hand.
 
 The matching manifest entries would use the same relative paths:
 
@@ -341,6 +400,19 @@ revision=def456
 
 ## Typical Workflow
 
+```mermaid
+flowchart LR
+  init[init] --> add[add subprojects]
+  add --> sync[sync workspace]
+  sync --> start[start project branch]
+  start --> edit[edit and commit in subprojects]
+  edit --> upload[upload]
+  upload --> review[review subproject branches]
+  review --> finalize[finalize]
+  finalize --> gate[no-pending]
+  gate --> resync[sync exact pins]
+```
+
 ```sh
 git-lego init
 git-lego add https://example.invalid/foo.git libs/foo
@@ -358,6 +430,20 @@ scripts/create-outer-pr.sh
 git-lego finalize libs/foo --revision <merged-sha>
 git-lego no-pending
 git-lego sync
+```
+
+Example pending-to-finalized state:
+
+```mermaid
+flowchart LR
+  clean[Clean finalized subproject] --> startbranch[start creates or tracks branch]
+  startbranch --> commits[local commits]
+  commits --> uploadpending[upload records pending_branch]
+  uploadpending --> subreview[subproject PR or review]
+  subreview --> finalpin[finalize records revision]
+  finalpin --> clean
+  clean --> update[update or freeze changes pin]
+  update --> clean
 ```
 
 For projects that do not need a separate subproject PR step, upload and pin the pushed subproject commits directly:
@@ -401,11 +487,71 @@ For locked-down build hosts that should not have Git or repository secrets, spli
 
 This generic pattern works with Azure DevOps, GitHub Actions, GitLab CI, Gitea, Jenkins, TeamCity, Bamboo, and similar systems. Provider-specific extensions are intentionally not required for v0.7; pipeline examples should be thin wrappers around `git-lego sync` and `git-lego verify`.
 
+## Command Symmetry
+
+Most git-lego commands are paired around one reversible workflow idea: materialize exact source, change source deliberately, then either publish, pin, or back out the workspace shape.
+
+| Intent | Command | Symmetric or follow-up command | Notes |
+| --- | --- | --- | --- |
+| Create or repair workspace metadata | `init` | `doctor` | `doctor` reports health; `init` repairs the managed `.gitattributes` block. |
+| Add or remove a subproject | `add` | `remove` / `rm` | `remove --keep-files` detaches without deleting the checkout. |
+| Rename or retarget a subproject | `mv <old> <new>` | `mv --url <url> <path>` | Path moves update checkout, manifest, and ignore entries; URL moves update the manifest URL only. |
+| Materialize a workspace | `sync` | `export` | `sync` recreates the working checkout; `export` creates a review/build snapshot with `MANIFEST.lock`. |
+| Inspect local state | `status`, `verify`, `doctor` | `no-pending` | `status` reports current state, `verify` checks manifest consistency, `no-pending` is the merge gate. |
+| Inspect upstream movement | `outdated` | `update` | `outdated` is read-only; `update` pins one selected subproject to a newer revision, tag, or target head. |
+| Start coordinated work | `start` | `snapshot` | `start` creates or records branches; `snapshot` refreshes local manifest state without pushing. |
+| Publish or finish work | `upload` | `finalize`, `cleanup-branches` | `upload` records pending state by default; `finalize` pins merged work; cleanup removes local branch hints. |
+| Pin current checkouts | `freeze` | `update` | `freeze` records current checkout SHAs; `update` deliberately changes one recorded pin. |
+| Convert repository shape | `extract` | `absorb` | `extract` turns outer-repo files into a subproject; `absorb` turns a subproject back into outer-repo files. |
+| Install local automation | `install-hooks` | `remove-hooks` | Hooks only run `snapshot --quiet`; they do not upload or create PRs. |
+| Iterate subprojects | `foreach`, `foreach-pending` | `foreach-modified`, `foreach-clean` | Selection commands expose the same environment variables for scripts. |
+
+Dry-run symmetry is intentionally limited to commands where the implementation can show planned writes without performing them. `sync`, `snapshot`, `upload`, and `finalize` support `--dry-run` in 0.7.1; `freeze`, `extract`, and `absorb` already support it from 0.7.0. No `--dry-run` is added to `add`, `remove`, `mv`, `start`, or `update` in 0.7.1.
+
 ## Commands
+
+Dry-run commands do not run `git fetch`. When a dry-run needs current remote SHA information, git-lego uses read-only `git ls-remote`; if a check genuinely cannot be answered without a real fetch, dry-run marks that field as unknown and notes that the real run would fetch first.
+
+| Command | Reads manifest | Writes manifest | Modifies working tree | Contacts remote | Requires clean state |
+| --- | --- | --- | --- | --- | --- |
+| `init` | no | yes | no | no | no |
+| `add` | yes | yes | yes, clones | yes | no |
+| `remove` / `rm` | yes | yes | yes, unless `--keep-files` | no | conditional |
+| `mv` | yes | yes | conditional | no | conditional |
+| `clone` | conditional | no | yes | yes | no |
+| `status` | yes | no | no | no | no |
+| `outdated` | yes | no | no | yes, `ls-remote` | no |
+| `verify` | yes | no | no | no | no |
+| `diff` | yes | no | no | no | no |
+| `log` | conditional | no | no | no | no |
+| `start` | yes | yes | yes, branch checkout | no | conditional |
+| `snapshot` | yes | yes, unless `--dry-run` | no | conditional fetch | skips dirty subprojects |
+| `upload` | yes | yes, unless `--dry-run` | no | yes, unless `--dry-run` | yes |
+| `freeze` | yes | yes, unless `--dry-run` | no | no | yes, unless `--force` |
+| `install-hooks` | yes | no | yes, hooks | no | no |
+| `remove-hooks` | yes | no | yes, hooks | no | no |
+| `foreach` | yes | no | command-defined | no | no |
+| `foreach-pending` | yes | no | command-defined | no | no |
+| `foreach-modified` | yes | no | command-defined | no | no |
+| `foreach-clean` | yes | no | command-defined | no | no |
+| `no-pending` | yes | no | no | no | no |
+| `config` | yes | yes for `set`/`unset` | no | no | no |
+| `update` | yes | yes | yes, checkout | conditional fetch | yes |
+| `finalize` | yes | yes, unless `--dry-run` | conditional cleanup | conditional fetch or `ls-remote` | no |
+| `cleanup-branches` | yes | yes | yes, branch deletion | no | no |
+| `sync` | yes | no | yes, unless `--dry-run` | yes, unless `--dry-run` | no |
+| `doctor` | yes | no | no | conditional `ls-remote` | no |
+| `completion` | conditional | no | no | no | no |
+| `export` | yes | no | writes export target | no | yes, unless `--allow-dirty` |
+| `extract` | yes | yes, unless `--dry-run` | yes, unless `--dry-run` | conditional | yes |
+| `absorb` | yes | yes, unless `--dry-run` | yes, unless `--dry-run` | no | yes |
+| `version` | no | no | no | no | no |
 
 ### `git-lego init [--rc]`
 
 Initializes the project root. It creates `.gitlego` and `.gitignore` if needed. If the current directory is not already a Git repository, it runs `git init`.
+
+`init` also creates or repairs the managed git-lego block in `.gitattributes`. The block pins `.gitlego`, `.gitlego-rc`, `bin/git-lego`, and `bin/git_lego.sh` to LF, and `bin/git-lego.bat` to CRLF.
 
 `git-lego` uses built-in defaults when `.gitlego-rc` is absent. Use `--rc` when you want to create the default local configuration file for editing:
 
@@ -448,13 +594,19 @@ Added subproject libs/foo.
 
 ### `git-lego config <get|set|list|unset> ...`
 
-Manages manifest-backed subproject settings. Version 0.7.0 supports `clone-mode`, which maps to `clone=` in the subproject's `.gitlego` section.
+Manages manifest-backed subproject settings. The current allowlist supports `clone-mode`, which maps to `clone=` in the subproject's `.gitlego` section.
 
 ```sh
 git-lego config set third_party/zlib clone-mode partial
 git-lego config get third_party/zlib clone-mode
 git-lego config list
 git-lego config unset third_party/zlib clone-mode
+```
+
+Example output:
+
+```text
+partial
 ```
 
 `clone-mode` values are `full` and `partial`. Setting or unsetting the value changes the manifest only; existing checkouts are not converted. Remove a checkout and run `git-lego sync` when you want the new clone mode to affect a materialized subproject.
@@ -472,12 +624,24 @@ git-lego remove libs/foo
 git-lego remove libs/foo --keep-files
 ```
 
+Example output:
+
+```text
+Removed subproject libs/foo from .gitlego; kept files and kept libs/foo/ ignored.
+```
+
 ### `git-lego mv <old-path> <new-path> [--force]`
 
 Moves or renames a subproject path. Git-lego moves the checkout directory, renames the manifest section, and updates `.gitignore` while preserving the subproject's manifest keys.
 
 ```sh
 git-lego mv libs/foo components/foo
+```
+
+Example output:
+
+```text
+Moved subproject libs/foo to components/foo.
 ```
 
 Use `--force` to override the same dirty/current-branch safety checks used by `remove`.
@@ -488,6 +652,12 @@ Changes only the manifest URL for a subproject. It does not run `git remote set-
 
 ```sh
 git-lego mv --url https://example.invalid/new/foo.git components/foo
+```
+
+Example output:
+
+```text
+Updated subproject components/foo URL.
 ```
 
 ### `git-lego clone <outer-repo-url> [target-dir]`
@@ -501,6 +671,14 @@ git-lego clone --depth 1 --branch main https://example.invalid/acme/project.git
 ```
 
 Supported clone options are `--no-sync`, `--depth <n>`, `--branch <branch>`, `-b <branch>`, and `--single-branch`. Unknown options are rejected.
+
+Typical output is ordinary `git clone` progress followed by `sync` output when the cloned outer repository contains `.gitlego`:
+
+```text
+Cloning into 'project'...
+Syncing project: .
+Synced libs/foo.
+```
 
 ### `git-lego status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]`
 
@@ -531,12 +709,12 @@ Use `--porcelain` for scripts:
 git-lego status --recursive --porcelain
 ```
 
-Porcelain output is tab-separated. Dirty repositories print their path and the underlying `git status --porcelain` line. Missing subproject checkouts print `!! missing`.
+Porcelain output is tab-separated and uses the seven-column format documented in [Porcelain Format](#porcelain-format). Dirty repositories include the underlying `git status --porcelain` line in the detail column.
 
 ```text
-.\t M README.md
-libs/foo\t?? scratch.txt
-libs/missing\t!! missing
+D	libs/foo	dirty	-	-	-	 M src/foo.c
+D	libs/bar	dirty	-	-	-	?? scratch.txt
+M	libs/missing	missing	-	-	-	checkout-missing
 ```
 
 The command exits `0` when status collection succeeds, even when output is non-empty. Add `--exit-code` to return `1` when dirty or missing rows exist.
@@ -644,11 +822,13 @@ Example output:
 Started project branch XX-123-short-description.
 ```
 
-### `git-lego snapshot [--recursive] [--quiet] [--no-fetch] [--base <subproject>=<ref>]`
+### `git-lego snapshot [--recursive] [--quiet] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]`
 
 Refreshes local manifest state without pushing. It records the current outer branch and records pending metadata for clean subprojects with committed work ahead of their target branch. Dirty subprojects are skipped with a warning.
 
 Without `--recursive`, `snapshot` operates only on the current project and prints a notice when checked-out nested projects are present. With `--recursive`, it snapshots the current project and each checked-out nested project depth-first.
+
+Use `--dry-run` to print the project and subproject manifest fields that would change without writing `.gitlego` or fetching.
 
 Example:
 
@@ -656,6 +836,7 @@ Example:
 git-lego snapshot
 git-lego snapshot --recursive
 git-lego snapshot --quiet
+git-lego snapshot --dry-run
 git-lego snapshot --base libs/foo=origin/main
 ```
 
@@ -665,7 +846,7 @@ Example output:
 Refreshed current git-lego state.
 ```
 
-### `git-lego upload [--finalize] [--no-fetch] [--base <subproject>=<ref>]`
+### `git-lego upload [--finalize] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]`
 
 Pushes committed work for affected subprojects and pushes the outer repository branch. By default, each affected subproject is recorded as pending with `target_branch`, `pending_branch`, `base_revision`, and `pushed_commit`.
 
@@ -673,9 +854,13 @@ An affected subproject is a checked-out subproject with commits ahead of its tar
 
 Each subproject uses its actual current branch as `pending_branch`. The subproject branch does not need to match the outer project branch.
 
+Before a real upload pushes anything, git-lego preflights all changed subprojects for clean state, branch state, base resolution, and an `origin` remote. If one changed subproject cannot be uploaded, no earlier subproject is pushed or recorded as pending. A later network or server-side push rejection can still happen after earlier pushes; in that case the error tells you to fix the remote/auth/rejected branch and rerun `git-lego upload`.
+
 `upload` does not create pull requests. Run provider tools or repository scripts afterward if your workflow creates PRs immediately after pushing branches.
 
 Use `--base <subproject>=<ref>` when the target branch cannot be resolved but you know the correct base commit. Use `--no-fetch` when local refs are authoritative and network fetch should be skipped.
+
+Use `--dry-run` to print the subproject pushes, pending/finalized manifest records, and outer push that would happen. Dry-run does not push, write `.gitlego`, commit, or fetch.
 
 Use `--finalize` when pushed subproject commits should be pinned immediately without a pending review step. This is equivalent to uploading and then immediately finalizing each changed subproject with the pushed commit SHA, but it writes finalized state directly:
 
@@ -691,6 +876,7 @@ Example:
 ```sh
 git-lego upload
 git-lego upload --finalize
+git-lego upload --dry-run
 ```
 
 Example output:
@@ -719,6 +905,13 @@ Pins tracked subprojects to their current checkout commits by writing `revision=
 git-lego freeze
 git-lego freeze --only libs/foo,libs/bar
 git-lego freeze --dry-run
+```
+
+Example dry-run output:
+
+```text
+Would freeze libs/foo at a1b2c3d4e5f6.
+Freeze summary: 1 frozen, 0 already pinned, 0 skipped.
 ```
 
 `freeze` refuses dirty subprojects and current-branch commits ahead of upstream or target unless `--force` is passed. Forced freezes print warnings and pin the current HEAD.
@@ -798,6 +991,12 @@ Without a command, use `--porcelain`, `--json`, or `--json-pretty` to list the s
 git-lego foreach-modified --porcelain
 git-lego foreach-clean --json
 git-lego foreach-modified --continue-on-error -- sh -c 'printf "%s\n" "$GIT_LEGO_SUBPROJECT_PATH"'
+```
+
+Example porcelain output:
+
+```text
+F	libs/foo	dirty	-	-	-	modified
 ```
 
 ### `git-lego no-pending [--json | --json-pretty]`
@@ -895,7 +1094,7 @@ Example output:
 Updated libs/foo to a1b2c3d4e5f6.
 ```
 
-### `git-lego finalize <subproject> [mode] [--cleanup]`
+### `git-lego finalize <subproject> [--dry-run] [mode] [--cleanup]`
 
 Converts a pending subproject into a finalized subproject. Exactly one explicit mode may be used:
 
@@ -903,6 +1102,7 @@ Converts a pending subproject into a finalized subproject. Exactly one explicit 
 git-lego finalize libs/foo --revision <sha>
 git-lego finalize libs/foo --tag v1.2.3
 git-lego finalize libs/foo --use-target-head
+git-lego finalize libs/foo --dry-run --use-target-head
 git-lego finalize libs/foo --revision <sha> --cleanup
 ```
 
@@ -913,6 +1113,8 @@ Finalized libs/foo at a1b2c3d4e5f6.
 ```
 
 Without a mode, `finalize` attempts conservative auto-resolution using the project ticket key. It only accepts one unambiguous match.
+
+Use `--dry-run` to print the resolved revision or tag, manifest field changes, and any `--cleanup` branch deletion without writing `.gitlego`, deleting branches, or fetching. `--use-target-head` uses read-only `git ls-remote` in dry-run.
 
 `--cleanup` deletes the local pending branch after finalization. It never deletes remote branches or untracked files.
 
@@ -952,9 +1154,9 @@ Installed hooks in .
 Installed hooks in libs/foo.
 ```
 
-### `git-lego sync [--recursive] [--prune] [--force]`
+### `git-lego sync [--recursive] [--prune] [--force] [--dry-run]`
 
-Clones missing subprojects, fetches existing subprojects, and checks out each subproject's manifest state. Pending subprojects restore the pending branch where possible. Finalized subprojects check out the pinned revision or tag. If one subproject fails, `sync` continues with the remaining subprojects, then exits nonzero with a summary of failed subproject paths.
+Clones missing subprojects, fetches existing subprojects, and checks out each subproject's manifest state. Pending subprojects restore the pending branch where possible. Finalized subprojects check out the pinned revision or tag. If one subproject fails, `sync` continues with the remaining subprojects, then exits nonzero with a summary of failed subproject paths and a recovery line recommending `git-lego verify` after fixing the listed errors.
 
 When the workspace has previous local materialization state, `sync` also reconciles stale subproject paths. If a manifest update moved a clean, pushed subproject from one path to another, `sync` moves the checkout and prints a `Notice:`. If a manifest update removed a clean, pushed subproject, `sync` removes the stale checkout and prints a `Notice:`.
 
@@ -964,39 +1166,13 @@ If a stale subproject has local changes, untracked files, or local-only branch t
 
 If a manifest pins both `tag=` and `revision=`, `sync` checks that the remote tag still resolves to the recorded revision before checkout. If the tag moved, `sync` aborts. After investigating, use `git-lego update <subproject> --tag <tag>` to re-pin. `sync --force` downgrades only this tag-drift check to a warning and proceeds.
 
-## Porcelain Format
-
-Porcelain output is tab-separated and always has seven columns:
-
-```text
-code path state target current expected detail
-```
-
-Unused values are `-`. Codes include `D` for dirty status rows, `C` for composite dirty/manifest-mismatch status rows, `M` for missing checkouts, `U` for unmanaged nested Git repositories, `O` for outdated rows, `E` for remote/query errors, `P` for pending rows, `L` for diff log rows, and `F` for filtered foreach selection rows.
-
-## JSON Output
-
-`status`, `verify`, `outdated`, `diff`, `foreach-modified`, `foreach-clean`, and `no-pending` support `--json` and `--json-pretty`. Output is one object with `version`, `command`, `recursive`, `ok`, `subprojects`, `errors`, and `warnings`. JSON schema version `1` is documented by `schemas/git-lego-output-v1.schema.json`.
-
-## Exit Codes
-
-| Code | Meaning |
-| --- | --- |
-| 0 | Success, no issues found. |
-| 1 | Command completed and found differences, pending work, drift, dirty state, outdated rows, or tag mismatch. |
-| 2 | Usage error. |
-| 3 | Precondition failure, such as a missing or invalid manifest. |
-| 4 | Manifest lock acquisition failure. |
-| 5 | Unexpected external Git command failure. |
-
-## Security Considerations
-
-`.gitlego` contains repository URLs that `git-lego sync` will clone from. Review `.gitlego` changes with the same care as dependency files such as `package.json`, `go.mod`, or `requirements.txt`. A malicious manifest diff can redirect a subproject to an attacker-controlled repository; code review is the mitigation. `git-lego` runs Git subcommands with manifest values and does not `eval` manifest content, but unusual Git transports such as `ext::` remain Git behavior and should be understood before use.
+Use `--dry-run` to print clone, fetch, checkout, stale-path reconciliation, and prune actions without cloning, fetching, checking out, deleting, or writing local materialization state. Remote tag checks use `git ls-remote` when possible.
 
 Example:
 
 ```sh
 git-lego sync
+git-lego sync --dry-run
 ```
 
 For nested projects:
@@ -1031,6 +1207,32 @@ cd workspace
 git-lego sync
 ```
 
+### `git-lego doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]`
+
+Checks local git-lego environment and workspace health without repairing anything. It reports Git version, shell, manifest presence/parseability, lock state, `.gitattributes` guard, backup ignore hints, managed hook status, remote reachability, and `git-filter-repo` availability.
+
+If `doctor` reports a missing or stale git-lego `.gitattributes` guard, run `git-lego init` from the project root to repair the managed block.
+
+Human and porcelain output use single-letter statuses: `I` for info, `W` for warn, and `E` for error. JSON output uses full words: `"info"`, `"warn"`, and `"error"`.
+
+By default `doctor` exits 0 after reporting checks. With `--exit-code`, it exits nonzero only when at least one warning or error is present; informational checks never trigger a nonzero exit. Use `--offline` to skip remote reachability checks, and `--timeout <seconds>` to tune those checks.
+
+Example:
+
+```sh
+git-lego doctor
+git-lego doctor --offline
+git-lego doctor --json-pretty --exit-code
+```
+
+Example output:
+
+```text
+I	git-version	git 2.50.0; minimum supported version is 2.20
+I	manifest	.gitlego is present and parseable
+W	gitattributes	missing or stale git-lego attributes guard; run git-lego init to repair it
+```
+
 ### `git-lego completion <bash|zsh|fish>`
 
 Prints a shell completion script to stdout. The generated completions include command names, common options, and subproject paths from `.gitlego`.
@@ -1055,6 +1257,12 @@ git-lego export --output build/source.zip --format zip
 git-lego export --output build/source-dir --format dir
 ```
 
+Example output:
+
+```text
+Exported workspace to C:/work/acme/build/source.tar.gz.
+```
+
 ### `git-lego extract <path> <remote-url> [options]`
 
 Converts a directory currently tracked by the outer repository into a managed subproject at the same path. The outer repository stages the file removals plus `.gitlego` and `.gitignore` updates for review.
@@ -1065,7 +1273,7 @@ Use `--preserve-history` when the new subproject should keep path history from t
 
 `extract` requires tracked, committed outer-repository files. It refuses unstaged changes, untracked files, nested git-lego targets, and parent-to-child boundary crossings. `--force` only replaces staged outer-repository changes under the extracted path; it never overrides dirty files inside the new subproject.
 
-With `--push`, `extract` verifies that the remote is reachable and empty before writing the manifest. Overriding a non-empty remote is deliberately not implemented in 0.7.0; the capability is deferred until there is a concrete workflow that needs it. Without `--push`, the remote is not contacted and git-lego prints the exact push command.
+With `--push`, `extract` verifies that the remote is reachable and empty before writing the manifest. Overriding a non-empty remote is deliberately not implemented; the capability is deferred until there is a concrete workflow that needs it. Without `--push`, the remote is not contacted and git-lego prints the exact push command.
 
 Snapshot-mode extraction is in-place: the directory remains on disk and becomes the managed subproject checkout. History-preserving extraction uses a temporary `.gitlego-extract-backup/` while rebuilding the repository history and deletes it on success.
 
@@ -1075,17 +1283,167 @@ git-lego extract src/lib https://example.invalid/acme/lib.git --push
 git-lego extract src/lib https://example.invalid/acme/lib.git --preserve-history
 ```
 
+Example output:
+
+```text
+Extracted src/lib as a git-lego subproject at a1b2c3d4e5f6.
+```
+
 ### `git-lego absorb <path> [--commit] [--message <msg>] [--dry-run]`
 
 Converts a managed subproject back into ordinary files tracked by the outer repository. The subproject remote is not changed or deleted.
 
 `absorb` removes the subproject's `.git`, removes the manifest entry, removes the exact ignore entry, and stages the resulting outer-repository changes for review. It commits only with `--commit` or `--message`.
 
-The command refuses dirty subprojects, unpushed commits, local-only branch tips, nested project targets, and parent-to-child boundary crossings. Success backups under `.gitlego-absorb-backup/` are deleted automatically. If a failure happens after the backup is created, the backup is left for recovery.
+The command refuses dirty subprojects, unpushed commits, local-only branch tips, nested project targets, and parent-to-child boundary crossings. Success backups under `.gitlego-absorb-backup/` are deleted automatically. If a failure happens after the backup is created, the backup is left for recovery and the error names the backup path when possible.
 
 ```sh
 git-lego absorb src/lib
 git-lego absorb src/lib --commit --message "Absorb lib source"
+```
+
+Example output:
+
+```text
+Absorbed src/lib into the outer repository; remote https://example.invalid/acme/lib.git was not changed.
+```
+
+### `git-lego version`
+
+Prints the installed version.
+
+Example:
+
+```sh
+git-lego version
+```
+
+Example output:
+
+```text
+git-lego 0.7.1
+```
+
+`git-lego --version` is also supported.
+
+## Porcelain Format
+
+Porcelain output is tab-separated and always has seven columns:
+
+```text
+code path state target current expected detail
+```
+
+Unused values are `-`. Codes include `D` for dirty status rows, `C` for composite dirty/manifest-mismatch status rows, `M` for missing checkouts, `U` for unmanaged nested Git repositories, `O` for outdated rows, `E` for remote/query errors, `P` for pending rows, `L` for diff log rows, and `F` for filtered foreach selection rows.
+
+## JSON Output
+
+`status`, `verify`, `outdated`, `diff`, `foreach-modified`, `foreach-clean`, `no-pending`, and `doctor` support `--json` and `--json-pretty`. Output is one object with `version`, `command`, `recursive`, `ok`, `subprojects`, `errors`, and `warnings`; `doctor` additionally includes `checks`. JSON schema version `1` is documented by `schemas/git-lego-output-v1.schema.json`.
+
+## Exit Codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Success, no issues found. |
+| 1 | Command completed and found differences, pending work, drift, dirty state, outdated rows, or tag mismatch. |
+| 2 | Usage error. |
+| 3 | Precondition failure, such as a missing or invalid manifest. |
+| 4 | Manifest lock acquisition failure. |
+| 5 | Unexpected external Git command failure. |
+
+## Security Considerations
+
+`.gitlego` contains repository URLs that `git-lego sync` will clone from. Review `.gitlego` changes with the same care as dependency files such as `package.json`, `go.mod`, or `requirements.txt`. A malicious manifest diff can redirect a subproject to an attacker-controlled repository; code review is the mitigation. `git-lego` runs Git subcommands with manifest values and does not `eval` manifest content, but unusual Git transports such as `ext::` remain Git behavior and should be understood before use.
+
+## Limitations And Non-Goals
+
+- No pull-request creation. git-lego prepares branch and manifest state; hosting-specific tools create PRs.
+- No remote repository creation. `extract` requires an existing empty remote when `--push` is used.
+- No history preservation on `absorb`. Files are staged in the outer repository; subproject history is not replayed.
+- No cross-boundary write operations. Nested projects require running write-side commands from the nested project root.
+- No automatic conflict resolution during `sync`. Dirty or unsafe subprojects are skipped or refused.
+- No support for Git worktrees inside subproject paths.
+- No Windows Command Prompt native implementation beyond the `git-lego.bat` bridge to Git Bash.
+- No API integrations with GitHub, GitLab, Gitea, Azure DevOps, or other hosting providers.
+- No lockfile format compatibility with `repo`, `west`, `vcstool`, Git submodules, or other multi-repo tools.
+
+## Recovery Cookbook
+
+**Dirty subproject blocking a command**
+
+When a command reports `Error: subproject libs/foo has uncommitted changes`, git-lego is refusing to record state that omits local work. Commit it, stash it, or deliberately discard it with normal Git commands, then rerun the git-lego command.
+
+```sh
+git -C libs/foo status --short
+git -C libs/foo stash push -u
+git-lego upload
+```
+
+**Stale `.gitlego.lock`**
+
+If a command reports that the manifest lock is held, inspect the PID in `.gitlego.lock`. Remove the lock only when no git-lego process is still running.
+
+```sh
+cat .gitlego.lock/pid
+rm -rf .gitlego.lock
+```
+
+**Push rejected during `upload`**
+
+Fetch and rebase or merge inside the subproject whose push failed, then rerun upload.
+
+```sh
+git -C libs/foo fetch origin
+git -C libs/foo rebase origin/main
+git-lego upload
+```
+
+**Missing subproject checkout after `sync`**
+
+Rerun sync after checking network/authentication. Use offline doctor to separate local workspace problems from remote access problems.
+
+```sh
+git-lego doctor --offline
+git-lego sync
+```
+
+**`finalize` cannot find the merge revision**
+
+Auto-finalize is conservative. Use the exact merged commit, a release tag, or the current target branch head when that is the intended pin.
+
+```sh
+git-lego finalize libs/foo --revision <merged-sha>
+git-lego finalize libs/foo --tag v1.2.3
+git-lego finalize libs/foo --use-target-head
+```
+
+**Manifest tag drift**
+
+If verify or sync reports that a tag no longer resolves to the recorded revision, investigate the tag movement, then re-pin intentionally.
+
+```sh
+git-lego update libs/foo --tag v1.2.3
+git-lego verify
+```
+
+**Failed `extract` mid-flight**
+
+The default in-place extract flow checks preconditions before destructive steps. If `--push` failed, inspect the remote state and retry once the remote is reachable and empty.
+
+```sh
+git ls-remote <remote-url>
+git-lego extract path/to/code <remote-url> --push
+```
+
+**Failed `absorb` mid-flight**
+
+If absorb fails after backing up nested Git metadata, `.gitlego-absorb-backup/` contains the original `.git` directory. If the failure happened during `--commit`, the files are usually already staged in the outer repository; either fix the commit problem and run `git commit`, or restore the backup and revert the staged manifest changes.
+
+```sh
+ls .gitlego-absorb-backup
+mv .gitlego-absorb-backup/<backup-name>/.git libs/foo/.git
+git -C libs/foo status
+git status --short
 ```
 
 ## Clone Modes
@@ -1110,24 +1468,6 @@ mode=manifest
 ```
 
 Use `mode=full` to force complete clones, for example on a backup machine. Use `mode=partial` to force lightweight clones, for example on a build server. `mode=manifest` uses each subproject's own `clone=` setting.
-
-### `git-lego version`
-
-Prints the installed version.
-
-Example:
-
-```sh
-git-lego version
-```
-
-Example output:
-
-```text
-git-lego 0.7.0
-```
-
-`git-lego --version` is also supported.
 
 ## Foreach Environment
 
@@ -1173,31 +1513,35 @@ The integration tests are POSIX shell scripts that create local Git repositories
 On Linux and macOS, run the full suite with:
 
 ```sh
-sh tests/run-all.sh
+sh tests/run-all-tests.sh
 ```
 
 If you prefer executing scripts directly, first ensure executable permissions are set:
 
 ```sh
-chmod +x bin/git-lego tests/run-all.sh tests/*.sh
-tests/run-all.sh
+chmod +x bin/git-lego tests/run-all-tests.sh tests/*.sh
+tests/run-all-tests.sh
 ```
 
 From `cmd.exe` on Windows, run the polyglot batch wrapper:
 
 ```bat
-tests\run-all.bat
+tests\run-all-tests.bat
 ```
 
-The runner clears the test root at startup, recreates local repositories for each test, and leaves them in numbered folders such as `test_01_auto_finalize/` for inspection. Each test heading is preceded by a blank line and underlined, and the run ends with a table showing every test, status, execution time, and totals for executed, passed, failed, and skipped tests. The suite runs tests with stdin closed so interactive prompts cannot affect automated results. Test Git commands override line-ending config to avoid local `core.autocrlf` noise. The suite also puts `bin/` on `PATH` so tests verify both direct `git-lego` usage and Git external-command invocation through `git lego`.
+The runner clears the test root at startup, recreates local repositories for each test, and leaves them in numbered folders such as `test_01_command_finalize_auto_no_pending/` for inspection. The full suite is long-running and may take more than 10 minutes on Windows. That is expected as long as output continues regularly. Each test heading is preceded by a blank line and underlined, test output streams to stdio while also being captured, and the run ends with a table showing every test, status, execution time, total execution time, and totals for executed, passed, failed, and skipped tests. The runner also writes an ignored root-level `test-result.md` incrementally, so interrupted runs still leave a partial summary with captured log paths and total time. The suite runs tests with stdin closed so interactive prompts cannot affect automated results. Test Git commands override line-ending config to avoid local `core.autocrlf` noise. The suite also puts `bin/` on `PATH` so tests verify both direct `git-lego` usage and Git external-command invocation through `git lego`.
+
+Tests are organized by feature rather than implementation phase. Use `test_command_*` for one command's behavior, `test_command_option_*` for one option or mode, `test_symmetry_*` for paired commands, `test_workflow_*` for multi-command scenarios, `test_contract_*` for cross-command guarantees, and `test_platform_*` for runtime compatibility. Test output is intentionally verbose: tests print what they are doing, why, the important commands being exercised, the expected result in plain English, and concise result descriptions. Unexpected assertion results should include `UNEXPECTED RESULT:` so failures stand out in console output and saved logs. Milestone names such as `wave` or `vawe` are not used.
+
+The runner does not enforce a total suite timeout. A single test that produces no output for more than `TEST_WATCHDOG_SECONDS` seconds is treated as hung and failed; the suite stops after the first hung test. The default is 180 seconds.
 
 The suite includes an optional BusyBox compatibility test. It runs automatically when `C:\busybox\bin\busybox.exe` exists, or when `BUSYBOX_EXE` points to a BusyBox executable. If BusyBox is not available, that test prints `SKIP` and the rest of the suite continues.
 
 ## AI User Skill
 
-The repository includes `skills/git-lego/` for AI agents working in projects that use `git-lego`. This is the skill to copy into consuming projects. It teaches agents how to inspect, sync, verify, edit, and prepare work in a project workspace, with explicit rules not to modify the `git-lego` tool itself.
+The repository includes `.agents/git-lego/SKILL.md` for AI agents working in projects that use `git-lego`. This is the skill to copy into consuming projects. It teaches agents how to inspect, sync, verify, edit, and prepare work in a project workspace, with explicit rules not to modify the `git-lego` tool itself.
 
-Active maintainer instructions for this repository live in `AGENTS.md`. The repo-local `skills/` directory is not an active agent configuration; it is source material that can be copied into projects that consume `git-lego`.
+Active maintainer instructions for this repository live in `AGENTS.md`.
 
 For projects that consume `git-lego`, copy the runtime scripts plus the user skill:
 
@@ -1205,10 +1549,10 @@ For projects that consume `git-lego`, copy the runtime scripts plus the user ski
 bin/git-lego
 bin/git-lego.bat
 bin/git_lego.sh
-skills/git-lego/
+.agents/git-lego/SKILL.md
 ```
 
-The repo-local `skills/` directory is a distributable source location. To make the skill active, copy the entire `skills/git-lego/` folder to a Codex skill location so the destination folder contains `SKILL.md` directly.
+The repo-local `.agents/git-lego/SKILL.md` file is the distributable skill source. To make the skill active elsewhere, copy that file into the consuming project's selected skill folder so the destination folder contains `SKILL.md` directly.
 
 ### Windows Codex Skill Locations
 
@@ -1229,7 +1573,7 @@ Codex also supports repo-scoped skill folders in `.agents\skills\` while walking
 
 Some Codex installations or plugins may also use project-local `.codex\` folders for configuration or installed assets. Verify the active Codex version before relying on `.codex\skills\` as a checked-in distribution path.
 
-You can invoke the skill explicitly with `$git-lego`, or use `/skills` or the Codex skill UI where available. `$skill-installer` is useful for curated or GitHub-hosted skills; for this repository, copying `skills\git-lego\` is enough because the skill is already present in the checkout.
+You can invoke the skill explicitly with `$git-lego`, or use `/skills` or the Codex skill UI where available. `$skill-installer` is useful for curated or GitHub-hosted skills; for this repository, `.agents\git-lego\SKILL.md` is the checked-in skill source.
 
 Maintainers changing `git-lego` itself should read `docs/maintainer.md` and use `docs/implementation-summary.md` as the behavior contract.
 

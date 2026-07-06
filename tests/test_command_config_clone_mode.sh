@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -eu
+. "$(dirname "$0")/helper.sh"
+test_begin command_config_clone_mode
+
+work=$(test_workspace command_config_clone_mode)
+remote="$work/remotes/one.git"
+seed="$work/seed/one"
+outer="$work/outer"
+
+mkdir -p "$work/remotes" "$work/seed"
+make_bare_remote "$remote" "$seed"
+make_repo "$outer"
+
+cd "$outer"
+"$GIT_LEGO" init >/dev/null
+"$GIT_LEGO" add "$remote" libs/one >/dev/null
+git add .gitlego .gitignore .gitattributes
+git commit -m "initial workspace" >/dev/null
+
+test_step "Read unset clone-mode" "config get should distinguish absent manifest settings from explicit values."
+run_fail "unset clone-mode returned nonzero" 1 -- sh -c '"$1" config get libs/one clone-mode >config_unset.out 2>config_unset.err' sh "$GIT_LEGO"
+
+test_step "Set, list, and unset clone-mode" "config writes only the manifest and warns that existing checkouts are not converted."
+run_capture "clone-mode set to partial" config_set.out config_set.err -- "$GIT_LEGO" config set libs/one clone-mode partial
+assert_file_contains config_set.err "existing checkouts are not converted"
+assert_file_contains .gitlego "clone=partial"
+test "$("$GIT_LEGO" config get libs/one clone-mode)" = "partial"
+run_capture "clone-mode listed" config_list.out config_list.err -- "$GIT_LEGO" config list
+assert_file_contains config_list.out "libs/one	clone-mode=partial"
+run_ok "clone-mode removed from manifest" -- "$GIT_LEGO" config unset libs/one clone-mode
+assert_file_not_contains .gitlego "clone=partial"
+
+test_step "Reject invalid config inputs" "only allowlisted keys and clone-mode values should be accepted."
+run_fail "invalid clone-mode rejected" any -- sh -c '"$1" config set libs/one clone-mode shallow >config_bad_value.out 2>config_bad_value.err' sh "$GIT_LEGO"
+assert_file_contains config_bad_value.err "clone-mode must be full or partial"
+run_fail "unknown config key rejected" any -- sh -c '"$1" config get libs/one unknown-key >config_bad_key.out 2>config_bad_key.err' sh "$GIT_LEGO"
+assert_file_contains config_bad_key.err "unknown config key"
+describe_result "config clone-mode get/set/list/unset and validation behaved as documented."
