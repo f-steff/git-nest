@@ -1,5 +1,18 @@
 # Version History
 
+## 0.8.0 - 2026-07-06
+
+- Changed name from `git-lego` to `git-nest` to better reflect the tool's role as a shared home for independent Git repositories and to avoid using the name of a commercial product.
+- Renamed the command surface from `git-lego` / `git lego` to `git-nest` / `git nest`.
+- Renamed project-owned state from `.gitlego` and `.gitlego-rc` to `.gitnest` and `.gitnest-rc`.
+- Renamed implementation, schema, documentation, tests, and the portable AI skill to use the `git-nest` name.
+- Preserved the historical `git-stack` name and stack/module terminology in pre-0.5.0 version history entries.
+- Added the `\\_oOO_//` nest-and-eggs logo after the name and version in version command output, keeping the first two fields script-friendly.
+- Added platform-specific installation and invocation guidance for Windows, Linux, and macOS.
+- Added a README command quick reference with a brief purpose statement for each command.
+- Updated generated test result tables so test names render as inline code.
+- Added `todo.md` to track pending design work, documentation suggestions, and completed release tasks.
+
 ## 0.7.1 - 2026-07-04
 
 Polish and hardening release. No breaking changes.
@@ -63,50 +76,56 @@ Polish and hardening release. No breaking changes.
 
 ## 0.5.0 - 2026-07-03
 
-- Changed name from `git-stack` to `git-lego` to avoid conflicts with a similarly named tool.
+- Changed name from `git-stack` to `git-lego` to avoid confusion with another `git-stack` tool with radically different features.
 - Renamed manifest and terminology from stack/module to project/subproject.
 - Renamed `refresh` to `snapshot`, `available` to `outdated`, `check` to `no-pending`, and `foreach-modified` to `foreach-pending`.
 - Switched the license from AGPL-3.0-or-later to MIT.
 - Added the `.gitlego text eol=lf` `.gitattributes` guard.
 
+Historical note: releases before 0.5.0 were published as `git-stack`. Version
+0.5.0 is the rename boundary where the tool became `git-lego` to avoid
+confusion with another `git-stack` tool with radically different features.
+Pre-0.5.0 entries therefore use the old command name, stack/module terminology,
+and legacy command names as they existed at the time.
+
 ## 0.4.2 - 2026-06-29
 
-- Added stale subproject path reconciliation during `git-lego sync`.
-- Automatically moves clean, pushed subprojects when manifest paths change.
-- Automatically removes clean, pushed subprojects that are no longer in the manifest.
-- Added `git-lego sync --prune` for explicit stale local-state cleanup after warnings.
+- Added stale module path reconciliation during `git-stack sync`.
+- Automatically moves clean, pushed modules when manifest paths change.
+- Automatically removes clean, pushed modules that are no longer in the manifest.
+- Added `git-stack sync --prune` for explicit stale local-state cleanup after warnings.
 - Documented stale cleanup notices, warnings, and ambiguity handling.
 
 ## 0.4.1 - 2026-06-26
 
-- Added porcelain output for `git-lego status` and `git-lego outdated`.
-- Expanded `git-lego --help` with brief command and option descriptions.
-- Made `.gitlego-rc` optional by default and added `git-lego init --rc`.
-- Renamed the local manifest update command from `record` to `snapshot`.
-- Propagated managed hooks to subprojects added or cloned after hooks are installed.
+- Added porcelain output for `git-stack status` and `git-stack available`.
+- Expanded `git-stack --help` with brief command and option descriptions.
+- Made local rc configuration optional by default and added `git-stack init --rc`.
+- Renamed the local manifest update command from `record` to `refresh`.
+- Propagated managed hooks to modules added or cloned after hooks are installed.
 - Moved the default integration test root outside the repository.
-- Documented script-friendly dirty and outdated checks.
+- Documented script-friendly dirty and available checks.
 
 ## 0.4.0 - 2026-06-26
 
-- Added `git-lego outdated` for read-only remote outdated checks.
-- Added `git-lego upload --finalize` for direct push-and-pin workflows.
+- Added `git-stack available` for read-only remote availability checks.
+- Added `git-stack upload --finalize` for direct push-and-pin workflows.
 - Simplified README positioning, comparison, requirements, and skill guidance.
 
 ## 0.3.0 - 2026-06-24
 
-- Added combined project history output with `git-lego log`.
-- Documented nested project discovery behavior.
+- Added combined stack history output with `git-stack log`.
+- Documented nested stack discovery behavior.
 
 ## 0.2.0 - 2026-06-22
 
 - Added recursive handling for status, verify, sync, and log.
-- Improved notices when nested projects are present but not included.
+- Improved notices when nested stacks are present but not included.
 
 ## 0.1.0 - 2026-06-20
 
-- Added subproject update modes for target heads, explicit revisions, tags, and branch retargeting.
-- Added protections for dirty and pending subprojects during updates.
+- Added module update modes for target heads, explicit revisions, tags, and branch retargeting.
+- Added protections for dirty and pending modules during updates.
 
 ## 0.0.9 - 2026-06-19
 
@@ -120,12 +139,12 @@ Polish and hardening release. No breaking changes.
 
 ## 0.0.7 - 2026-06-17
 
-- Added foreach and foreach-pending commands for subproject automation.
-- Exported project context variables for subproject commands.
+- Added foreach and foreach-modified commands for module automation.
+- Exported stack context variables for module commands.
 
 ## 0.0.6 - 2026-06-16
 
-- Added upload, pending subproject tracking, no-pending, and finalize workflows.
+- Added upload, pending module tracking, check, and finalize workflows.
 - Improved manifest state validation before writes.
 
 ## 0.0.5 - 2026-06-14
@@ -136,4 +155,4 @@ Polish and hardening release. No breaking changes.
 ## 0.0.4 - 2026-06-12
 
 - Added init, add, sync, status, verify, and version commands.
-- Established the `.gitlego` manifest format and subproject layout.
+- Established the manifest format and module layout.

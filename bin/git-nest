@@ -1,0 +1,14 @@
+#!/bin/sh
+#
+# POSIX-style entrypoint for Unix-like shells and Git's external-command
+# discovery. When this file is on PATH as "git-nest", users can run either
+# "git-nest ..." or "git nest ...". Keep this file small: it only locates
+# the adjacent implementation file and dispatches into git_nest_main.
+
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+. "$SCRIPT_DIR/git_nest.sh"
+
+git_nest_main "$@"

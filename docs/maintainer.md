@@ -1,28 +1,28 @@
 # Maintainer Guide
 
-This guide is for changing `git-lego` itself. For user-facing behavior, treat `docs/implementation-summary.md` as the behavior contract and `README.md` as the manual.
+This guide is for changing `git-nest` itself. For user-facing behavior, treat `docs/implementation-summary.md` as the behavior contract and `README.md` as the manual.
 
 ## Maintenance Rules
 
-- Keep `GIT_LEGO_VERSION` aligned with `README.md`, `version.md`, and release tests.
-- Keep business logic in `bin/git_lego.sh`; keep `bin/git-lego` and `bin/git-lego.bat` thin.
-- Preserve the polyglot behavior of `bin/git-lego.bat` so one IDE build-hook command can work across Windows, Linux, and macOS.
+- Keep `GIT_NEST_VERSION` aligned with `README.md`, `version.md`, and release tests.
+- Keep business logic in `bin/git_nest.sh`; keep `bin/git-nest` and `bin/git-nest.bat` thin.
+- Preserve the polyglot behavior of `bin/git-nest.bat` so one IDE build-hook command can work across Windows, Linux, and macOS.
 - Write portable `sh` where practical. Prefer `case`, `while`, `sed`, `awk`, `grep`, and `git`.
 - Avoid arrays, `mapfile`, process substitution, associative arrays, and Bash-only conveniences unless clearly justified.
 - Quote variables and validate required values before Git operations or manifest writes.
 - Use `Error:`, `Warning:`, and `Notice:` for user-facing diagnostics.
 - Keep manifest rewrites deterministic and readable.
 - Do not add mandatory provider integration or automatic PR creation.
-- Keep hooks opt-in; hooks may run `git-lego snapshot --quiet` but must not push or upload automatically.
+- Keep hooks opt-in; hooks may run `git-nest snapshot --quiet` but must not push or upload automatically.
 
 ## Change Workflow
 
 For behavior changes:
 
 1. Read `docs/implementation-summary.md`.
-2. Inspect the relevant command implementation in `bin/git_lego.sh`.
+2. Inspect the relevant command implementation in `bin/git_nest.sh`.
 3. Add or update focused integration tests under `tests/`.
-4. Update `README.md`, `docs/implementation-summary.md`, `docs/technical_docs.md`, and `.agents/git-lego/SKILL.md` when user-facing behavior changes.
+4. Update `README.md`, `docs/implementation-summary.md`, `docs/technical_docs.md`, and `.agents/git-nest/SKILL.md` when user-facing behavior changes.
 5. Every minor and patch release must include a README pass and a version-string audit. Any command name, flag, or example in the docs that does not match the code is a release blocker.
 5. Run the full suite:
 
@@ -50,6 +50,6 @@ Cover both successful behavior and negative paths. New parser branches, missing 
 
 ## Scope Guardrails
 
-`git-lego` should stay a small, predictable Git orchestration tool. Do not chase full Android `repo` parity. Prefer explicit behavior, clear failure messages, and testable shell code.
+`git-nest` should stay a small, predictable Git orchestration tool. Do not chase full Android `repo` parity. Prefer explicit behavior, clear failure messages, and testable shell code.
 
 New commands must have `--json` support and integrate with the shared exit-code table. New flags on existing commands must not change default behaviour.

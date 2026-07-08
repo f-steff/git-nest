@@ -9,7 +9,7 @@ test_step "Exercise platform git invocation" "This test verifies the documented 
 work=$(test_workspace platform_git_invocation)
 outer="$work/outer"
 
-# This test validates Git external-command discovery, so it runs through git lego.
+# This test validates Git external-command discovery, so it runs through git nest.
 mkdir -p "$outer"
 cd "$outer"
 
@@ -18,8 +18,9 @@ PATH="$REPO_ROOT/bin:$PATH"
 export PATH
 
 # Exercise version/help/init/status through Git's dispatch path.
-test "$(git lego version)" = "git-lego 0.7.1"
-git lego help >help.txt
+expected_version='git-nest 0.8.0 \\_oOO_//'
+test "$(git nest version)" = "$expected_version"
+git nest help >help.txt
 assert_file_contains help.txt "remove|rm <path> [--force] [--keep-files]"
 assert_file_contains help.txt "mv <old-path> <new-path> [--force]"
 assert_file_contains help.txt "clone <outer-repo-url> [target-dir]"
@@ -44,12 +45,12 @@ assert_file_contains help.txt "foreach-clean [--continue-on-error] [--porcelain 
 assert_file_contains help.txt "completion <bash|zsh|fish>"
 assert_file_contains help.txt "Print a shell completion script to stdout."
 assert_file_contains help.txt "export --output <path>"
-assert_file_contains help.txt "Export a source snapshot with .gitlego and MANIFEST.lock."
-git lego init >/dev/null
-git lego status >status.txt
-git lego log --max-count 1 >log.txt
+assert_file_contains help.txt "Export a source snapshot with .gitnest and MANIFEST.lock."
+git nest init >/dev/null
+git nest status >status.txt
+git nest log --max-count 1 >log.txt
 
-test -f .gitlego
+test -f .gitnest
 assert_file_contains status.txt "outer branch:"
 
 describe_result "The platform git invocation behavior matched the expected command output and repository state."

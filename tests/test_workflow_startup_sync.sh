@@ -21,43 +21,43 @@ make_bare_remote "$remote_two" "$seed_two"
 empty="$root/empty"
 mkdir -p "$empty"
 cd "$empty"
-"$GIT_LEGO" start XX-100-empty >/dev/null
+"$GIT_NEST" start XX-100-empty >/dev/null
 test -d .git
-test -f .gitlego
-test ! -f .gitlego-rc
+test -f .gitnest
+test ! -f .gitnest-rc
 test "$(git branch --show-current)" = "XX-100-empty"
-assert_file_contains .gitlego "branch=XX-100-empty"
+assert_file_contains .gitnest "branch=XX-100-empty"
 
 # A file-only folder is also allowed without --sure.
 file_only="$root/file_only"
 mkdir -p "$file_only"
 printf 'local notes\n' >"$file_only/notes.txt"
 cd "$file_only"
-"$GIT_LEGO" start XX-101-files >/dev/null
+"$GIT_NEST" start XX-101-files >/dev/null
 test -f notes.txt
-test -f .gitlego
-test ! -f .gitlego-rc
+test -f .gitnest
+test ! -f .gitnest-rc
 test "$(git branch --show-current)" = "XX-101-files"
 
 # Subdirectories in a non-Git startup folder require explicit confirmation.
 with_subdir="$root/with_subdir"
 mkdir -p "$with_subdir/existing"
 cd "$with_subdir"
-if "$GIT_LEGO" start XX-102-subdir >subdir.out 2>subdir.err </dev/null; then
+if "$GIT_NEST" start XX-102-subdir >subdir.out 2>subdir.err </dev/null; then
     echo "start should require --sure when a new workspace contains subdirectories" >&2
     exit 1
 fi
 assert_file_contains subdir.err "rerun with --sure"
-"$GIT_LEGO" start XX-102-subdir --sure >/dev/null
+"$GIT_NEST" start XX-102-subdir --sure >/dev/null
 test -d .git
-test -f .gitlego
-test ! -f .gitlego-rc
+test -f .gitnest
+test ! -f .gitnest-rc
 
-# A copied .gitlego can bootstrap subproject checkouts in an otherwise empty folder.
+# A copied .gitnest can bootstrap subproject checkouts in an otherwise empty folder.
 sync_ok="$root/sync_ok"
 mkdir -p "$sync_ok"
-cat >"$sync_ok/.gitlego" <<EOF
-# git-lego manifest
+cat >"$sync_ok/.gitnest" <<EOF
+# git-nest manifest
 
 [project]
 version=1
@@ -71,15 +71,15 @@ repo=$remote_two
 target_branch=main
 EOF
 cd "$sync_ok"
-"$GIT_LEGO" sync >/dev/null
+"$GIT_NEST" sync >/dev/null
 test -d libs/one/.git
 test -d libs/two/.git
 
 # Sync should attempt every subproject, keep successful clones, then fail clearly.
 sync_partial="$root/sync_partial"
 mkdir -p "$sync_partial"
-cat >"$sync_partial/.gitlego" <<EOF
-# git-lego manifest
+cat >"$sync_partial/.gitnest" <<EOF
+# git-nest manifest
 
 [project]
 version=1
@@ -93,7 +93,7 @@ repo=$root/remotes/missing.git
 target_branch=main
 EOF
 cd "$sync_partial"
-if "$GIT_LEGO" sync >sync.out 2>sync.err; then
+if "$GIT_NEST" sync >sync.out 2>sync.err; then
     echo "sync should fail after attempting all subprojects when one clone fails" >&2
     exit 1
 fi

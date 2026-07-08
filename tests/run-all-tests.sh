@@ -5,27 +5,27 @@ set -eu
 # Resolve paths from the runner location so the suite works from any cwd.
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-TEST_ROOT=${TEST_ROOT:-"${TMPDIR:-/tmp}/git-lego-test-workspaces"}
+TEST_ROOT=${TEST_ROOT:-"${TMPDIR:-/tmp}/git-nest-test-workspaces"}
 TEST_WATCHDOG_SECONDS=${TEST_WATCHDOG_SECONDS:-180}
 PATH="$REPO_ROOT/bin:$PATH"
 export PATH
 
-# Make Git's external-command discovery find the workspace git-lego binary.
-chmod +x "$REPO_ROOT/bin/git-lego" 2>/dev/null || true
+# Make Git's external-command discovery find the workspace git-nest binary.
+chmod +x "$REPO_ROOT/bin/git-nest" 2>/dev/null || true
 
 # Clean only the known persistent test workspace root, then leave new fixtures
 # in place after the run for inspection. Keep it outside the tool repository so
 # startup tests in non-Git folders are not pulled up to the tool repo root.
 case "$TEST_ROOT" in
     "$REPO_ROOT"|"$REPO_ROOT"/*) echo "Refusing to use test root inside repository: $TEST_ROOT" >&2; exit 1 ;;
-    */git-lego-test-workspaces) rm -rf "$TEST_ROOT" ;;
+    */git-nest-test-workspaces) rm -rf "$TEST_ROOT" ;;
     *) echo "Refusing to remove unexpected test root: $TEST_ROOT" >&2; exit 1 ;;
 esac
 mkdir -p "$TEST_ROOT"
 SUMMARY_MD="$REPO_ROOT/test-result.md"
 suite_started=$(date +%s)
 {
-    printf '# git-lego Test Result\n\n'
+    printf '# git-nest Test Result\n\n'
     printf '%s\n' "- Test root: \`$TEST_ROOT\`"
     printf '%s\n\n' "- Started: \`$(date -u '+%Y-%m-%dT%H:%M:%SZ')\`"
     printf '%s\n\n' "- No-output watchdog: \`${TEST_WATCHDOG_SECONDS}s\`"
@@ -42,7 +42,7 @@ print_summary_row() {
 }
 
 append_summary_markdown_row() {
-    printf '| %s | %s | %s | %s | `%s` |\n' "$1" "$2" "$3" "$4" "$5" >>"$SUMMARY_MD"
+    printf '| %s | `%s` | %s | %s | `%s` |\n' "$1" "$2" "$3" "$4" "$5" >>"$SUMMARY_MD"
 }
 
 print_result() {
@@ -151,11 +151,12 @@ if [ "$stop_after_hang" -eq 0 ]; then
     printf '\n%s\n' "$heading"
     underline_for "$heading"
     start=$(date +%s)
+    expected_version='git-nest 0.8.0 \\_oOO_//'
     if {
-        sh "$REPO_ROOT/bin/git-lego" --help >/dev/null
-        test "$(sh "$REPO_ROOT/bin/git-lego" version)" = "git-lego 0.7.1"
-        test "$(sh "$REPO_ROOT/bin/git-lego" --version)" = "git-lego 0.7.1"
-        test "$(git lego version)" = "git-lego 0.7.1"
+        sh "$REPO_ROOT/bin/git-nest" --help >/dev/null
+        test "$(sh "$REPO_ROOT/bin/git-nest" version)" = "$expected_version"
+        test "$(sh "$REPO_ROOT/bin/git-nest" --version)" = "$expected_version"
+        test "$(git nest version)" = "$expected_version"
     } >"$output" 2>&1 </dev/null; then
         status=PASS
     else

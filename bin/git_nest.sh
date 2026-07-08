@@ -1,40 +1,40 @@
 #!/bin/sh
 #
-# git-lego 0.7.1
+# git-nest 0.8.0
 #
 # Lightweight multi-repository workspace coordination for ordinary Git remotes.
 # A project root repository tracks a manifest of nested subproject repositories,
 # while this script provides the command behavior for initializing, syncing,
 # branching, uploading, finalizing, and verifying that workspace state.
 #
-# This file is the shared shell implementation sourced by bin/git-lego.
+# This file is the shared shell implementation sourced by bin/git-nest.
 # Keeping command logic here leaves the PATH-facing entrypoint tiny while
 # avoiding a separate lib/ tree for a small script-first project. The Windows
-# wrapper reaches this code indirectly by launching bin/git-lego through
+# wrapper reaches this code indirectly by launching bin/git-nest through
 # Git Bash.
 #
 # Copyright (c) 2026 Flemming Steffensen.
 # License: MIT
 # SPDX-License-Identifier: MIT
 
-MANIFEST_FILE=${GIT_LEGO_MANIFEST:-.gitlego}
-CONFIG_FILE=${GIT_LEGO_CONFIG:-.gitlego-rc}
-GIT_LEGO_VERSION=0.7.1
+MANIFEST_FILE=${GIT_NEST_MANIFEST:-.gitnest}
+CONFIG_FILE=${GIT_NEST_CONFIG:-.gitnest-rc}
+GIT_NEST_VERSION=0.8.0
 MANIFEST_SCHEMA_VERSION=1
 JSON_SCHEMA_VERSION=1
-GITATTRIBUTES_GUARD='.gitlego text eol=lf'
-GITATTRIBUTES_BEGIN='# BEGIN git-lego attributes'
-GITATTRIBUTES_END='# END git-lego attributes'
+GITATTRIBUTES_GUARD='.gitnest text eol=lf'
+GITATTRIBUTES_BEGIN='# BEGIN git-nest attributes'
+GITATTRIBUTES_END='# END git-nest attributes'
 GITIGNORE_GIT_DIR_GUARD_ONE='**/.git/'
 GITIGNORE_GIT_DIR_GUARD_TWO='**/.git'
 OLD_HOOK_WARNING_PRINTED=0
 MANIFEST_LOCK_HELD=
 MANIFEST_LOCK_PATH=
-GIT_LEGO_EXIT_HANDLER_INSTALLED=0
-GIT_LEGO_NO_FETCH=0
-GIT_LEGO_BASE_OVERRIDES=
-GIT_LEGO_DRY_RUN=0
-GIT_LEGO_JSON_DRY_RUN=0
+GIT_NEST_EXIT_HANDLER_INSTALLED=0
+GIT_NEST_NO_FETCH=0
+GIT_NEST_BASE_OVERRIDES=
+GIT_NEST_DRY_RUN=0
+GIT_NEST_JSON_DRY_RUN=0
 
 EXIT_ISSUES=1
 EXIT_USAGE=2
@@ -92,11 +92,11 @@ cleanup_manifest_lock() {
 }
 
 install_exit_handler() {
-    [ "$GIT_LEGO_EXIT_HANDLER_INSTALLED" -eq 0 ] || return 0
+    [ "$GIT_NEST_EXIT_HANDLER_INSTALLED" -eq 0 ] || return 0
     trap 'status=$?; cleanup_manifest_lock; exit $status' EXIT
     trap 'cleanup_manifest_lock; trap - INT; kill -INT $$' INT
     trap 'cleanup_manifest_lock; trap - TERM; kill -TERM $$' TERM
-    GIT_LEGO_EXIT_HANDLER_INSTALLED=1
+    GIT_NEST_EXIT_HANDLER_INSTALLED=1
 }
 
 sleep_ms() {
@@ -148,7 +148,7 @@ acquire_manifest_lock() {
     printf 'Error: could not acquire manifest lock %s after 10 seconds\n' "$MANIFEST_LOCK_PATH" >&2
     printf '  lock pid: %s\n' "$pid" >&2
     printf '  lock created UTC: %s\n' "$created" >&2
-    printf '  if no git-lego process is using it, remove it with: rm -rf %s\n' "$MANIFEST_LOCK_PATH" >&2
+    printf '  if no git-nest process is using it, remove it with: rm -rf %s\n' "$MANIFEST_LOCK_PATH" >&2
     exit "$EXIT_LOCK"
 }
 
@@ -256,7 +256,7 @@ emit_json_result() {
     fi
     printf '{"version":%s,"command":' "$JSON_SCHEMA_VERSION"
     json_string "$command"
-    if [ "$GIT_LEGO_JSON_DRY_RUN" -eq 1 ]; then
+    if [ "$GIT_NEST_JSON_DRY_RUN" -eq 1 ]; then
         printf ',"dry_run":true'
     fi
     printf ',"recursive":'
@@ -298,47 +298,47 @@ resolve_head_commit() {
 # Show the command surface exposed by the shared implementation.
 usage() {
     cat <<'EOF'
-git-lego: coordinate branches and pinned revisions across nested Git repositories
+git-nest: coordinate branches and pinned revisions across nested Git repositories
 
 Usage:
-  git-lego init [--rc]
-  git-lego add [--clone <full|partial>] <repo> <path>
-  git-lego remove|rm <path> [--force] [--keep-files]
-  git-lego mv <old-path> <new-path> [--force]
-  git-lego mv --url <new-url> <path>
-  git-lego clone <outer-repo-url> [target-dir] [--no-sync] [--depth <n>] [--branch <branch>] [--single-branch]
-  git-lego status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]
-  git-lego outdated [--recursive] [--porcelain | --json | --json-pretty]
-  git-lego verify [--recursive] [--json | --json-pretty]
-  git-lego diff [--since <ref>] [--stat] [--json | --json-pretty]
-  git-lego log [--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]
-  git-lego start <ticket-and-slug|.> [--stash-dirty|--discard-dirty|--cancel-dirty] [--hooks] [--sure]
-  git-lego snapshot [--recursive] [--quiet] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
-  git-lego upload [--finalize] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
-  git-lego freeze [--force] [--only <path>[,<path>...]] [--dry-run]
-  git-lego install-hooks
-  git-lego remove-hooks
-  git-lego foreach -- <command> [args...]
-  git-lego foreach-pending -- <command> [args...]
-  git-lego foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]
-  git-lego foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]
-  git-lego no-pending [--json | --json-pretty]
-  git-lego config <get|set|list|unset> ...
-  git-lego update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]
-  git-lego finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]
-  git-lego cleanup-branches
-  git-lego sync [--recursive] [--prune] [--force] [--dry-run]
-  git-lego doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]
-  git-lego completion <bash|zsh|fish>
-  git-lego export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]
-  git-lego extract <path> <remote-url> [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run]
-  git-lego absorb <path> [--commit] [--message <msg>] [--dry-run]
-  git-lego version
+  git-nest init [--rc]
+  git-nest add [--clone <full|partial>] <repo> <path>
+  git-nest remove|rm <path> [--force] [--keep-files]
+  git-nest mv <old-path> <new-path> [--force]
+  git-nest mv --url <new-url> <path>
+  git-nest clone <outer-repo-url> [target-dir] [--no-sync] [--depth <n>] [--branch <branch>] [--single-branch]
+  git-nest status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]
+  git-nest outdated [--recursive] [--porcelain | --json | --json-pretty]
+  git-nest verify [--recursive] [--json | --json-pretty]
+  git-nest diff [--since <ref>] [--stat] [--json | --json-pretty]
+  git-nest log [--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]
+  git-nest start <ticket-and-slug|.> [--stash-dirty|--discard-dirty|--cancel-dirty] [--hooks] [--sure]
+  git-nest snapshot [--recursive] [--quiet] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
+  git-nest upload [--finalize] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
+  git-nest freeze [--force] [--only <path>[,<path>...]] [--dry-run]
+  git-nest install-hooks
+  git-nest remove-hooks
+  git-nest foreach -- <command> [args...]
+  git-nest foreach-pending -- <command> [args...]
+  git-nest foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]
+  git-nest foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]
+  git-nest no-pending [--json | --json-pretty]
+  git-nest config <get|set|list|unset> ...
+  git-nest update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]
+  git-nest finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]
+  git-nest cleanup-branches
+  git-nest sync [--recursive] [--prune] [--force] [--dry-run]
+  git-nest doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]
+  git-nest completion <bash|zsh|fish>
+  git-nest export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]
+  git-nest extract <path> <remote-url> [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run]
+  git-nest absorb <path> [--commit] [--message <msg>] [--dry-run]
+  git-nest version
 
 Commands:
   init [--rc]
-      Create a .gitlego manifest in the current workspace.
-          --rc also creates .gitlego-rc with default values.
+      Create a .gitnest manifest in the current workspace.
+          --rc also creates .gitnest-rc with default values.
   add [--clone <full|partial>] <repo> <path>
       Add and clone a subproject, ignore its path in the outer repo, and
       record its current target branch and revision.
@@ -451,7 +451,7 @@ Commands:
   completion <bash|zsh|fish>
       Print a shell completion script to stdout.
   export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]
-      Export a source snapshot with .gitlego and MANIFEST.lock.
+      Export a source snapshot with .gitnest and MANIFEST.lock.
           --format overrides output extension inference.
           --include-git keeps nested .git directories.
           --deterministic normalizes archive ordering and metadata where supported.
@@ -471,14 +471,14 @@ Commands:
           --message sets the commit message and implies --commit.
           --dry-run reports planned changes without writing.
   version
-      Print the git-lego version.
+      Print the git-nest version.
 
-Manifest: .gitlego
+Manifest: .gitnest
 EOF
 }
 
 # Dispatch the public command name to the matching command handler.
-git_lego_main() {
+git_nest_main() {
     cmd=${1:-}
     [ $# -gt 0 ] && shift || true
 
@@ -529,11 +529,11 @@ git_lego_main() {
 # Report the implemented tool version used by docs and tests.
 cmd_version() {
     [ $# -eq 0 ] || die "version takes no arguments"
-    printf 'git-lego %s\n' "$GIT_LEGO_VERSION"
+    printf 'git-nest %s \\\\_oOO_//\n' "$GIT_NEST_VERSION"
 }
 
 cmd_internal_owning_manifest() {
-    [ $# -le 1 ] || usage_error "usage: git-lego __owning-manifest [path]"
+    [ $# -le 1 ] || usage_error "usage: git-nest __owning-manifest [path]"
     find_owning_manifest "$@"
 }
 
@@ -542,7 +542,7 @@ require_git() {
     command -v git >/dev/null 2>&1 || die "git is required"
 }
 
-# Detect old manifests only to fail clearly. git-lego does not migrate .stack.
+# Detect old manifests only to fail clearly. git-nest does not migrate .stack.
 find_legacy_manifest_root() {
     dir=$(pwd)
     while :; do
@@ -588,7 +588,7 @@ find_owning_manifest() {
             return 0
         fi
         parent=$(dirname "$dir")
-        [ "$parent" != "$dir" ] || precondition_error "not inside a git-lego project"
+        [ "$parent" != "$dir" ] || precondition_error "not inside a git-nest project"
         dir=$parent
     done
 }
@@ -607,7 +607,7 @@ enter_workspace_root_if_present() {
         return
     fi
     if root=$(find_legacy_manifest_root 2>/dev/null); then
-        precondition_error "legacy .stack manifest found at $root; git-lego uses .gitlego and does not migrate old manifests"
+        precondition_error "legacy .stack manifest found at $root; git-nest uses .gitnest and does not migrate old manifests"
     fi
     if root=$(git rev-parse --show-toplevel 2>/dev/null); then
         cd "$root" || die "cannot enter Git root $root"
@@ -615,15 +615,15 @@ enter_workspace_root_if_present() {
 }
 
 # Operational commands need an existing manifest and always run from its root so
-# subproject paths in .gitlego are interpreted consistently.
+# subproject paths in .gitnest are interpreted consistently.
 enter_project_root_required() {
     require_git
     root=$(find_project_root 2>/dev/null) ||
         {
             if legacy_root=$(find_legacy_manifest_root 2>/dev/null); then
-                precondition_error "legacy .stack manifest found at $legacy_root; git-lego uses .gitlego and does not migrate old manifests"
+                precondition_error "legacy .stack manifest found at $legacy_root; git-nest uses .gitnest and does not migrate old manifests"
             fi
-            precondition_error "not inside a git-lego workspace; run git-lego init or cd to a project"
+            precondition_error "not inside a git-nest workspace; run git-nest init or cd to a project"
         }
     cd "$root" || die "cannot enter project root $root"
     validate_manifest_schema
@@ -646,22 +646,22 @@ ensure_outer_repo() {
 gitattributes_has_guard() {
     [ -f .gitattributes ] || return 1
     awk '
-        /^[[:space:]]*\.gitlego[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { gitlego=1 }
-        /^[[:space:]]*\.gitlego-rc[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { rc=1 }
-        /^[[:space:]]*bin\/git-lego[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { entrypoint=1 }
-        /^[[:space:]]*bin\/git_lego\.sh[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { shell=1 }
-        /^[[:space:]]*bin\/git-lego\.bat[[:space:]]+text[[:space:]]+eol=crlf[[:space:]]*$/ { batch=1 }
-        END { exit !(gitlego && rc && entrypoint && shell && batch) }
+        /^[[:space:]]*\.gitnest[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { gitnest=1 }
+        /^[[:space:]]*\.gitnest-rc[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { rc=1 }
+        /^[[:space:]]*bin\/git-nest[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { entrypoint=1 }
+        /^[[:space:]]*bin\/GIT_NEST\.sh[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { shell=1 }
+        /^[[:space:]]*bin\/git-nest\.bat[[:space:]]+text[[:space:]]+eol=crlf[[:space:]]*$/ { batch=1 }
+        END { exit !(gitnest && rc && entrypoint && shell && batch) }
     ' .gitattributes
 }
 
 print_gitattributes_guard() {
     printf '%s\n' "$GITATTRIBUTES_BEGIN"
     printf '%s\n' "$GITATTRIBUTES_GUARD"
-    printf '.gitlego-rc text eol=lf\n'
-    printf 'bin/git-lego text eol=lf\n'
-    printf 'bin/git_lego.sh text eol=lf\n'
-    printf 'bin/git-lego.bat text eol=crlf\n'
+    printf '.gitnest-rc text eol=lf\n'
+    printf 'bin/git-nest text eol=lf\n'
+    printf 'bin/git_nest.sh text eol=lf\n'
+    printf 'bin/git-nest.bat text eol=crlf\n'
     printf '%s\n' "$GITATTRIBUTES_END"
 }
 
@@ -677,18 +677,18 @@ ensure_gitattributes_guard() {
     {
         print_gitattributes_guard
         awk '
-            /^[[:space:]]*# BEGIN git-lego attributes[[:space:]]*$/ { in_block=1; next }
-            /^[[:space:]]*# END git-lego attributes[[:space:]]*$/ { in_block=0; next }
+            /^[[:space:]]*# BEGIN git-nest attributes[[:space:]]*$/ { in_block=1; next }
+            /^[[:space:]]*# END git-nest attributes[[:space:]]*$/ { in_block=0; next }
             in_block { next }
             {
                 trimmed=$0
                 sub(/^[[:space:]]+/, "", trimmed)
                 sub(/[[:space:]]+$/, "", trimmed)
-                if (trimmed ~ /^\.gitlego([[:space:]]|$)/) next
-                if (trimmed ~ /^\.gitlego-rc([[:space:]]|$)/) next
-                if (trimmed ~ /^bin\/git-lego([[:space:]]|$)/) next
-                if (trimmed ~ /^bin\/git_lego\.sh([[:space:]]|$)/) next
-                if (trimmed ~ /^bin\/git-lego\.bat([[:space:]]|$)/) next
+                if (trimmed ~ /^\.gitnest([[:space:]]|$)/) next
+                if (trimmed ~ /^\.gitnest-rc([[:space:]]|$)/) next
+                if (trimmed ~ /^bin\/git-nest([[:space:]]|$)/) next
+                if (trimmed ~ /^bin\/GIT_NEST\.sh([[:space:]]|$)/) next
+                if (trimmed ~ /^bin\/git-nest\.bat([[:space:]]|$)/) next
                 print
             }
         ' .gitattributes
@@ -698,7 +698,7 @@ ensure_gitattributes_guard() {
 
 warn_missing_gitattributes_guard() {
     gitattributes_has_guard && return 0
-    warn "missing or stale git-lego .gitattributes guard; run git-lego init to repair it"
+    warn "missing or stale git-nest .gitattributes guard; run git-nest init to repair it"
 }
 
 warn_old_managed_hooks() {
@@ -709,7 +709,7 @@ warn_old_managed_hooks() {
         [ -n "$hook_file" ] || continue
         [ -f "$hook_file" ] || continue
         if grep -F 'refresh --quiet' "$hook_file" >/dev/null 2>&1; then
-            warn "old git-stack managed hook detected; run git-lego install-hooks to update hooks"
+            warn "old git-stack managed hook detected; run git-nest install-hooks to update hooks"
             OLD_HOOK_WARNING_PRINTED=1
             return 0
         fi
@@ -741,7 +741,7 @@ confirm_startup_directory() {
     if [ ! -t 0 ]; then
         die "start would initialize a folder containing subdirectories; rerun with --sure to confirm"
     fi
-    printf 'This folder contains subdirectories. Initialize it as a git-lego workspace? [y/N] ' >/dev/tty
+    printf 'This folder contains subdirectories. Initialize it as a git-nest workspace? [y/N] ' >/dev/tty
     IFS= read -r answer </dev/tty || answer=
     case "$answer" in
         y|Y|yes|YES) ;;
@@ -753,7 +753,7 @@ confirm_startup_directory() {
 ensure_manifest() {
     if [ ! -f "$MANIFEST_FILE" ]; then
         {
-            printf '# git-lego manifest\n\n'
+            printf '# git-nest manifest\n\n'
             printf '[project]\n'
             printf 'version=%s\n' "$MANIFEST_SCHEMA_VERSION"
         } >"$MANIFEST_FILE"
@@ -794,7 +794,7 @@ reject_backslash_path() {
 path_is_relative_safe() {
     case "$1" in
         ""|/*|[A-Za-z]:*|../*|*/../*|..|.) return 1 ;;
-        .git|.gitlego|.gitlego.lock|.gitlego-rc|.gitignore|.gitattributes) return 1 ;;
+        .git|.gitnest|.gitnest.lock|.gitnest-rc|.gitignore|.gitattributes) return 1 ;;
         .git/*|*/.git|*/.git/*) return 1 ;;
         *) return 0 ;;
     esac
@@ -814,7 +814,7 @@ assert_path_not_inside_nested_project() {
         [ -f "$boundary/$MANIFEST_FILE" ] || continue
         case "$candidate" in
             "$boundary"/*)
-                precondition_error "$candidate is inside nested project $boundary; run git-lego from $boundary instead"
+                precondition_error "$candidate is inside nested project $boundary; run git-nest from $boundary instead"
                 ;;
         esac
     done
@@ -824,7 +824,7 @@ assert_path_not_containing_nested_project() {
     candidate=$1
     [ -d "$candidate" ] || return 0
     if find "$candidate" -mindepth 1 -name "$MANIFEST_FILE" -type f 2>/dev/null | sed -n '1p' | grep . >/dev/null 2>&1; then
-        precondition_error "$candidate contains a nested git-lego project; recursive extract/absorb is not supported yet"
+        precondition_error "$candidate contains a nested git-nest project; recursive extract/absorb is not supported yet"
     fi
 }
 
@@ -871,7 +871,7 @@ manifest_section_kind() {
 }
 
 validate_manifest_schema() {
-    [ -f "$MANIFEST_FILE" ] || precondition_error "missing $MANIFEST_FILE; run git-lego init"
+    [ -f "$MANIFEST_FILE" ] || precondition_error "missing $MANIFEST_FILE; run git-nest init"
 
     errors=$(tmp_for "$MANIFEST_FILE.schema_errors")
     : >"$errors"
@@ -886,30 +886,30 @@ validate_manifest_schema() {
             } else if ($0 ~ /^\[subproject "[^"]+"\]$/) {
                 section = substr($0, 2, length($0) - 2)
             } else if ($0 ~ /^\[subproject /) {
-                add_error("malformed subproject section in .gitlego: " $0)
+                add_error("malformed subproject section in .gitnest: " $0)
                 section = ""
                 next
             } else if ($0 ~ /^\[[^]]+\]$/) {
                 section = substr($0, 2, length($0) - 2)
             } else {
-                add_error("malformed section in .gitlego: " $0)
+                add_error("malformed section in .gitnest: " $0)
                 section = ""
                 next
             }
             if ((section == "project" || section ~ /^subproject "[^"]+"$/) && seen_section[section]++) {
-                add_error("duplicate section in .gitlego: [" section "]")
+                add_error("duplicate section in .gitnest: [" section "]")
             }
             next
         }
         index($0, "=") > 0 {
             if (section == "") {
-                add_error("key outside a valid section in .gitlego: " $0)
+                add_error("key outside a valid section in .gitnest: " $0)
                 next
             }
             key = substr($0, 1, index($0, "=") - 1)
             value = substr($0, index($0, "=") + 1)
             if (key ~ /^[[:space:]]/ || key ~ /[[:space:]]$/ || key == "") {
-                add_error("malformed key in .gitlego: " $0)
+                add_error("malformed key in .gitnest: " $0)
                 next
             }
             sk = section SUBSEP key
@@ -925,10 +925,10 @@ validate_manifest_schema() {
             }
             next
         }
-        { add_error("malformed line in .gitlego: " $0) }
+        { add_error("malformed line in .gitnest: " $0) }
         END {
             if (!seen_section["project"]) {
-                add_error("missing [project] section in .gitlego")
+                add_error("missing [project] section in .gitnest")
             }
             if (project_version == "") {
                 add_error("missing manifest schema version; expected version=" expected " in [project]")
@@ -971,7 +971,7 @@ validate_manifest_schema() {
     rm -f "$errors"
 }
 
-# Read a value from .gitlego-rc. Missing config is normal for copied manifests, so
+# Read a value from .gitnest-rc. Missing config is normal for copied manifests, so
 # callers provide defaults after this helper returns no value.
 config_get() {
     section=$1
@@ -1160,7 +1160,7 @@ validate_clone_mode() {
     esac
 }
 
-# Resolve the repository-wide clone override from .gitlego-rc.
+# Resolve the repository-wide clone override from .gitnest-rc.
 configured_clone_mode() {
     mode=$(config_get clone mode || true)
     [ -n "$mode" ] || mode=manifest
@@ -1283,7 +1283,7 @@ repo_status_porcelain() {
     context=$2
     status=$(git -C "$repo" status --porcelain 2>/dev/null) ||
         die "$context: cannot read Git status in $repo; verify the checkout is not corrupted"
-    printf '%s\n' "$status" | sed '/^?? \.gitlego\.lock\//d; /^?? \.gitlego\.lock$/d'
+    printf '%s\n' "$status" | sed '/^?? \.gitnest\.lock\//d; /^?? \.gitnest\.lock$/d'
 }
 
 # Detect untracked files for start --discard-dirty validation.
@@ -1357,7 +1357,7 @@ status_state_for_code() {
 # remember stale paths until they become a Git workspace.
 materialized_state_file() {
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
-    state_dir=$(git rev-parse --git-path git-lego 2>/dev/null) || return 1
+    state_dir=$(git rev-parse --git-path git-nest 2>/dev/null) || return 1
     printf '%s/subprojects\n' "$state_dir"
 }
 
@@ -1366,11 +1366,11 @@ write_materialized_state() {
     state_file=$(materialized_state_file 2>/dev/null || true)
     [ -n "$state_file" ] || return 0
     state_dir=$(dirname -- "$state_file")
-    mkdir -p "$state_dir" || die "cannot create git-lego state directory $state_dir"
+    mkdir -p "$state_dir" || die "cannot create git-nest state directory $state_dir"
     tmp=$(mktemp "$state_dir/subprojects.tmp.XXXXXX") ||
-        die "cannot create temporary git-lego state file"
+        die "cannot create temporary git-nest state file"
     current_pairs=$(mktemp "$state_dir/subprojects.current.XXXXXX") ||
-        die "cannot create temporary git-lego state file"
+        die "cannot create temporary git-nest state file"
     manifest_pairs_file "$current_pairs"
     manifest_subprojects | while IFS= read -r path; do
         [ -n "$path" ] || continue
@@ -1537,7 +1537,7 @@ reconcile_stale_subprojects() {
                 notice "removed stale subproject $old_path with --prune despite local state: $reason"
                 continue
             fi
-            warn "stale subproject $old_path $reason; leaving it in place. Review it, then commit/stash/discard the work, push/delete local-only branches, or run git-lego sync --prune to remove it."
+            warn "stale subproject $old_path $reason; leaving it in place. Review it, then commit/stash/discard the work, push/delete local-only branches, or run git-nest sync --prune to remove it."
             continue
         fi
 
@@ -1664,7 +1664,7 @@ notice_nested_snapshot_candidates() {
         while IFS= read -r path; do
             [ -n "$path" ] && printf '  %s\n' "$path" >&2
         done <"$candidates"
-        printf '  run git-lego status --recursive to inspect them, or git-lego snapshot --recursive to include them\n' >&2
+        printf '  run git-nest status --recursive to inspect them, or git-nest snapshot --recursive to include them\n' >&2
     else
         notice_nested_projects
     fi
@@ -1726,7 +1726,7 @@ stash_dirty_repos() {
     dirty_file=$1
     while IFS= read -r path; do
         [ -n "$path" ] || continue
-        git -C "$path" stash push -u -m "git-lego start preflight" >/dev/null
+        git -C "$path" stash push -u -m "git-nest start preflight" >/dev/null
     done <"$dirty_file"
 }
 
@@ -1795,21 +1795,21 @@ add_base_override() {
     ref=${value#*=}
     [ -n "$path" ] || usage_error "--base requires a subproject path"
     [ -n "$ref" ] || usage_error "--base requires a ref"
-    [ -n "$GIT_LEGO_BASE_OVERRIDES" ] || GIT_LEGO_BASE_OVERRIDES=$(tmp_for "$MANIFEST_FILE.base_overrides")
-    printf '%s\t%s\n' "$path" "$ref" >>"$GIT_LEGO_BASE_OVERRIDES"
+    [ -n "$GIT_NEST_BASE_OVERRIDES" ] || GIT_NEST_BASE_OVERRIDES=$(tmp_for "$MANIFEST_FILE.base_overrides")
+    printf '%s\t%s\n' "$path" "$ref" >>"$GIT_NEST_BASE_OVERRIDES"
 }
 
 base_override_for() {
     path=$1
-    [ -n "$GIT_LEGO_BASE_OVERRIDES" ] || return 1
-    [ -f "$GIT_LEGO_BASE_OVERRIDES" ] || return 1
-    awk -F '	' -v path="$path" '$1 == path { value=$2 } END { if (value != "") print value; else exit 1 }' "$GIT_LEGO_BASE_OVERRIDES"
+    [ -n "$GIT_NEST_BASE_OVERRIDES" ] || return 1
+    [ -f "$GIT_NEST_BASE_OVERRIDES" ] || return 1
+    awk -F '	' -v path="$path" '$1 == path { value=$2 } END { if (value != "") print value; else exit 1 }' "$GIT_NEST_BASE_OVERRIDES"
 }
 
 clear_base_overrides() {
-    [ -z "$GIT_LEGO_BASE_OVERRIDES" ] || rm -f "$GIT_LEGO_BASE_OVERRIDES"
-    GIT_LEGO_BASE_OVERRIDES=
-    GIT_LEGO_NO_FETCH=0
+    [ -z "$GIT_NEST_BASE_OVERRIDES" ] || rm -f "$GIT_NEST_BASE_OVERRIDES"
+    GIT_NEST_BASE_OVERRIDES=
+    GIT_NEST_NO_FETCH=0
 }
 
 ensure_gitignore_entry() {
@@ -1894,7 +1894,7 @@ cmd_init() {
     [ -f .gitignore ] || : >.gitignore
     ensure_gitignore_hygiene
     [ "$create_rc" -eq 0 ] || ensure_config
-    printf 'Initialized git-lego workspace.\n'
+    printf 'Initialized git-nest workspace.\n'
 }
 
 # Add a subproject checkout and record its repo, target branch, and current revision.
@@ -1913,7 +1913,7 @@ cmd_add() {
             *) break ;;
         esac
     done
-    [ $# -eq 2 ] || die "usage: git-lego add [--clone <full|partial>] <repo> <path>"
+    [ $# -eq 2 ] || die "usage: git-nest add [--clone <full|partial>] <repo> <path>"
     repo=$1
     reject_backslash_path "$2"
     path=$(normalize_path "$2")
@@ -1937,7 +1937,7 @@ cmd_add() {
     ensure_gitignore_hygiene
     ensure_gitignore_entry "$path"
 
-    [ "$GIT_LEGO_DRY_RUN" -eq 1 ] || fetch_quiet "$path"
+    [ "$GIT_NEST_DRY_RUN" -eq 1 ] || fetch_quiet "$path"
     target=$(default_target_branch "$path")
     revision=$(resolve_head_commit "$path" "cannot add subproject $path")
     manifest_write_subproject "$path" "$repo" tracked "$target" "$revision" "$clone_mode"
@@ -2037,13 +2037,13 @@ cmd_remove() {
             --keep-files) keep_files=1; shift ;;
             --*) usage_error "unknown remove option: $1" ;;
             *)
-                [ -z "$path_arg" ] || usage_error "usage: git-lego remove <path> [--force] [--keep-files]"
+                [ -z "$path_arg" ] || usage_error "usage: git-nest remove <path> [--force] [--keep-files]"
                 path_arg=$1
                 shift
                 ;;
         esac
     done
-    [ -n "$path_arg" ] || usage_error "usage: git-lego remove <path> [--force] [--keep-files]"
+    [ -n "$path_arg" ] || usage_error "usage: git-nest remove <path> [--force] [--keep-files]"
     reject_backslash_path "$path_arg"
     path=$(normalize_path "$path_arg")
     acquire_manifest_lock
@@ -2075,7 +2075,7 @@ cmd_mv() {
     old_arg=
     new_arg=
     if [ "${1:-}" = "--url" ]; then
-        [ $# -eq 3 ] || usage_error "usage: git-lego mv --url <new-url> <path>"
+        [ $# -eq 3 ] || usage_error "usage: git-nest mv --url <new-url> <path>"
         new_url=$2
         reject_backslash_path "$3"
         path=$(normalize_path "$3")
@@ -2106,13 +2106,13 @@ cmd_mv() {
                 elif [ -z "${new_arg:-}" ]; then
                     new_arg=$1
                 else
-                    usage_error "usage: git-lego mv <old-path> <new-path> [--force]"
+                    usage_error "usage: git-nest mv <old-path> <new-path> [--force]"
                 fi
                 shift
                 ;;
         esac
     done
-    [ -n "${old_arg:-}" ] && [ -n "${new_arg:-}" ] || usage_error "usage: git-lego mv <old-path> <new-path> [--force]"
+    [ -n "${old_arg:-}" ] && [ -n "${new_arg:-}" ] || usage_error "usage: git-nest mv <old-path> <new-path> [--force]"
     reject_backslash_path "$old_arg"
     reject_backslash_path "$new_arg"
     old_path=$(normalize_path "$old_arg")
@@ -2167,7 +2167,7 @@ cmd_clone() {
             *) break ;;
         esac
     done
-    [ $# -ge 1 ] && [ $# -le 2 ] || usage_error "usage: git-lego clone <outer-repo-url> [target-dir]"
+    [ $# -ge 1 ] && [ $# -le 2 ] || usage_error "usage: git-nest clone <outer-repo-url> [target-dir]"
     outer_repo=$1
     target_dir=${2:-}
     set -- git clone
@@ -2192,7 +2192,7 @@ cmd_clone() {
         return 0
     fi
     if [ -f "$target_dir/$MANIFEST_FILE" ]; then
-        (cd "$target_dir" && git_lego_main sync) || return $?
+        (cd "$target_dir" && git_nest_main sync) || return $?
     else
         notice "cloned repository has no $MANIFEST_FILE; skipped sync"
     fi
@@ -2520,7 +2520,7 @@ remote_tag_commit() {
     ' "$out"
 }
 
-# Report whether subproject remotes have target-branch commits newer than .gitlego.
+# Report whether subproject remotes have target-branch commits newer than .gitnest.
 outdated_current() {
     ensure_manifest
     errors=$(tmp_for "$MANIFEST_FILE.outdated_errors")
@@ -2809,7 +2809,7 @@ verify_current() {
         fi
         mode=$(effective_clone_mode "$path")
         if [ ! -d "$path/.git" ]; then
-            printf 'Error: %s: subproject checkout is missing; run git-lego sync\n' "$path" >>"$errors"
+            printf 'Error: %s: subproject checkout is missing; run git-nest sync\n' "$path" >>"$errors"
             continue
         fi
 
@@ -2821,10 +2821,10 @@ verify_current() {
 
         if [ "$mode" = partial ]; then
             repo_is_partial_clone "$path" ||
-                printf 'Error: %s: manifest/config requests clone=partial, but existing checkout is full; remove the subproject and run git-lego sync or use clone=full\n' "$path" >>"$errors"
+                printf 'Error: %s: manifest/config requests clone=partial, but existing checkout is full; remove the subproject and run git-nest sync or use clone=full\n' "$path" >>"$errors"
         else
             if repo_is_partial_clone "$path"; then
-                printf 'Error: %s: manifest/config requests clone=full, but existing checkout is partial; remove the subproject and run git-lego sync or use clone=partial\n' "$path" >>"$errors"
+                printf 'Error: %s: manifest/config requests clone=full, but existing checkout is partial; remove the subproject and run git-nest sync or use clone=partial\n' "$path" >>"$errors"
             fi
         fi
 
@@ -3135,13 +3135,13 @@ cmd_start() {
             --cancel-dirty) dirty_action=cancel; shift ;;
             --*) die "unknown start option: $1" ;;
             *)
-                [ -z "$branch" ] || die "usage: git-lego start <ticket-and-slug|.> [--stash-dirty|--discard-dirty|--cancel-dirty] [--hooks] [--sure]"
+                [ -z "$branch" ] || die "usage: git-nest start <ticket-and-slug|.> [--stash-dirty|--discard-dirty|--cancel-dirty] [--hooks] [--sure]"
                 branch=$1
                 shift
                 ;;
         esac
     done
-    [ -n "$branch" ] || die "usage: git-lego start <ticket-and-slug|.> [--stash-dirty|--discard-dirty|--cancel-dirty] [--hooks] [--sure]"
+    [ -n "$branch" ] || die "usage: git-nest start <ticket-and-slug|.> [--stash-dirty|--discard-dirty|--cancel-dirty] [--hooks] [--sure]"
     [ -d .git ] && startup_new=0 || startup_new=1
     confirm_startup_directory "$sure"
     ensure_outer_repo
@@ -3152,7 +3152,7 @@ cmd_start() {
 
     if [ "$branch" = "." ]; then
         quiet_arg=
-        if [ -n "${GIT_LEGO_SNAPSHOT_QUIET:-}" ] || [ -n "${GIT_LEGO_RECORD_REMOVED_QUIET:-}" ]; then
+        if [ -n "${GIT_NEST_SNAPSHOT_QUIET:-}" ] || [ -n "${GIT_NEST_RECORD_REMOVED_QUIET:-}" ]; then
             quiet_arg=--quiet
         fi
         cmd_snapshot ${quiet_arg:+--quiet}
@@ -3204,7 +3204,7 @@ record_subproject_if_needed() {
         return 0
     fi
     repo=$(subproject_repo "$path")
-    require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-lego add again or fix the manifest"
+    require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-nest add again or fix the manifest"
     target=$(subproject_key "$path" target_branch || true)
     [ -n "$target" ] || target=$(default_target_branch "$path")
     mod_branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
@@ -3223,7 +3223,7 @@ preflight_subproject_snapshot() {
     [ -d "$path/.git" ] || return 0
     repo_has_dirty "$path" && return 0
     repo=$(subproject_repo "$path")
-    require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-lego add again or fix the manifest"
+    require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-nest add again or fix the manifest"
     target=$(subproject_key "$path" target_branch || true)
     [ -n "$target" ] || target=$(default_target_branch "$path")
     mod_branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
@@ -3246,7 +3246,7 @@ snapshot_current() {
             [ -d "$path/.git" ] || continue
             repo_has_dirty "$path" && continue
             repo=$(subproject_repo "$path")
-            require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-lego add again or fix the manifest"
+            require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-nest add again or fix the manifest"
         else
             preflight_subproject_snapshot "$path"
         fi
@@ -3290,7 +3290,7 @@ snapshot_current() {
         record_subproject_if_needed "$path" "$quiet"
     done
     clear_base_overrides
-    [ "$quiet" -eq 1 ] || printf 'Refreshed current git-lego state.\n'
+    [ "$quiet" -eq 1 ] || printf 'Refreshed current git-nest state.\n'
 }
 
 snapshot_recursive() {
@@ -3334,8 +3334,8 @@ cmd_snapshot() {
         case "$1" in
             --recursive) recursive=1; shift ;;
             --quiet) quiet=1; shift ;;
-            --dry-run) dry_run=1; GIT_LEGO_DRY_RUN=1; shift ;;
-            --no-fetch) GIT_LEGO_NO_FETCH=1; shift ;;
+            --dry-run) dry_run=1; GIT_NEST_DRY_RUN=1; shift ;;
+            --no-fetch) GIT_NEST_NO_FETCH=1; shift ;;
             --base)
                 [ $# -ge 2 ] || usage_error "--base requires <subproject>=<ref>"
                 add_base_override "$2"
@@ -3367,7 +3367,7 @@ base_for_subproject() {
         return
     fi
     fetch_note=
-    if [ "$GIT_LEGO_NO_FETCH" -eq 0 ] && [ "$GIT_LEGO_DRY_RUN" -eq 0 ]; then
+    if [ "$GIT_NEST_NO_FETCH" -eq 0 ] && [ "$GIT_NEST_DRY_RUN" -eq 0 ]; then
         fetch_note=$(fetch_quiet "$path" 2>&1 || true)
     fi
     if git -C "$path" rev-parse --verify "origin/$target^{commit}" >/dev/null 2>&1; then
@@ -3379,9 +3379,9 @@ base_for_subproject() {
     else
         printf 'Error: cannot calculate base revision for %s\n' "$path" >&2
         printf '  requested target ref: %s\n' "$target" >&2
-        if [ "$GIT_LEGO_DRY_RUN" -eq 1 ]; then
+        if [ "$GIT_NEST_DRY_RUN" -eq 1 ]; then
             printf '  dry-run does not fetch; the real run would fetch first if needed\n' >&2
-        elif [ "$GIT_LEGO_NO_FETCH" -eq 1 ]; then
+        elif [ "$GIT_NEST_NO_FETCH" -eq 1 ]; then
             printf '  fetch was skipped by --no-fetch and no local target ref resolved\n' >&2
         elif [ -n "$fetch_note" ]; then
             printf '  fetch result: %s\n' "$fetch_note" >&2
@@ -3416,7 +3416,7 @@ commit_manifest_if_needed() {
         return
     fi
     if git config user.name >/dev/null 2>&1 && git config user.email >/dev/null 2>&1; then
-        git commit -m "Update git-lego manifest for $branch" >/dev/null ||
+        git commit -m "Update git-nest manifest for $branch" >/dev/null ||
             die "failed to commit manifest update on $branch"
     else
         warn "manifest changed but Git user.name/user.email are not configured; skipping outer commit"
@@ -3436,11 +3436,11 @@ cmd_upload() {
                 ;;
             --dry-run)
                 dry_run=1
-                GIT_LEGO_DRY_RUN=1
+                GIT_NEST_DRY_RUN=1
                 shift
                 ;;
             --no-fetch)
-                GIT_LEGO_NO_FETCH=1
+                GIT_NEST_NO_FETCH=1
                 shift
                 ;;
             --base)
@@ -3478,7 +3478,7 @@ cmd_upload() {
     while IFS= read -r path; do
         [ -d "$path/.git" ] || continue
         repo=$(subproject_repo "$path")
-        require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-lego add again or fix the manifest"
+        require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-nest add again or fix the manifest"
         target=$(subproject_key "$path" target_branch || true)
         [ -n "$target" ] || target=$(default_target_branch "$path")
         mod_branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
@@ -3494,7 +3494,7 @@ cmd_upload() {
             [ -n "$mod_branch" ] || die "subproject $path has committed work on detached HEAD; check out a branch before upload"
             base=$(base_for_subproject "$path" "$target")
             pushed=$(resolve_head_commit "$path" "cannot upload subproject $path")
-            remote_exists "$path" || die "subproject $path has no origin remote; restore or add origin, then rerun git-lego upload"
+            remote_exists "$path" || die "subproject $path has no origin remote; restore or add origin, then rerun git-nest upload"
             if [ "$dry_run" -eq 1 ]; then
                 printf '[dry-run] would push subproject %s branch %s with refspec HEAD:%s\n' "$path" "$mod_branch" "$mod_branch"
                 if [ "$finalize" -eq 1 ]; then
@@ -3513,7 +3513,7 @@ cmd_upload() {
             [ -n "$path" ] || continue
             if ! git -C "$path" push -u origin "HEAD:$mod_branch"; then
                 printf 'Error: failed to push subproject %s branch %s to origin\n' "$path" "$mod_branch" >&2
-                printf '  recovery: fix the remote, credentials, or rejected branch, then rerun git-lego upload.\n' >&2
+                printf '  recovery: fix the remote, credentials, or rejected branch, then rerun git-nest upload.\n' >&2
                 printf '  note: any subproject branches already pushed by this run may remain on their remotes; rerunning upload will reuse the current manifest and branch state.\n' >&2
                 rm -f "$upload_plan" "$subprojects_tmp"
                 return "$EXIT_GIT"
@@ -3723,7 +3723,7 @@ ensure_manifest_subproject_path() {
 
 # Manage manifest-backed subproject settings.
 cmd_config() {
-    [ $# -ge 1 ] || usage_error "usage: git-lego config <get|set|list|unset> ..."
+    [ $# -ge 1 ] || usage_error "usage: git-nest config <get|set|list|unset> ..."
     action=$1
     shift
     ensure_manifest
@@ -3731,7 +3731,7 @@ cmd_config() {
 
     case "$action" in
         get)
-            [ $# -eq 2 ] || usage_error "usage: git-lego config get <path> clone-mode"
+            [ $# -eq 2 ] || usage_error "usage: git-nest config get <path> clone-mode"
             reject_backslash_path "$1"
             path=$(normalize_path "$1")
             key=$2
@@ -3743,7 +3743,7 @@ cmd_config() {
             printf '%s\n' "$value"
             ;;
         set)
-            [ $# -eq 3 ] || usage_error "usage: git-lego config set <path> clone-mode <value>"
+            [ $# -eq 3 ] || usage_error "usage: git-nest config set <path> clone-mode <value>"
             reject_backslash_path "$1"
             path=$(normalize_path "$1")
             key=$2
@@ -3757,7 +3757,7 @@ cmd_config() {
             warn "set $key for $path to $value; existing checkouts are not converted"
             ;;
         list)
-            [ $# -le 1 ] || usage_error "usage: git-lego config list [<path>]"
+            [ $# -le 1 ] || usage_error "usage: git-nest config list [<path>]"
             if [ $# -eq 1 ]; then
                 reject_backslash_path "$1"
                 path=$(normalize_path "$1")
@@ -3778,7 +3778,7 @@ cmd_config() {
             fi
             ;;
         unset)
-            [ $# -eq 2 ] || usage_error "usage: git-lego config unset <path> clone-mode"
+            [ $# -eq 2 ] || usage_error "usage: git-nest config unset <path> clone-mode"
             reject_backslash_path "$1"
             path=$(normalize_path "$1")
             key=$2
@@ -3796,11 +3796,11 @@ cmd_config() {
 run_foreach() {
     mode=$1
     shift
-    [ $# -gt 0 ] || die "usage: git-lego $mode -- <command> [args...]"
+    [ $# -gt 0 ] || die "usage: git-nest $mode -- <command> [args...]"
     if [ "$1" = "--" ]; then
         shift
     fi
-    [ $# -gt 0 ] || die "usage: git-lego $mode -- <command> [args...]"
+    [ $# -gt 0 ] || die "usage: git-nest $mode -- <command> [args...]"
 
     root=$(repo_root)
     root=$(CDPATH= cd -- "$root" && pwd)
@@ -3833,17 +3833,17 @@ run_foreach() {
         child_rc=0
         (
             cd "$path" || exit 1
-            GIT_LEGO_ROOT=$root \
-            GIT_LEGO_SUBPROJECT_PATH=$path \
-            GIT_LEGO_SUBPROJECT_ABSPATH=$subproject_abs \
-            GIT_LEGO_SUBPROJECT_REPO=$repo \
-            GIT_LEGO_BRANCH=$branch \
-            GIT_LEGO_TARGET_BRANCH=$target \
-            GIT_LEGO_PENDING_BRANCH=$pending \
-            GIT_LEGO_BASE_REVISION=$base \
-            GIT_LEGO_PUSHED_COMMIT=$pushed \
-            GIT_LEGO_REVISION=$revision \
-            GIT_LEGO_TAG=$tag \
+            GIT_NEST_ROOT=$root \
+            GIT_NEST_SUBPROJECT_PATH=$path \
+            GIT_NEST_SUBPROJECT_ABSPATH=$subproject_abs \
+            GIT_NEST_SUBPROJECT_REPO=$repo \
+            GIT_NEST_BRANCH=$branch \
+            GIT_NEST_TARGET_BRANCH=$target \
+            GIT_NEST_PENDING_BRANCH=$pending \
+            GIT_NEST_BASE_REVISION=$base \
+            GIT_NEST_PUSHED_COMMIT=$pushed \
+            GIT_NEST_REVISION=$revision \
+            GIT_NEST_TAG=$tag \
             REPO_PATH=$path \
             REPO_PROJECT=$path \
             "$@"
@@ -3914,17 +3914,17 @@ run_foreach_filtered_command() {
         child_rc=0
         (
             cd "$path" || exit 1
-            GIT_LEGO_ROOT=$root \
-            GIT_LEGO_SUBPROJECT_PATH=$path \
-            GIT_LEGO_SUBPROJECT_ABSPATH=$subproject_abs \
-            GIT_LEGO_SUBPROJECT_REPO=$repo \
-            GIT_LEGO_BRANCH=$branch \
-            GIT_LEGO_TARGET_BRANCH=$target \
-            GIT_LEGO_PENDING_BRANCH=$pending \
-            GIT_LEGO_BASE_REVISION=$base \
-            GIT_LEGO_PUSHED_COMMIT=$pushed \
-            GIT_LEGO_REVISION=$revision \
-            GIT_LEGO_TAG=$tag \
+            GIT_NEST_ROOT=$root \
+            GIT_NEST_SUBPROJECT_PATH=$path \
+            GIT_NEST_SUBPROJECT_ABSPATH=$subproject_abs \
+            GIT_NEST_SUBPROJECT_REPO=$repo \
+            GIT_NEST_BRANCH=$branch \
+            GIT_NEST_TARGET_BRANCH=$target \
+            GIT_NEST_PENDING_BRANCH=$pending \
+            GIT_NEST_BASE_REVISION=$base \
+            GIT_NEST_PUSHED_COMMIT=$pushed \
+            GIT_NEST_REVISION=$revision \
+            GIT_NEST_TAG=$tag \
             REPO_PATH=$path \
             REPO_PROJECT=$path \
             "$@"
@@ -3982,7 +3982,7 @@ run_foreach_filtered() {
         return 0
     fi
 
-    [ $# -gt 0 ] || die "usage: git-lego $mode [--continue-on-error] [-- <command> [args...]]"
+    [ $# -gt 0 ] || die "usage: git-nest $mode [--continue-on-error] [-- <command> [args...]]"
     run_foreach_filtered_command "$rows" "$continue_on_error" "$@"
     rc=$?
     rm -f "$rows" "$errors" "$warnings"
@@ -4015,18 +4015,18 @@ write_managed_hook() {
     write_hook_repo=$1
     write_hook_name=$2
     write_hook_outer_root=$3
-    write_hook_git_lego_path=$4
+    write_hook_git_nest_path=$4
     write_hook_file=$(hook_path_for "$write_hook_repo" "$write_hook_name")
-    if [ -f "$write_hook_file" ] && ! grep -F '# git-lego managed hook' "$write_hook_file" >/dev/null 2>&1; then
+    if [ -f "$write_hook_file" ] && ! grep -F '# git-nest managed hook' "$write_hook_file" >/dev/null 2>&1; then
         die "refusing to overwrite unmanaged hook: $write_hook_file"
     fi
     mkdir -p "$(dirname "$write_hook_file")"
     {
         printf '%s\n' '#!/bin/sh'
-        printf '%s\n' '# git-lego managed hook'
-        printf '%s\n' '[ "${GIT_LEGO_HOOK:-}" = "1" ] && exit 0'
+        printf '%s\n' '# git-nest managed hook'
+        printf '%s\n' '[ "${GIT_NEST_HOOK:-}" = "1" ] && exit 0'
         printf 'cd "%s" || exit 0\n' "$write_hook_outer_root"
-        printf 'GIT_LEGO_HOOK=1 "%s" snapshot --quiet >/dev/null 2>&1 || true\n' "$write_hook_git_lego_path"
+        printf 'GIT_NEST_HOOK=1 "%s" snapshot --quiet >/dev/null 2>&1 || true\n' "$write_hook_git_nest_path"
     } >"$write_hook_file"
     chmod +x "$write_hook_file" 2>/dev/null || true
 }
@@ -4038,7 +4038,7 @@ managed_hooks_installed_in_repo() {
     for managed_hooks_name in post-checkout post-commit pre-push; do
         managed_hooks_file=$(hook_path_for "$managed_hooks_repo" "$managed_hooks_name")
         [ -f "$managed_hooks_file" ] || return 1
-        grep -F '# git-lego managed hook' "$managed_hooks_file" >/dev/null 2>&1 || return 1
+        grep -F '# git-nest managed hook' "$managed_hooks_file" >/dev/null 2>&1 || return 1
     done
     return 0
 }
@@ -4050,13 +4050,13 @@ install_hooks_in_repo_if_project_managed() {
     managed_hooks_installed_in_repo . || return 0
     install_hooks_outer_root=$(repo_root)
     install_hooks_outer_root=$(CDPATH= cd -- "$install_hooks_outer_root" && pwd)
-    install_hooks_git_lego_path=$(CDPATH= cd -- "$(dirname -- "${0}")" && pwd)/git-lego
+    install_hooks_git_nest_path=$(CDPATH= cd -- "$(dirname -- "${0}")" && pwd)/git-nest
     preflight_managed_hook "$install_hooks_repo" post-checkout
     preflight_managed_hook "$install_hooks_repo" post-commit
     preflight_managed_hook "$install_hooks_repo" pre-push
-    write_managed_hook "$install_hooks_repo" post-checkout "$install_hooks_outer_root" "$install_hooks_git_lego_path"
-    write_managed_hook "$install_hooks_repo" post-commit "$install_hooks_outer_root" "$install_hooks_git_lego_path"
-    write_managed_hook "$install_hooks_repo" pre-push "$install_hooks_outer_root" "$install_hooks_git_lego_path"
+    write_managed_hook "$install_hooks_repo" post-checkout "$install_hooks_outer_root" "$install_hooks_git_nest_path"
+    write_managed_hook "$install_hooks_repo" post-commit "$install_hooks_outer_root" "$install_hooks_git_nest_path"
+    write_managed_hook "$install_hooks_repo" pre-push "$install_hooks_outer_root" "$install_hooks_git_nest_path"
     printf 'Installed hooks in %s.\n' "$install_hooks_repo"
 }
 
@@ -4078,7 +4078,7 @@ preflight_managed_hook() {
     preflight_hook_repo=$1
     preflight_hook_name=$2
     preflight_hook_file=$(hook_path_for "$preflight_hook_repo" "$preflight_hook_name")
-    if [ -f "$preflight_hook_file" ] && ! grep -F '# git-lego managed hook' "$preflight_hook_file" >/dev/null 2>&1; then
+    if [ -f "$preflight_hook_file" ] && ! grep -F '# git-nest managed hook' "$preflight_hook_file" >/dev/null 2>&1; then
         die "refusing to overwrite unmanaged hook: $preflight_hook_file"
     fi
 }
@@ -4101,7 +4101,7 @@ install_hooks_all() {
     validate_manifest_schema
     outer_root=$(repo_root)
     outer_root=$(CDPATH= cd -- "$outer_root" && pwd)
-    git_lego_path=$(CDPATH= cd -- "$(dirname -- "${0}")" && pwd)/git-lego
+    GIT_NEST_path=$(CDPATH= cd -- "$(dirname -- "${0}")" && pwd)/git-nest
     targets=$(mktemp)
     hook_targets_file "$targets"
 
@@ -4109,9 +4109,9 @@ install_hooks_all() {
     preflight_hooks_all "$targets"
     while IFS= read -r repo; do
         [ -n "$repo" ] || continue
-        write_managed_hook "$repo" post-checkout "$outer_root" "$git_lego_path"
-        write_managed_hook "$repo" post-commit "$outer_root" "$git_lego_path"
-        write_managed_hook "$repo" pre-push "$outer_root" "$git_lego_path"
+        write_managed_hook "$repo" post-checkout "$outer_root" "$GIT_NEST_path"
+        write_managed_hook "$repo" post-commit "$outer_root" "$GIT_NEST_path"
+        write_managed_hook "$repo" pre-push "$outer_root" "$GIT_NEST_path"
         printf 'Installed hooks in %s.\n' "$repo"
     done <"$targets"
     rm -f "$targets"
@@ -4123,13 +4123,13 @@ cmd_install_hooks() {
     install_hooks_all
 }
 
-# Remove one hook only when it is git-lego managed.
+# Remove one hook only when it is git-nest managed.
 remove_managed_hook() {
     repo=$1
     hook=$2
     hook_file=$(hook_path_for "$repo" "$hook")
     [ -f "$hook_file" ] || return 0
-    if grep -F '# git-lego managed hook' "$hook_file" >/dev/null 2>&1; then
+    if grep -F '# git-nest managed hook' "$hook_file" >/dev/null 2>&1; then
         rm -f "$hook_file"
     else
         warn "leaving unmanaged hook in place: $hook_file"
@@ -4238,7 +4238,7 @@ cmd_cleanup_branches() {
 
 # Update one clean, non-pending subproject to another recorded version.
 cmd_update() {
-    [ $# -ge 1 ] || die "usage: git-lego update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
+    [ $# -ge 1 ] || die "usage: git-nest update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
     reject_backslash_path "$1"
     path=$(normalize_path "$1")
     shift
@@ -4246,7 +4246,7 @@ cmd_update() {
     ensure_manifest
     validate_manifest_schema
     assert_path_not_inside_nested_project "$path"
-    [ -d "$path/.git" ] || die "$path is not a checked-out subproject; run git-lego sync first"
+    [ -d "$path/.git" ] || die "$path is not a checked-out subproject; run git-nest sync first"
     repo=$(subproject_repo "$path")
     [ -n "$repo" ] || die "$path is not in $MANIFEST_FILE"
     pending=$(subproject_key "$path" pending_branch || true)
@@ -4350,7 +4350,7 @@ auto_finalize_revision() {
     [ -n "$ticket" ] || ticket=$(ticket_from_branch "$(subproject_key "$path" pending_branch || true)")
     [ -n "$ticket" ] || die "auto-finalize needs a project id; use --revision, --tag, or --use-target-head"
     base=$(subproject_key "$path" base_revision || true)
-    [ "$GIT_LEGO_DRY_RUN" -eq 1 ] || fetch_quiet "$path"
+    [ "$GIT_NEST_DRY_RUN" -eq 1 ] || fetch_quiet "$path"
     git -C "$path" rev-parse --verify "origin/$target^{commit}" >/dev/null 2>&1 ||
         die "auto-finalize cannot find origin/$target for $path; fetch the subproject or use --revision/--tag"
     range=
@@ -4370,7 +4370,7 @@ auto_finalize_revision() {
 
 # Convert a subproject from pending to finalized state using an explicit or auto selector.
 cmd_finalize() {
-    [ $# -ge 1 ] || die "usage: git-lego finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]"
+    [ $# -ge 1 ] || die "usage: git-nest finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]"
     reject_backslash_path "$1"
     path=$(normalize_path "$1")
     shift
@@ -4386,7 +4386,7 @@ cmd_finalize() {
         case "$1" in
             --dry-run)
                 dry_run=1
-                GIT_LEGO_DRY_RUN=1
+                GIT_NEST_DRY_RUN=1
                 shift
                 ;;
             --cleanup)
@@ -4581,7 +4581,7 @@ sync_current() {
                             printf '  tag: %s\n' "$tag" >&2
                             printf '  recorded revision: %s\n' "$revision" >&2
                             printf '  current remote SHA: %s\n' "$remote_tag" >&2
-                            printf '  recovery: investigate the moved tag, then run git-lego update %s --tag %s to re-pin\n' "$path" "$tag" >&2
+                            printf '  recovery: investigate the moved tag, then run git-nest update %s --tag %s to re-pin\n' "$path" "$tag" >&2
                             exit "$EXIT_ISSUES"
                         fi
                     fi
@@ -4609,7 +4609,7 @@ sync_current() {
         while IFS= read -r path; do
             [ -n "$path" ] && printf '  %s\n' "$path" >&2
         done <"$failures_tmp"
-        printf 'Recovery: review the error for each listed subproject, fix the manifest, remote access, or local checkout, then rerun git-lego sync. Run git-lego verify for a read-only consistency report.\n' >&2
+        printf 'Recovery: review the error for each listed subproject, fix the manifest, remote access, or local checkout, then rerun git-nest sync. Run git-nest verify for a read-only consistency report.\n' >&2
         rm -f "$failures_tmp"
         return 1
     fi
@@ -4660,7 +4660,7 @@ cmd_sync() {
             --recursive) recursive=1; shift ;;
             --prune) prune=1; shift ;;
             --force) force=1; shift ;;
-            --dry-run) dry_run=1; GIT_LEGO_DRY_RUN=1; shift ;;
+            --dry-run) dry_run=1; GIT_NEST_DRY_RUN=1; shift ;;
             *) usage_error "unknown sync option: $1" ;;
         esac
     done
@@ -4737,7 +4737,7 @@ doctor_hook_status() {
     hook_file=$(hook_path_for "$repo" "$hook" 2>/dev/null || true)
     [ -n "$hook_file" ] || { printf 'absent\n'; return; }
     [ -f "$hook_file" ] || { printf 'absent\n'; return; }
-    if grep -F '# git-lego managed hook' "$hook_file" >/dev/null 2>&1; then
+    if grep -F '# git-nest managed hook' "$hook_file" >/dev/null 2>&1; then
         printf 'installed\n'
     else
         printf 'unmanaged\n'
@@ -4781,7 +4781,7 @@ cmd_doctor() {
 
     require_git
     root=$(find_project_root 2>/dev/null || true)
-    [ -n "$root" ] || precondition_error "not inside a git-lego workspace; run git-lego init or cd to a project"
+    [ -n "$root" ] || precondition_error "not inside a git-nest workspace; run git-nest init or cd to a project"
     cd "$root" || die "cannot enter project root $root"
 
     checks=$(mktemp)
@@ -4813,25 +4813,25 @@ cmd_doctor() {
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             doctor_add_check "$checks" W lock "$MANIFEST_FILE.lock exists and pid $pid appears alive"
         else
-            doctor_add_check "$checks" W lock "$MANIFEST_FILE.lock appears stale; remove it if no git-lego process is running"
+            doctor_add_check "$checks" W lock "$MANIFEST_FILE.lock appears stale; remove it if no git-nest process is running"
         fi
     else
         doctor_add_check "$checks" I lock "no manifest lock present"
     fi
 
     if gitattributes_has_guard; then
-        doctor_add_check "$checks" I gitattributes "git-lego attributes guard present"
+        doctor_add_check "$checks" I gitattributes "git-nest attributes guard present"
     else
-        doctor_add_check "$checks" W gitattributes "missing or stale git-lego attributes guard; run git-lego init to repair it"
+        doctor_add_check "$checks" W gitattributes "missing or stale git-nest attributes guard; run git-nest init to repair it"
     fi
 
     if [ -f .gitignore ]; then
-        grep -F '.gitlego-extract-backup/' .gitignore >/dev/null 2>&1 &&
-            doctor_add_check "$checks" I extract-backup-ignore ".gitlego-extract-backup/ ignored" ||
-            doctor_add_check "$checks" I extract-backup-ignore ".gitlego-extract-backup/ ignore entry absent"
-        grep -F '.gitlego-absorb-backup/' .gitignore >/dev/null 2>&1 &&
-            doctor_add_check "$checks" I absorb-backup-ignore ".gitlego-absorb-backup/ ignored" ||
-            doctor_add_check "$checks" I absorb-backup-ignore ".gitlego-absorb-backup/ ignore entry absent"
+        grep -F '.gitnest-extract-backup/' .gitignore >/dev/null 2>&1 &&
+            doctor_add_check "$checks" I extract-backup-ignore ".gitnest-extract-backup/ ignored" ||
+            doctor_add_check "$checks" I extract-backup-ignore ".gitnest-extract-backup/ ignore entry absent"
+        grep -F '.gitnest-absorb-backup/' .gitignore >/dev/null 2>&1 &&
+            doctor_add_check "$checks" I absorb-backup-ignore ".gitnest-absorb-backup/ ignored" ||
+            doctor_add_check "$checks" I absorb-backup-ignore ".gitnest-absorb-backup/ ignore entry absent"
     else
         doctor_add_check "$checks" W gitignore ".gitignore is missing"
     fi
@@ -4888,16 +4888,16 @@ cmd_doctor() {
     return 0
 }
 
-git_lego_command_names() {
+GIT_NEST_command_names() {
     printf '%s\n' "init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version"
 }
 
 # Internal completion data endpoint used by generated shell completion scripts.
 cmd_internal_complete() {
-    [ $# -eq 1 ] || usage_error "usage: git-lego __complete <commands|subprojects>"
+    [ $# -eq 1 ] || usage_error "usage: git-nest __complete <commands|subprojects>"
     case "$1" in
         commands)
-            git_lego_command_names
+            GIT_NEST_command_names
             ;;
         subprojects)
             if root=$(find_project_root 2>/dev/null); then
@@ -4910,7 +4910,7 @@ cmd_internal_complete() {
 
 completion_bash() {
     cat <<'EOF'
-_git_lego_complete()
+_git_nest_complete()
 {
     local cur cmd commands subprojects
     COMPREPLY=()
@@ -4934,7 +4934,7 @@ _git_lego_complete()
             COMPREPLY=( $(compgen -W "--branch --clone-mode --preserve-history --push --message --force --dry-run full partial" -- "$cur") )
             ;;
         absorb)
-            subprojects="$(git-lego __complete subprojects 2>/dev/null)"
+            subprojects="$(git-nest __complete subprojects 2>/dev/null)"
             COMPREPLY=( $(compgen -W "$subprojects --commit --message --dry-run" -- "$cur") )
             ;;
         status)
@@ -4977,34 +4977,34 @@ _git_lego_complete()
             if [ "$COMP_CWORD" -eq 2 ]; then
                 COMPREPLY=( $(compgen -W "get set list unset" -- "$cur") )
             elif [ "$COMP_CWORD" -eq 3 ] || { [ "${COMP_WORDS[2]}" = "list" ] && [ "$COMP_CWORD" -eq 3 ]; }; then
-                subprojects="$(git-lego __complete subprojects 2>/dev/null)"
+                subprojects="$(git-nest __complete subprojects 2>/dev/null)"
                 COMPREPLY=( $(compgen -W "$subprojects" -- "$cur") )
             else
                 COMPREPLY=( $(compgen -W "clone-mode full partial" -- "$cur") )
             fi
             ;;
         remove|rm|mv|update|finalize)
-            subprojects="$(git-lego __complete subprojects 2>/dev/null)"
+            subprojects="$(git-nest __complete subprojects 2>/dev/null)"
             COMPREPLY=( $(compgen -W "$subprojects --force --keep-files --url --remote --target-head --revision --tag --branch --no-fetch --dry-run --cleanup --use-target-head" -- "$cur") )
             ;;
     esac
 }
 
-complete -F _git_lego_complete git-lego
+complete -F _git_nest_complete git-nest
 EOF
 }
 
 completion_zsh() {
     cat <<'EOF'
-#compdef git-lego
+#compdef git-nest
 
-_git_lego()
+_git_nest()
 {
     local -a commands subprojects
     commands=(init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version)
 
     if (( CURRENT == 2 )); then
-        _describe 'git-lego command' commands
+        _describe 'git-nest command' commands
         return
     fi
 
@@ -5020,7 +5020,7 @@ _git_lego()
             _arguments '1:path:_files -/' '2:remote-url:' '--branch[initial branch]:branch:' '--clone-mode[clone mode]:mode:(full partial)' '--preserve-history[preserve path history with git-filter-repo]' '--push[push extracted repository]' '--message[commit message]:message:' '--force[bypass metadata conflicts only]' '--dry-run[show planned changes]'
             ;;
         absorb)
-            _arguments '1:subproject:__git_lego_subprojects' '--commit[commit staged outer changes]' '--message[commit message]:message:' '--dry-run[show planned changes]'
+            _arguments '1:subproject:__git_nest_subprojects' '--commit[commit staged outer changes]' '--message[commit message]:message:' '--dry-run[show planned changes]'
             ;;
         status)
             _arguments '--recursive[include nested projects]' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]' '--exit-code[return nonzero for dirty or missing rows]'
@@ -5059,55 +5059,55 @@ _git_lego()
             _arguments '--continue-on-error[keep iterating after failures]' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
             ;;
         config)
-            subprojects=("${(@f)$(_call_program subprojects git-lego __complete subprojects 2>/dev/null)}")
+            subprojects=("${(@f)$(_call_program subprojects git-nest __complete subprojects 2>/dev/null)}")
             _arguments '1:action:(get set list unset)' '2:subproject:->subproject' '3:key:(clone-mode)' '4:value:(full partial)'
             if [[ $state == subproject ]]; then
                 _describe 'subproject' subprojects
             fi
             ;;
         remove|rm|mv|update|finalize)
-            subprojects=("${(@f)$(_call_program subprojects git-lego __complete subprojects 2>/dev/null)}")
+            subprojects=("${(@f)$(_call_program subprojects git-nest __complete subprojects 2>/dev/null)}")
             _describe 'subproject' subprojects
             ;;
     esac
 }
 
-_git_lego "$@"
+_git_nest "$@"
 EOF
 }
 
 completion_fish() {
     cat <<'EOF'
-function __git_lego_subprojects
-    git-lego __complete subprojects 2>/dev/null
+function __git_nest_subprojects
+    git-nest __complete subprojects 2>/dev/null
 end
 
-complete -c git-lego -f -n "__fish_use_subcommand" -a "init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version"
-complete -c git-lego -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
-complete -c git-lego -f -n "__fish_seen_subcommand_from export" -a "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir"
-complete -c git-lego -f -n "__fish_seen_subcommand_from extract" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run full partial"
-complete -c git-lego -f -n "__fish_seen_subcommand_from absorb" -a "--commit --message --dry-run"
-complete -c git-lego -f -n "__fish_seen_subcommand_from status" -a "--recursive --porcelain --json --json-pretty --exit-code"
-complete -c git-lego -f -n "__fish_seen_subcommand_from outdated" -a "--recursive --porcelain --json --json-pretty"
-complete -c git-lego -f -n "__fish_seen_subcommand_from verify" -a "--recursive --json --json-pretty"
-complete -c git-lego -f -n "__fish_seen_subcommand_from sync" -a "--recursive --prune --force --dry-run"
-complete -c git-lego -f -n "__fish_seen_subcommand_from doctor" -a "--json --json-pretty --offline --timeout --exit-code"
-complete -c git-lego -f -n "__fish_seen_subcommand_from diff" -a "--since --stat --json --json-pretty"
-complete -c git-lego -f -n "__fish_seen_subcommand_from log" -a "--max-count --since --until --subproject --oneline --recursive"
-complete -c git-lego -f -n "__fish_seen_subcommand_from start" -a "--stash-dirty --discard-dirty --cancel-dirty --hooks --sure"
-complete -c git-lego -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --dry-run --no-fetch --base"
-complete -c git-lego -f -n "__fish_seen_subcommand_from upload" -a "--finalize --dry-run --no-fetch --base"
-complete -c git-lego -f -n "__fish_seen_subcommand_from freeze" -a "--force --only --dry-run"
-complete -c git-lego -f -n "__fish_seen_subcommand_from foreach-modified" -a "--continue-on-error --porcelain --json --json-pretty"
-complete -c git-lego -f -n "__fish_seen_subcommand_from foreach-clean" -a "--continue-on-error --porcelain --json --json-pretty"
-complete -c git-lego -f -n "__fish_seen_subcommand_from config" -a "get set list unset clone-mode full partial"
-complete -c git-lego -f -n "__fish_seen_subcommand_from remove rm mv update finalize config" -a "(__git_lego_subprojects)"
+complete -c git-nest -f -n "__fish_use_subcommand" -a "init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version"
+complete -c git-nest -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
+complete -c git-nest -f -n "__fish_seen_subcommand_from export" -a "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir"
+complete -c git-nest -f -n "__fish_seen_subcommand_from extract" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run full partial"
+complete -c git-nest -f -n "__fish_seen_subcommand_from absorb" -a "--commit --message --dry-run"
+complete -c git-nest -f -n "__fish_seen_subcommand_from status" -a "--recursive --porcelain --json --json-pretty --exit-code"
+complete -c git-nest -f -n "__fish_seen_subcommand_from outdated" -a "--recursive --porcelain --json --json-pretty"
+complete -c git-nest -f -n "__fish_seen_subcommand_from verify" -a "--recursive --json --json-pretty"
+complete -c git-nest -f -n "__fish_seen_subcommand_from sync" -a "--recursive --prune --force --dry-run"
+complete -c git-nest -f -n "__fish_seen_subcommand_from doctor" -a "--json --json-pretty --offline --timeout --exit-code"
+complete -c git-nest -f -n "__fish_seen_subcommand_from diff" -a "--since --stat --json --json-pretty"
+complete -c git-nest -f -n "__fish_seen_subcommand_from log" -a "--max-count --since --until --subproject --oneline --recursive"
+complete -c git-nest -f -n "__fish_seen_subcommand_from start" -a "--stash-dirty --discard-dirty --cancel-dirty --hooks --sure"
+complete -c git-nest -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --dry-run --no-fetch --base"
+complete -c git-nest -f -n "__fish_seen_subcommand_from upload" -a "--finalize --dry-run --no-fetch --base"
+complete -c git-nest -f -n "__fish_seen_subcommand_from freeze" -a "--force --only --dry-run"
+complete -c git-nest -f -n "__fish_seen_subcommand_from foreach-modified" -a "--continue-on-error --porcelain --json --json-pretty"
+complete -c git-nest -f -n "__fish_seen_subcommand_from foreach-clean" -a "--continue-on-error --porcelain --json --json-pretty"
+complete -c git-nest -f -n "__fish_seen_subcommand_from config" -a "get set list unset clone-mode full partial"
+complete -c git-nest -f -n "__fish_seen_subcommand_from remove rm mv update finalize config" -a "(__git_nest_subprojects)"
 EOF
 }
 
 # Print shell completion scripts.
 cmd_completion() {
-    [ $# -eq 1 ] || usage_error "usage: git-lego completion <bash|zsh|fish>"
+    [ $# -eq 1 ] || usage_error "usage: git-nest completion <bash|zsh|fish>"
     case "$1" in
         bash) completion_bash ;;
         zsh) completion_zsh ;;
@@ -5178,7 +5178,7 @@ write_export_manifest_lock() {
         printf '[export]\n'
         printf 'version=1\n'
         printf 'created=%s\n' "$created"
-        printf 'tool=git-lego %s\n' "$GIT_LEGO_VERSION"
+        printf 'tool=git-nest %s\n' "$GIT_NEST_VERSION"
         printf '\n'
         manifest_subprojects | while IFS= read -r path; do
             [ -n "$path" ] || continue
@@ -5238,7 +5238,7 @@ stage_export_tree() {
     manifest_subprojects | while IFS= read -r path; do
         [ -n "$path" ] || continue
         if [ ! -d "$path/.git" ]; then
-            precondition_error "cannot export missing subproject $path; run git-lego sync"
+            precondition_error "cannot export missing subproject $path; run git-nest sync"
         fi
         copy_subproject_files_to_stage "$path" "$stage" "$include_git"
     done
@@ -5356,7 +5356,7 @@ cmd_export() {
     fi
     rm -f "$dirty_file"
 
-    stage=$(mktemp -d "${TMPDIR:-/tmp}/git-lego-export.XXXXXX") ||
+    stage=$(mktemp -d "${TMPDIR:-/tmp}/git-nest-export.XXXXXX") ||
         die "cannot create temporary export staging directory"
     stage_export_tree "$stage" "$include_git" "$deterministic"
     if [ "$deterministic" -eq 1 ]; then
@@ -5377,7 +5377,7 @@ backup_timestamp() {
 }
 
 ensure_backup_ignored() {
-    ensure_gitignore_line ".gitlego-absorb-backup/"
+    ensure_gitignore_line ".gitnest-absorb-backup/"
 }
 
 copy_path_backup() {
@@ -5471,13 +5471,13 @@ cmd_extract() {
                 elif [ -z "$repo_arg" ]; then
                     repo_arg=$1
                 else
-                    usage_error "usage: git-lego extract <path> <remote-url> [options]"
+                    usage_error "usage: git-nest extract <path> <remote-url> [options]"
                 fi
                 shift
                 ;;
         esac
     done
-    [ -n "$path_arg" ] && [ -n "$repo_arg" ] || usage_error "usage: git-lego extract <path> <remote-url> [options]"
+    [ -n "$path_arg" ] && [ -n "$repo_arg" ] || usage_error "usage: git-nest extract <path> <remote-url> [options]"
     reject_backslash_path "$path_arg"
     path=$(normalize_path "$path_arg")
     [ -n "$message" ] || message="Extract $path"
@@ -5524,11 +5524,11 @@ cmd_extract() {
     fi
 
     ensure_gitignore_hygiene
-    tmp_parent=$(mktemp -d "${TMPDIR:-/tmp}/git-lego-extract.XXXXXX") ||
+    tmp_parent=$(mktemp -d "${TMPDIR:-/tmp}/git-nest-extract.XXXXXX") ||
         die "cannot create extract temporary directory"
     if [ "$preserve_history" -eq 1 ]; then
-        ensure_gitignore_line ".gitlego-extract-backup/"
-        backup=".gitlego-extract-backup/$(basename -- "$path")-$(backup_timestamp)"
+        ensure_gitignore_line ".gitnest-extract-backup/"
+        backup=".gitnest-extract-backup/$(basename -- "$path")-$(backup_timestamp)"
         copy_path_backup "$path" "$backup"
         extract_preserve_history_repo "$path" "$branch" "$repo_arg" "$tmp_parent"
     else
@@ -5552,9 +5552,9 @@ cmd_extract() {
     stage_outer_paths "$MANIFEST_FILE" .gitignore
     if [ -n "$backup" ]; then
         rm -rf -- "$backup"
-        rmdir .gitlego-extract-backup 2>/dev/null || true
+        rmdir .gitnest-extract-backup 2>/dev/null || true
     fi
-    printf 'Extracted %s as a git-lego subproject at %.12s.\n' "$path" "$revision"
+    printf 'Extracted %s as a git-nest subproject at %.12s.\n' "$path" "$revision"
     if [ "$push_after" -eq 0 ]; then
         printf 'Push when ready with: git -C %s push -u origin %s\n' "$path" "$branch"
     fi
@@ -5577,13 +5577,13 @@ cmd_absorb() {
             --dry-run) dry_run=1; shift ;;
             --*) usage_error "unknown absorb option: $1" ;;
             *)
-                [ -z "$path_arg" ] || usage_error "usage: git-lego absorb <path> [options]"
+                [ -z "$path_arg" ] || usage_error "usage: git-nest absorb <path> [options]"
                 path_arg=$1
                 shift
                 ;;
         esac
     done
-    [ -n "$path_arg" ] || usage_error "usage: git-lego absorb <path> [options]"
+    [ -n "$path_arg" ] || usage_error "usage: git-nest absorb <path> [options]"
     reject_backslash_path "$path_arg"
     path=$(normalize_path "$path_arg")
     [ -n "$message" ] || message="Absorb subproject $path"
@@ -5593,7 +5593,7 @@ cmd_absorb() {
     validate_manifest_schema
     assert_path_not_inside_nested_project "$path"
     [ -d "$path/.git" ] || precondition_error "$path is not a checked-out subproject"
-    [ ! -f "$path/$MANIFEST_FILE" ] || precondition_error "$path is a nested git-lego project; recursive absorb is not supported yet"
+    [ ! -f "$path/$MANIFEST_FILE" ] || precondition_error "$path is a nested git-nest project; recursive absorb is not supported yet"
     repo=$(subproject_repo "$path" || true)
     [ -n "$repo" ] || precondition_error "$path is not a tracked subproject in $MANIFEST_FILE"
     reason=$(stale_subproject_safety_reason "$path")
@@ -5606,7 +5606,7 @@ cmd_absorb() {
     fi
 
     ensure_backup_ignored
-    backup=".gitlego-absorb-backup/$(basename -- "$path")-$(backup_timestamp)"
+    backup=".gitnest-absorb-backup/$(basename -- "$path")-$(backup_timestamp)"
     mkdir -p "$backup" || git_error "failed to create absorb backup $backup"
     cp -R "$path/.git" "$backup/.git" || git_error "failed to back up $path/.git"
     rm -rf -- "$path/.git" || git_error "failed to remove nested Git metadata from $path"
@@ -5619,6 +5619,6 @@ cmd_absorb() {
             git_error "failed to commit absorbed subproject $path; staged files remain and backup is in $backup. Fix the commit problem and run git commit, or restore $backup/.git to $path/.git and revert the staged manifest changes"
     fi
     rm -rf -- "$backup"
-    rmdir .gitlego-absorb-backup 2>/dev/null || true
+    rmdir .gitnest-absorb-backup 2>/dev/null || true
     printf 'Absorbed %s into the outer repository; remote %s was not changed.\n' "$path" "$repo"
 }

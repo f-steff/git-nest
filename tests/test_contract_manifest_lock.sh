@@ -22,35 +22,35 @@ make_bare_remote "$remote_three" "$seed_three"
 make_repo "$outer"
 
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$remote_one" libs/one >/dev/null
-"$GIT_LEGO" add "$remote_two" libs/two >/dev/null
-"$GIT_LEGO" add "$remote_three" libs/three >/dev/null
-git add .gitlego .gitignore .gitattributes
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$remote_one" libs/one >/dev/null
+"$GIT_NEST" add "$remote_two" libs/two >/dev/null
+"$GIT_NEST" add "$remote_three" libs/three >/dev/null
+git add .gitnest .gitignore .gitattributes
 git commit -m "initial workspace" >/dev/null
-"$GIT_LEGO" start LOCK-100 >/dev/null
+"$GIT_NEST" start LOCK-100 >/dev/null
 
-mkdir .gitlego.lock
+mkdir .gitnest.lock
 {
     printf 'pid=%s\n' "$$"
     printf 'created_utc=2999-01-01T00:00:00Z\n'
-} >.gitlego.lock/info
-assert_exit_code 4 "$GIT_LEGO" snapshot >active.out 2>active.err
+} >.gitnest.lock/info
+assert_exit_code 4 "$GIT_NEST" snapshot >active.out 2>active.err
 assert_file_contains active.err "could not acquire manifest lock"
-rm -rf .gitlego.lock
+rm -rf .gitnest.lock
 
-mkdir .gitlego.lock
+mkdir .gitnest.lock
 {
     printf 'pid=999999\n'
     printf 'created_utc=2000-01-01T00:00:00Z\n'
-} >.gitlego.lock/info
-if "$GIT_LEGO" snapshot >stale.out 2>stale.err; then
+} >.gitnest.lock/info
+if "$GIT_NEST" snapshot >stale.out 2>stale.err; then
     echo "snapshot should fail on stale lock" >&2
     exit 1
 fi
 assert_file_contains stale.err "could not acquire manifest lock"
-assert_file_contains stale.err "rm -rf .gitlego.lock"
-rm -rf .gitlego.lock
+assert_file_contains stale.err "rm -rf .gitnest.lock"
+rm -rf .gitnest.lock
 
 for path in libs/one libs/two libs/three; do
     printf 'parallel\n' >>"$path/file.txt"
@@ -58,15 +58,15 @@ for path in libs/one libs/two libs/three; do
     git -C "$path" commit -m "LOCK-100 work in $path" >/dev/null
 done
 
-"$GIT_LEGO" snapshot >snapshot1.out 2>snapshot1.err &
+"$GIT_NEST" snapshot >snapshot1.out 2>snapshot1.err &
 p1=$!
-"$GIT_LEGO" snapshot >snapshot2.out 2>snapshot2.err &
+"$GIT_NEST" snapshot >snapshot2.out 2>snapshot2.err &
 p2=$!
 wait "$p1"
 wait "$p2"
 
-assert_file_contains .gitlego 'pending_branch=LOCK-100'
-test "$(grep -c '^pending_branch=LOCK-100$' .gitlego)" = "3"
-test ! -d .gitlego.lock
+assert_file_contains .gitnest 'pending_branch=LOCK-100'
+test "$(grep -c '^pending_branch=LOCK-100$' .gitnest)" = "3"
+test ! -d .gitnest.lock
 
 describe_result "The contract manifest lock behavior matched the expected command output and repository state."

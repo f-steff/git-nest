@@ -18,19 +18,19 @@ make_repo "$outer"
 
 # Create pending subproject work through the normal start/upload flow.
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$remote" libs/foo >/dev/null
-git add .gitlego .gitignore .gitattributes
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$remote" libs/foo >/dev/null
+git add .gitnest .gitignore .gitattributes
 git commit -m "initial workspace" >/dev/null
-"$GIT_LEGO" start XX-321-auto-finalize >/dev/null
+"$GIT_NEST" start XX-321-auto-finalize >/dev/null
 
 printf 'change\n' >>libs/foo/file.txt
 git -C libs/foo add file.txt
 git -C libs/foo commit -m "XX-321 subproject change" >/dev/null
-"$GIT_LEGO" upload >/dev/null
+"$GIT_NEST" upload >/dev/null
 
 # no-pending is the outer merge gate and must fail while pending entries remain.
-if "$GIT_LEGO" no-pending >/dev/null 2>&1; then
+if "$GIT_NEST" no-pending >/dev/null 2>&1; then
     echo "no-pending should fail while pending entries exist" >&2
     exit 1
 fi
@@ -42,8 +42,8 @@ git -C libs/foo push origin main >/dev/null
 git -C libs/foo checkout XX-321-auto-finalize >/dev/null
 
 # Auto-finalize should find exactly one target-branch commit with the ticket key.
-"$GIT_LEGO" finalize libs/foo >/dev/null
-if grep -F 'pending_branch=' .gitlego >/dev/null; then
+"$GIT_NEST" finalize libs/foo >/dev/null
+if grep -F 'pending_branch=' .gitnest >/dev/null; then
     echo "auto finalize did not remove pending state" >&2
     exit 1
 fi

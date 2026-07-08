@@ -3,8 +3,8 @@
 set -eu
 
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-GIT_LEGO="$REPO_ROOT/bin/git-lego"
-TEST_ROOT=${TEST_ROOT:-"${TMPDIR:-/tmp}/git-lego-test-workspaces"}
+GIT_NEST="$REPO_ROOT/bin/git-nest"
+TEST_ROOT=${TEST_ROOT:-"${TMPDIR:-/tmp}/git-nest-test-workspaces"}
 
 # Keep test output deterministic regardless of a developer's global Git config.
 # The overrides also apply to repositories cloned during tests.
@@ -22,10 +22,10 @@ export GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
 export GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1
 export GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2
 export GIT_CONFIG_KEY_3 GIT_CONFIG_VALUE_3
-GIT_AUTHOR_NAME="git-lego test"
-GIT_AUTHOR_EMAIL="git-lego@example.invalid"
-GIT_COMMITTER_NAME="git-lego test"
-GIT_COMMITTER_EMAIL="git-lego@example.invalid"
+GIT_AUTHOR_NAME="git-nest test"
+GIT_AUTHOR_EMAIL="git-nest@example.invalid"
+GIT_COMMITTER_NAME="git-nest test"
+GIT_COMMITTER_EMAIL="git-nest@example.invalid"
 export GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
 
 # Print a stable test identity for both full-suite and individual runs.
@@ -133,8 +133,8 @@ test_workspace() {
 
 # Configure commit identity for local repositories created by tests.
 git_config() {
-    git config user.name "git-lego test"
-    git config user.email "git-lego@example.invalid"
+    git config user.name "git-nest test"
+    git config user.email "git-nest@example.invalid"
     git config core.autocrlf false
     git config core.eol lf
     git config core.safecrlf false

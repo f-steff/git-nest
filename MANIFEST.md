@@ -1,8 +1,8 @@
-# git-lego Manifest Format
+# git-nest Manifest Format
 
 Manifest schema version: `1`
 
-`git-lego` stores project state in `.gitlego`, an INI-style file tracked by the outer repository. Every manifest must contain `[project]` with `version=1`. Git-lego validates the keys it owns, but accepts and preserves unknown sections and unknown keys where practical so other tools can add extension data. Duplicate git-lego-controlled sections, duplicate keys inside git-lego-controlled sections, malformed section headers, and malformed key lines are invalid.
+`git-nest` stores project state in `.gitnest`, an INI-style file tracked by the outer repository. Every manifest must contain `[project]` with `version=1`. git-nest validates the keys it owns, but accepts and preserves unknown sections and unknown keys where practical so other tools can add extension data. Duplicate git-nest-controlled sections, duplicate keys inside git-nest-controlled sections, malformed section headers, and malformed key lines are invalid.
 
 ## Project Section
 

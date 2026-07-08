@@ -1,6 +1,6 @@
-# git-lego Implementation Summary
+# git-nest Implementation Summary
 
-Version: `0.7.1`
+Version: `0.8.0`
 
 This file is the concise implementation reference for contributors and agents. It describes what the current script does, which state it writes, and which guarantees tests should preserve.
 
@@ -8,19 +8,19 @@ For user-facing guidance, examples, platform setup, CI notes, and comparison wit
 
 ## Current Scope
 
-`git-lego` is a POSIX-style shell-based multi-repository workspace tool written in `sh`, with a thin polyglot `.bat` wrapper for Windows batch and sh/bash contexts. It runs directly from `bin/` and works as either `git-lego ...` or `git lego ...` when `bin/` is on `PATH`.
+`git-nest` is a POSIX-style shell-based multi-repository workspace tool written in `sh`, with a thin polyglot `.bat` wrapper for Windows batch and sh/bash contexts. It runs directly from `bin/` and works as either `git-nest ...` or `git nest ...` when `bin/` is on `PATH`.
 
-`bin/git-lego.bat` is intentionally usable from both `cmd.exe` and `sh`/Bash. This allows one build-hook command to be shared across Windows, Linux, and macOS IDE/project configurations.
+`bin/git-nest.bat` is intentionally usable from both `cmd.exe` and `sh`/Bash. This allows one build-hook command to be shared across Windows, Linux, and macOS IDE/project configurations.
 
-Commands that require a workspace walk upward from the current directory until `.gitlego` is found. This allows invocation from the project root, a subdirectory, or deep inside a checked-out subproject.
+Commands that require a workspace walk upward from the current directory until `.gitnest` is found. This allows invocation from the project root, a subdirectory, or deep inside a checked-out subproject.
 
 ## Workspace State
 
 A project workspace contains:
 
 - a project root Git repository
-- `.gitlego`, tracked by the project root repository
-- optional `.gitlego-rc`, local runtime/configuration settings
+- `.gitnest`, tracked by the project root repository
+- optional `.gitnest-rc`, local runtime/configuration settings
 - `.gitignore`, with subproject paths ignored by the project root repository
 - nested standalone Git repositories for subprojects
 
@@ -28,7 +28,7 @@ The project root repository tracks coordination state. Subprojects track source 
 
 ## Manifest Contract
 
-State is stored in an INI-style `.gitlego` file. Manifest schema version `1` is mandatory and documented in [`../MANIFEST.md`](../MANIFEST.md). Unknown sections and unknown keys are accepted and preserved where practical so extension data can coexist with git-lego state.
+State is stored in an INI-style `.gitnest` file. Manifest schema version `1` is mandatory and documented in [`../MANIFEST.md`](../MANIFEST.md). Unknown sections and unknown keys are accepted and preserved where practical so extension data can coexist with git-nest state.
 
 The `[project]` section must record:
 
@@ -59,15 +59,15 @@ Finalized subprojects contain:
 - optional `tag=<tag>`
 - optional `finalized_from_branch=<local-cleanup-branch>`
 
-Manifest writes validate required values before mutating `.gitlego`. Empty repository URLs, missing target branches, unresolved refs, empty SHAs, duplicate controlled sections, and malformed subproject sections are hard failures.
+Manifest writes validate required values before mutating `.gitnest`. Empty repository URLs, missing target branches, unresolved refs, empty SHAs, duplicate controlled sections, and malformed subproject sections are hard failures.
 
 ## Command Guarantees
 
-- `init [--rc]`: creates the project root repository if needed, plus `.gitlego` and `.gitignore` when missing. It creates or repairs the managed git-lego `.gitattributes` block for `.gitlego`, `.gitlego-rc`, and git-lego script line endings. `--rc` creates `.gitlego-rc` with default values.
+- `init [--rc]`: creates the project root repository if needed, plus `.gitnest` and `.gitignore` when missing. It creates or repairs the managed git-nest `.gitattributes` block for `.gitnest`, `.gitnest-rc`, and git-nest script line endings. `--rc` creates `.gitnest-rc` with default values.
 - `add [--clone <full|partial>] <repo> <path>`: clones or records a subproject, ignores the subproject path in the project root, fetches refs, and writes tracked subproject state.
 - `status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]`: reports project metadata, subproject state, missing subprojects, and dirty markers. Porcelain mode prints fixed-column records; `--exit-code` returns 1 when dirty or missing rows exist.
-- `outdated [--recursive] [--porcelain | --json | --json-pretty]`: queries subproject remotes with `git ls-remote` and reports target-branch commits that differ from the recorded or checked-out state without fetching, checking out files, or rewriting `.gitlego`. It returns 1 when outdated, missing, or error rows are found.
-- `diff [--since <ref>] [--stat] [--json | --json-pretty]`: reports subproject commits present in the current checkout but not in recorded manifest revisions. `--since` reads `.gitlego` from an outer-repository ref without checking it out. It returns 1 when differences or read errors are found.
+- `outdated [--recursive] [--porcelain | --json | --json-pretty]`: queries subproject remotes with `git ls-remote` and reports target-branch commits that differ from the recorded or checked-out state without fetching, checking out files, or rewriting `.gitnest`. It returns 1 when outdated, missing, or error rows are found.
+- `diff [--since <ref>] [--stat] [--json | --json-pretty]`: reports subproject commits present in the current checkout but not in recorded manifest revisions. `--since` reads `.gitnest` from an outer-repository ref without checking it out. It returns 1 when differences or read errors are found.
 - `config <get|set|list|unset>`: manages manifest-backed subproject settings. The current allowlist supports `clone-mode`, mapped to `clone=<full|partial>`, and writes only the manifest.
 - `verify [--recursive] [--json | --json-pretty]`: checks manifest/config consistency without modifying files; structural mismatches return nonzero.
 - `log [options]`: shows a read-only, newest-first combined history view across the active project. Supports `--max-count`, `--since`, `--until`, `--subproject`, `--oneline`, and `--recursive`.
@@ -87,14 +87,14 @@ Manifest writes validate required values before mutating `.gitlego`. Empty repos
 - `sync [--recursive] [--prune] [--force] [--dry-run]`: clones missing subprojects, fetches existing subprojects, restores pending branches where possible, checks out finalized tags or revisions, validates tag/revision drift, reconciles clean stale subproject paths from local materialization state, and attempts every subproject before returning failure for any failed subproject. `--force` only downgrades tag/revision drift to a warning. `--dry-run` prints clone/fetch/checkout/prune plans without cloning, fetching, checking out, pruning, or writing materialization state.
 - `doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]`: reports environment and workspace health without repairing or modifying state. It covers Git version, shell, manifest parseability, locks, `.gitattributes`, backup ignore hints, managed hooks, optional remote reachability, and `git-filter-repo` availability.
 - `completion <bash|zsh|fish>`: prints shell completion scripts that complete command names, common command flags, and manifest subproject paths.
-- `export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]`: exports tracked subproject working-tree files, `.gitlego`, and `MANIFEST.lock` as a directory, tarball, or zip archive. It refuses dirty subprojects unless `--allow-dirty` is passed.
+- `export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]`: exports tracked subproject working-tree files, `.gitnest`, and `MANIFEST.lock` as a directory, tarball, or zip archive. It refuses dirty subprojects unless `--allow-dirty` is passed.
 - `extract <path> <remote-url> [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run]`: converts an outer-repository tracked directory into a managed subproject at the same path, stages outer file removals plus manifest/ignore changes, and records the extracted commit. Default mode creates a fresh repository from current files. `--preserve-history` requires `git-filter-repo`. Without `--push`, the remote URL is configured but not contacted.
 - `absorb <path> [--commit] [--message <msg>] [--dry-run]`: converts a managed subproject back into ordinary outer-repository files, stages manifest/ignore/file changes, and leaves the remote untouched. It commits only with `--commit` or `--message`.
 - `remove` / `rm`: removes a subproject from the manifest, optionally keeping files ignored with `--keep-files`.
 - `mv`: moves a subproject path or rewrites its manifest URL with `--url`.
-- `clone`: clones an outer repository and automatically runs `sync` when `.gitlego` is present.
+- `clone`: clones an outer repository and automatically runs `sync` when `.gitnest` is present.
 - `freeze`: pins tracked subprojects to their current checkout commits.
-- `version` / `--version`: prints `git-lego 0.7.1`.
+- `version` / `--version`: prints `git-nest 0.8.0 \\_oOO_//`.
 
 ## Branch And Version Rules
 
@@ -106,13 +106,13 @@ Subproject branch names may differ from the project root branch. `upload` record
 
 `update --remote` is an alias for `--target-head`. `update --no-fetch` resolves only refs already present in the local subproject checkout. `update --branch` and `--set-branch` retarget `target_branch` before resolving the selected revision. `--branch` is intentionally rejected with `--tag` because tag-pinned finalized state does not record `target_branch`.
 
-Nested projects are subprojects that contain their own `.gitlego`. Commands use the nearest `.gitlego` by default. Workspace-wide state commands (`status`, `outdated`, and `verify`) include nested projects when `--recursive` is used. `no-pending` is scoped to the current project. `snapshot --recursive` is the only write-side command that intentionally walks downward, and it refreshes checked-out nested projects depth-first.
+Nested projects are subprojects that contain their own `.gitnest`. Commands use the nearest `.gitnest` by default. Workspace-wide state commands (`status`, `outdated`, and `verify`) include nested projects when `--recursive` is used. `no-pending` is scoped to the current project. `snapshot --recursive` is the only write-side command that intentionally walks downward, and it refreshes checked-out nested projects depth-first.
 
 Write-side path commands refuse to operate below a nested project boundary from the parent project. This applies to manifest/path writers such as `add`, `remove`, `mv`, `config`, `update`, `finalize`, `extract`, and `absorb`. Exact tracked subproject paths remain valid from the parent project. Write-side path arguments must use forward slashes; backslash-separated paths are usage errors with exit code 2.
 
-`extract` requires tracked, committed outer-repository content. Snapshot extraction is in-place and leaves the new subproject checkout at the same path. History-preserving extraction may create `.gitlego-extract-backup/` while rebuilding history and deletes it on success. `--force` on `extract` only overrides staged outer-repository changes under the extracted path. Remote non-empty override is deliberately deferred until a concrete workflow needs it.
+`extract` requires tracked, committed outer-repository content. Snapshot extraction is in-place and leaves the new subproject checkout at the same path. History-preserving extraction may create `.gitnest-extract-backup/` while rebuilding history and deletes it on success. `--force` on `extract` only overrides staged outer-repository changes under the extracted path. Remote non-empty override is deliberately deferred until a concrete workflow needs it.
 
-`absorb` creates `.gitlego-absorb-backup/` before removing nested Git metadata and deletes it on success. It has no `--force` flag; dirty files, unpushed commits, and local-only branch tips are data-safety refusals. If `absorb --commit` fails after staging, the backup is left in place and the error explains whether to finish the outer commit or restore the backed-up `.git` directory.
+`absorb` creates `.gitnest-absorb-backup/` before removing nested Git metadata and deletes it on success. It has no `--force` flag; dirty files, unpushed commits, and local-only branch tips are data-safety refusals. If `absorb --commit` fails after staging, the backup is left in place and the error explains whether to finish the outer commit or restore the backed-up `.git` directory.
 
 Internal write-side commands resolve the current project with the shared `find_owning_manifest [<path>]` helper, which walks upward from the current directory or explicit path and never walks downward into children.
 
@@ -120,14 +120,14 @@ Internal write-side commands resolve the current project with the shared `find_o
 
 Subproject sections may use `clone=full` or `clone=partial`; missing `clone=` defaults to `full`.
 
-When present, `.gitlego-rc` supports:
+When present, `.gitnest-rc` supports:
 
 ```ini
 [clone]
 mode=manifest
 ```
 
-Missing `.gitlego-rc` behaves like `mode=manifest`. `mode=manifest` honors each subproject setting. `mode=full` and `mode=partial` force that effective mode for missing subprojects. `sync` does not convert existing checkouts in place.
+Missing `.gitnest-rc` behaves like `mode=manifest`. `mode=manifest` honors each subproject setting. `mode=full` and `mode=partial` force that effective mode for missing subprojects. `sync` does not convert existing checkouts in place.
 
 ## Stale Subproject Reconciliation
 
@@ -137,23 +137,23 @@ Dirty stale checkouts, untracked files, local-only branch tips, ambiguous same-r
 
 ## Foreach Environment
 
-Porcelain output uses seven fixed tab-separated columns: `code`, `path`, `state`, `target`, `current`, `expected`, and `detail`. JSON output schema version `1` is documented by [`../schemas/git-lego-output-v1.schema.json`](../schemas/git-lego-output-v1.schema.json). Diff rows use code `L`; filtered foreach selection rows use code `F`.
+Porcelain output uses seven fixed tab-separated columns: `code`, `path`, `state`, `target`, `current`, `expected`, and `detail`. JSON output schema version `1` is documented by [`../schemas/git-nest-output-v1.schema.json`](../schemas/git-nest-output-v1.schema.json). Diff rows use code `L`; filtered foreach selection rows use code `F`.
 
 Exit codes are: `0` success, `1` issues found, `2` usage error, `3` precondition failure, `4` lock acquisition failure, and `5` unexpected Git failure. `doctor` returns 0 by default after reporting checks; with `--exit-code`, warnings (`W`) or errors (`E`) return 1, while informational (`I`) checks never trigger nonzero. Doctor JSON uses `"info"`, `"warn"`, and `"error"` status words.
 
 `foreach`, `foreach-pending`, `foreach-modified`, and `foreach-clean` export these variables when running a command:
 
-- `GIT_LEGO_ROOT`
-- `GIT_LEGO_SUBPROJECT_PATH`
-- `GIT_LEGO_SUBPROJECT_ABSPATH`
-- `GIT_LEGO_SUBPROJECT_REPO`
-- `GIT_LEGO_BRANCH`
-- `GIT_LEGO_TARGET_BRANCH`
-- `GIT_LEGO_PENDING_BRANCH`
-- `GIT_LEGO_BASE_REVISION`
-- `GIT_LEGO_PUSHED_COMMIT`
-- `GIT_LEGO_REVISION`
-- `GIT_LEGO_TAG`
+- `GIT_NEST_ROOT`
+- `GIT_NEST_SUBPROJECT_PATH`
+- `GIT_NEST_SUBPROJECT_ABSPATH`
+- `GIT_NEST_SUBPROJECT_REPO`
+- `GIT_NEST_BRANCH`
+- `GIT_NEST_TARGET_BRANCH`
+- `GIT_NEST_PENDING_BRANCH`
+- `GIT_NEST_BASE_REVISION`
+- `GIT_NEST_PUSHED_COMMIT`
+- `GIT_NEST_REVISION`
+- `GIT_NEST_TAG`
 - `REPO_PATH`
 - `REPO_PROJECT`
 
@@ -167,7 +167,7 @@ Dirty or pending subprojects are protected from commands that would overwrite re
 
 ## Tests
 
-The integration suite uses persistent local repositories under `${TMPDIR:-/tmp}/git-lego-test-workspaces` by default and writes an ignored root-level `test-result.md` summary incrementally. Run:
+The integration suite uses persistent local repositories under `${TMPDIR:-/tmp}/git-nest-test-workspaces` by default and writes an ignored root-level `test-result.md` summary incrementally. Run:
 
 ```sh
 sh tests/run-all-tests.sh
@@ -187,7 +187,7 @@ Current tests cover initialization, empty-folder startup, copied-manifest startu
 
 ## Unsupported Repo Features
 
-`git-lego` is not a full Android `repo` replacement. It does not support Gerrit integration, automatic PR creation, Android XML manifests, `copyfile`, `linkfile`, manifest include/layering features, Android `.repo/` storage layout, mirror management, or full command parity with Android `repo`.
+`git-nest` is not a full Android `repo` replacement. It does not support Gerrit integration, automatic PR creation, Android XML manifests, `copyfile`, `linkfile`, manifest include/layering features, Android `.repo/` storage layout, mirror management, or full command parity with Android `repo`.
 
 ## Historical Reference
 
@@ -197,4 +197,4 @@ The historical implementation reference was an earlier submodule script, mainly 
 
 Copyright (C) 2026 fsteff.
 
-`git-lego` is released under the MIT License (`MIT`).
+`git-nest` is released under the MIT License (`MIT`).

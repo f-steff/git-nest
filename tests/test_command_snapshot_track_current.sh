@@ -17,10 +17,10 @@ make_bare_remote "$remote_two" "$seed_two"
 make_repo "$outer"
 
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$remote_one" libs/one >/dev/null
-"$GIT_LEGO" add "$remote_two" libs/two >/dev/null
-git add .gitlego .gitignore .gitattributes
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$remote_one" libs/one >/dev/null
+"$GIT_NEST" add "$remote_two" libs/two >/dev/null
+git add .gitnest .gitignore .gitattributes
 git commit -m "initial workspace" >/dev/null
 
 test_step "Track the current branch layout" "start . should refresh manifest state without switching unrelated subprojects."
@@ -29,8 +29,8 @@ git -C libs/one checkout -b one/TRACK-100 >/dev/null
 printf 'snapshot\n' >>libs/one/file.txt
 git -C libs/one add file.txt
 git -C libs/one commit -m "TRACK-100 snapshot one" >/dev/null
-run_ok "current branch layout snapshotted and hooks installed" -- "$GIT_LEGO" start . --hooks
-assert_file_contains .gitlego "branch=TRACK-100-outer"
-assert_file_contains .gitlego "pending_branch=one/TRACK-100"
+run_ok "current branch layout snapshotted and hooks installed" -- "$GIT_NEST" start . --hooks
+assert_file_contains .gitnest "branch=TRACK-100-outer"
+assert_file_contains .gitnest "pending_branch=one/TRACK-100"
 test "$(git -C libs/two branch --show-current)" = "main"
 describe_result "start . recorded the outer branch and pending subproject branch without switching clean subprojects."

@@ -16,9 +16,9 @@ make_bare_remote "$remote" "$seed"
 make_repo "$outer"
 
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$remote" libs/foo >/dev/null
-git add .gitlego .gitignore .gitattributes
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$remote" libs/foo >/dev/null
+git add .gitnest .gitignore .gitattributes
 git commit -m "initial workspace" >/dev/null
 
 bad_path='libs\bar'
@@ -39,23 +39,23 @@ assert_bad_path() {
     assert_file_contains "$label.err" "$expected"
 }
 
-assert_bad_path add "$GIT_LEGO" add "$remote" "$bad_path"
-assert_bad_path remove "$GIT_LEGO" remove "$bad_path" --force
-assert_bad_path mv_old "$GIT_LEGO" mv "$bad_path" libs/bar
-assert_bad_path mv_new "$GIT_LEGO" mv libs/foo "$bad_path"
-assert_bad_path config "$GIT_LEGO" config set "$bad_path" clone-mode full
-assert_bad_path update "$GIT_LEGO" update "$bad_path" --revision HEAD
-assert_bad_path finalize "$GIT_LEGO" finalize "$bad_path" --revision HEAD
-assert_bad_path freeze "$GIT_LEGO" freeze --only "$bad_path" --dry-run
+assert_bad_path add "$GIT_NEST" add "$remote" "$bad_path"
+assert_bad_path remove "$GIT_NEST" remove "$bad_path" --force
+assert_bad_path mv_old "$GIT_NEST" mv "$bad_path" libs/bar
+assert_bad_path mv_new "$GIT_NEST" mv libs/foo "$bad_path"
+assert_bad_path config "$GIT_NEST" config set "$bad_path" clone-mode full
+assert_bad_path update "$GIT_NEST" update "$bad_path" --revision HEAD
+assert_bad_path finalize "$GIT_NEST" finalize "$bad_path" --revision HEAD
+assert_bad_path freeze "$GIT_NEST" freeze --only "$bad_path" --dry-run
 
 mkdir -p plain
 printf 'plain\n' >plain/file.txt
 git add plain/file.txt
 git commit -m "add plain directory" >/dev/null
-assert_bad_path extract "$GIT_LEGO" extract "$bad_path" "$remote" --dry-run
-assert_bad_path absorb "$GIT_LEGO" absorb "$bad_path" --dry-run
+assert_bad_path extract "$GIT_NEST" extract "$bad_path" "$remote" --dry-run
+assert_bad_path absorb "$GIT_NEST" absorb "$bad_path" --dry-run
 
-assert_exit_code 3 "$GIT_LEGO" add "$remote" .git >/dev/null 2>&1
-assert_exit_code 3 "$GIT_LEGO" add "$remote" ../outside >/dev/null 2>&1
+assert_exit_code 3 "$GIT_NEST" add "$remote" .git >/dev/null 2>&1
+assert_exit_code 3 "$GIT_NEST" add "$remote" ../outside >/dev/null 2>&1
 
 describe_result "The contract path safety behavior matched the expected command output and repository state."

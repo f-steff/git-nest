@@ -29,7 +29,7 @@ root=$(test_workspace platform_busybox_compat)
 outer="$root/outer"
 mkdir -p "$outer"
 
-script=$(to_windows_path "$GIT_LEGO")
+script=$(to_windows_path "$GIT_NEST")
 outer_dir=$(to_windows_path "$outer")
 
 # Run the real entrypoint under BusyBox sh. This verifies the script remains
@@ -37,14 +37,15 @@ outer_dir=$(to_windows_path "$outer")
 "$busybox" sh -c '
     set -eu
     cd "$1"
-    test "$("$2" version)" = "git-lego 0.7.1"
+    expected_version="git-nest 0.8.0 \\\\_oOO_//"
+    test "$("$2" version)" = "$expected_version"
     "$2" --help >/dev/null
     "$2" init >/dev/null
-    test -f .gitlego
-    test ! -f .gitlego-rc
+    test -f .gitnest
+    test ! -f .gitnest-rc
     test -f .gitignore
     "$2" init --rc >/dev/null
-    test -f .gitlego-rc
+    test -f .gitnest-rc
 ' busybox-test "$outer_dir" "$script"
 
 describe_result "The platform busybox compat behavior matched the expected command output and repository state."

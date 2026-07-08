@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/f-steff/git-lego/schemas/git-lego-output-v1.schema.json",
-  "title": "git-lego command output v1",
+  "$id": "https://github.com/f-steff/git-nest/schemas/git-nest-output-v1.schema.json",
+  "title": "git-nest command output v1",
   "type": "object",
   "required": ["version", "command", "recursive", "ok", "subprojects", "errors", "warnings"],
   "additionalProperties": false,

@@ -19,49 +19,49 @@ make_bare_remote "$remote_two" "$seed_two"
 make_repo "$outer"
 
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$url_one" libs/one >/dev/null
-"$GIT_LEGO" add "$url_two" libs/two >/dev/null
-git add .gitlego .gitignore .gitattributes
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$url_one" libs/one >/dev/null
+"$GIT_NEST" add "$url_two" libs/two >/dev/null
+git add .gitnest .gitignore .gitattributes
 git commit -m "initial workspace" >/dev/null
 
 test_step "Move a clean subproject path" "mv should update checkout location, manifest section, and ignore entry together."
-run_ok "clean subproject moved to components/one" -- "$GIT_LEGO" mv libs/one components/one
+run_ok "clean subproject moved to components/one" -- "$GIT_NEST" mv libs/one components/one
 test -d components/one/.git
 test ! -e libs/one
-assert_file_contains .gitlego '[subproject "components/one"]'
+assert_file_contains .gitnest '[subproject "components/one"]'
 assert_file_contains .gitignore 'components/one/'
 assert_file_not_contains .gitignore 'libs/one/'
 
 test_step "Retarget the moved subproject URL" "mv --url is the symmetric URL-only retarget operation."
-run_ok "manifest URL updated without moving files" -- "$GIT_LEGO" mv --url "$url_one" components/one
-assert_file_contains .gitlego "repo=$url_one"
+run_ok "manifest URL updated without moving files" -- "$GIT_NEST" mv --url "$url_one" components/one
+assert_file_contains .gitnest "repo=$url_one"
 
 test_step "Remove while keeping files" "remove --keep-files should detach a checkout without letting the outer repo track it."
-run_ok "subproject detached and checkout kept ignored" -- "$GIT_LEGO" remove components/one --keep-files
+run_ok "subproject detached and checkout kept ignored" -- "$GIT_NEST" remove components/one --keep-files
 test -d components/one/.git
-assert_file_not_contains .gitlego '[subproject "components/one"]'
+assert_file_not_contains .gitnest '[subproject "components/one"]'
 assert_file_contains .gitignore 'components/one/'
-run_capture "status reports the kept checkout as unmanaged" status_unmanaged.out status_unmanaged.err -- "$GIT_LEGO" status --porcelain
+run_capture "status reports the kept checkout as unmanaged" status_unmanaged.out status_unmanaged.err -- "$GIT_NEST" status --porcelain
 assert_file_contains status_unmanaged.out 'U	components/one	unmanaged	-	-	-	nested-git-repo'
 
 test_step "Refuse unsafe remove and mv unless forced" "dirty or ahead checkouts need an explicit safety override."
 printf 'dirty\n' >>libs/two/file.txt
-run_fail "dirty subproject removal refused" any -- sh -c '"$1" remove libs/two >remove_dirty.out 2>remove_dirty.err' sh "$GIT_LEGO"
+run_fail "dirty subproject removal refused" any -- sh -c '"$1" remove libs/two >remove_dirty.out 2>remove_dirty.err' sh "$GIT_NEST"
 assert_file_contains remove_dirty.err 'rerun with --force'
-run_ok "dirty subproject removed after explicit --force" -- "$GIT_LEGO" remove libs/two --force
+run_ok "dirty subproject removed after explicit --force" -- "$GIT_NEST" remove libs/two --force
 test ! -e libs/two
-assert_file_not_contains .gitlego '[subproject "libs/two"]'
+assert_file_not_contains .gitnest '[subproject "libs/two"]'
 assert_file_not_contains .gitignore 'libs/two/'
 
-"$GIT_LEGO" add "$url_two" libs/two >/dev/null
+"$GIT_NEST" add "$url_two" libs/two >/dev/null
 git -C libs/two checkout -b local-work >/dev/null
 printf 'ahead\n' >>libs/two/file.txt
 git -C libs/two add file.txt
 git -C libs/two commit -m "local work" >/dev/null
-run_fail "ahead subproject move refused" any -- sh -c '"$1" mv libs/two moved/two >mv_dirty.out 2>mv_dirty.err' sh "$GIT_LEGO"
+run_fail "ahead subproject move refused" any -- sh -c '"$1" mv libs/two moved/two >mv_dirty.out 2>mv_dirty.err' sh "$GIT_NEST"
 assert_file_contains mv_dirty.err 'rerun with --force'
-run_ok "ahead subproject moved after explicit --force" -- "$GIT_LEGO" mv libs/two moved/two --force
+run_ok "ahead subproject moved after explicit --force" -- "$GIT_NEST" mv libs/two moved/two --force
 test -d moved/two/.git
-assert_file_contains .gitlego '[subproject "moved/two"]'
+assert_file_contains .gitnest '[subproject "moved/two"]'
 describe_result "mv and remove update path state together and require --force for unsafe local state."

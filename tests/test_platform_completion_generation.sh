@@ -16,44 +16,44 @@ make_bare_remote "$remote" "$seed"
 make_repo "$outer"
 
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$remote" libs/foo >/dev/null
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$remote" libs/foo >/dev/null
 
-"$GIT_LEGO" completion bash >git-lego.bash
-"$GIT_LEGO" completion zsh >git-lego.zsh
-"$GIT_LEGO" completion fish >git-lego.fish
+"$GIT_NEST" completion bash >git-nest.bash
+"$GIT_NEST" completion zsh >git-nest.zsh
+"$GIT_NEST" completion fish >git-nest.fish
 
-test -s git-lego.bash
-test -s git-lego.zsh
-test -s git-lego.fish
+test -s git-nest.bash
+test -s git-nest.zsh
+test -s git-nest.fish
 
-assert_file_contains git-lego.bash "complete -F _git_lego_complete git-lego"
-assert_file_contains git-lego.bash "git-lego __complete subprojects"
-assert_file_contains git-lego.zsh "#compdef git-lego"
-assert_file_contains git-lego.fish "complete -c git-lego"
+assert_file_contains git-nest.bash "complete -F _git_nest_complete git-nest"
+assert_file_contains git-nest.bash "git-nest __complete subprojects"
+assert_file_contains git-nest.zsh "#compdef git-nest"
+assert_file_contains git-nest.fish "complete -c git-nest"
 
-bash -n git-lego.bash
+bash -n git-nest.bash
 if command -v zsh >/dev/null 2>&1; then
-    zsh -n git-lego.zsh
+    zsh -n git-nest.zsh
 fi
 if command -v fish >/dev/null 2>&1; then
-    fish --no-execute git-lego.fish
+    fish --no-execute git-nest.fish
 fi
 
-"$GIT_LEGO" __complete commands >commands.out
+"$GIT_NEST" __complete commands >commands.out
 assert_file_contains commands.out "completion"
 assert_file_contains commands.out "doctor"
 assert_file_contains commands.out "export"
 assert_file_contains commands.out "sync"
-assert_file_contains git-lego.bash "--dry-run"
-assert_file_contains git-lego.bash "--offline --timeout --exit-code"
-assert_file_contains git-lego.zsh "doctor)"
-assert_file_contains git-lego.fish "__fish_seen_subcommand_from doctor"
+assert_file_contains git-nest.bash "--dry-run"
+assert_file_contains git-nest.bash "--offline --timeout --exit-code"
+assert_file_contains git-nest.zsh "doctor)"
+assert_file_contains git-nest.fish "__fish_seen_subcommand_from doctor"
 
-"$GIT_LEGO" __complete subprojects >subprojects.out
+"$GIT_NEST" __complete subprojects >subprojects.out
 assert_file_contains subprojects.out "libs/foo"
 
-if "$GIT_LEGO" completion powershell >completion_bad.out 2>completion_bad.err; then
+if "$GIT_NEST" completion powershell >completion_bad.out 2>completion_bad.err; then
     echo "unknown completion shell should fail" >&2
     exit 1
 fi

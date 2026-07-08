@@ -20,23 +20,23 @@ make_bare_remote "$remote_two" "$seed_two"
 make_repo "$outer"
 
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$url_one" libs/one >/dev/null
-"$GIT_LEGO" add "$url_two" moved/two >/dev/null
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$url_one" libs/one >/dev/null
+"$GIT_NEST" add "$url_two" moved/two >/dev/null
 git -C "$outer" init --bare "$outer_remote" >/dev/null
 git -C "$outer" remote add origin "$outer_remote"
-git add .gitlego .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes
 git commit -m "clone sync modes state" >/dev/null
 git push -u origin HEAD:main >/dev/null
 git --git-dir="$outer_remote" symbolic-ref HEAD refs/heads/main
 
 test_step "Clone without automatic sync" "clone --no-sync should materialize only the outer repository."
 clone_target="$root/cloned"
-run_ok "outer repository cloned without subproject checkout" -- "$GIT_LEGO" clone --no-sync "$outer_remote" "$clone_target"
-test -f "$clone_target/.gitlego"
+run_ok "outer repository cloned without subproject checkout" -- "$GIT_NEST" clone --no-sync "$outer_remote" "$clone_target"
+test -f "$clone_target/.gitnest"
 test ! -d "$clone_target/moved/two/.git"
 
-test_step "Clone with automatic sync" "plain clone should run sync when the outer repository contains .gitlego."
-run_ok "outer repository cloned and subprojects synced" -- "$GIT_LEGO" clone "$outer_remote" "$root/cloned-sync"
+test_step "Clone with automatic sync" "plain clone should run sync when the outer repository contains .gitnest."
+run_ok "outer repository cloned and subprojects synced" -- "$GIT_NEST" clone "$outer_remote" "$root/cloned-sync"
 test -d "$root/cloned-sync/moved/two/.git"
 describe_result "clone respected --no-sync and performed automatic sync by default."

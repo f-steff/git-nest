@@ -25,14 +25,14 @@ make_repo "$outer"
 
 # Initialize the workspace with three manifest subprojects.
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$remote_one" libs/one >/dev/null
-"$GIT_LEGO" add "$remote_two" libs/two >/dev/null
-"$GIT_LEGO" add "$remote_three" libs/three >/dev/null
-git add .gitlego .gitignore .gitattributes
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$remote_one" libs/one >/dev/null
+"$GIT_NEST" add "$remote_two" libs/two >/dev/null
+"$GIT_NEST" add "$remote_three" libs/three >/dev/null
+git add .gitnest .gitignore .gitattributes
 git commit -m "initial workspace" >/dev/null
 
-"$GIT_LEGO" start XX-456-foreach-stress >/dev/null
+"$GIT_NEST" start XX-456-foreach-stress >/dev/null
 
 # Modify two subprojects differently so upload records only those as pending.
 printf 'modified in one\n' >>libs/one/file.txt
@@ -43,31 +43,31 @@ git -C libs/one commit -m "XX-456 modify and add in one" >/dev/null
 git -C libs/two rm file.txt >/dev/null
 git -C libs/two commit -m "XX-456 delete in two" >/dev/null
 
-"$GIT_LEGO" upload >/dev/null
+"$GIT_NEST" upload >/dev/null
 
 # Leave the third subproject dirty but not pending; foreach sees it, foreach-pending should not.
 printf 'dirty but finalized\n' >>libs/three/file.txt
 
 # Capture foreach environment from every checked-out subproject.
-"$GIT_LEGO" foreach -- sh -c '
+"$GIT_NEST" foreach -- sh -c '
     printf "%s|%s|%s|%s\n" \
-        "$GIT_LEGO_SUBPROJECT_PATH" \
-        "$GIT_LEGO_BRANCH" \
+        "$GIT_NEST_SUBPROJECT_PATH" \
+        "$GIT_NEST_BRANCH" \
         "$(git status --short | wc -l | tr -d " ")" \
-        "$PWD" >>"$GIT_LEGO_ROOT/foreach_all.txt"
+        "$PWD" >>"$GIT_NEST_ROOT/foreach_all.txt"
 '
 
 # Capture foreach-pending environment from pending subprojects only.
-"$GIT_LEGO" foreach-pending -- sh -c '
+"$GIT_NEST" foreach-pending -- sh -c '
     printf "%s|%s|%s|%s\n" \
-        "$GIT_LEGO_SUBPROJECT_PATH" \
-        "$GIT_LEGO_PENDING_BRANCH" \
-        "$GIT_LEGO_BASE_REVISION" \
-        "$GIT_LEGO_PUSHED_COMMIT" >>"$GIT_LEGO_ROOT/foreach_pending.txt"
+        "$GIT_NEST_SUBPROJECT_PATH" \
+        "$GIT_NEST_PENDING_BRANCH" \
+        "$GIT_NEST_BASE_REVISION" \
+        "$GIT_NEST_PUSHED_COMMIT" >>"$GIT_NEST_ROOT/foreach_pending.txt"
 '
 
-"$GIT_LEGO" foreach -- sh -c '
-    printf "%s|%s\n" "$GIT_LEGO_SUBPROJECT_PATH" "$1" >>"$GIT_LEGO_ROOT/foreach_args.txt"
+"$GIT_NEST" foreach -- sh -c '
+    printf "%s|%s\n" "$GIT_NEST_SUBPROJECT_PATH" "$1" >>"$GIT_NEST_ROOT/foreach_args.txt"
 ' sh "argument with spaces"
 
 # Verify foreach covered all subprojects and reflected dirty state in subproject three.
@@ -86,14 +86,14 @@ assert_file_contains foreach_pending.txt "libs/two|XX-456-foreach-stress|"
 assert_file_not_contains foreach_pending.txt "libs/three|"
 
 # Confirm the manifest still has all subprojects even when only two are pending.
-assert_file_contains .gitlego '[subproject "libs/one"]'
-assert_file_contains .gitlego '[subproject "libs/two"]'
-assert_file_contains .gitlego '[subproject "libs/three"]'
+assert_file_contains .gitnest '[subproject "libs/one"]'
+assert_file_contains .gitnest '[subproject "libs/two"]'
+assert_file_contains .gitnest '[subproject "libs/three"]'
 
 # A failing per-subproject command should stop iteration and return the child exit code.
 set +e
-"$GIT_LEGO" foreach-pending -- sh -c '
-    [ "$GIT_LEGO_SUBPROJECT_PATH" = "libs/two" ] && exit 7
+"$GIT_NEST" foreach-pending -- sh -c '
+    [ "$GIT_NEST_SUBPROJECT_PATH" = "libs/two" ] && exit 7
     exit 0
 ' >/dev/null 2>&1
 rc=$?
@@ -105,7 +105,7 @@ fi
 
 # Dirty pending subprojects get an explicit composite status row.
 printf 'dirty pending\n' >>libs/one/file.txt
-"$GIT_LEGO" status --porcelain >status_dirty_pending.out
+"$GIT_NEST" status --porcelain >status_dirty_pending.out
 assert_file_contains status_dirty_pending.out "C	libs/one	composite	-	-	-	dirty-and-pending"
 
 describe_result "The command foreach context behavior matched the expected command output and repository state."

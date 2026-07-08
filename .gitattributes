@@ -2,12 +2,12 @@
 * text=auto eol=lf
 
 # Manifest and shell-facing files must stay LF.
-.gitlego text eol=lf
+.gitnest text eol=lf
 .gitattributes text eol=lf
 .gitignore text eol=lf
 *.sh text eol=lf
-bin/git-lego text eol=lf
-bin/git_lego.sh text eol=lf
+bin/git-nest text eol=lf
+bin/git_nest.sh text eol=lf
 
 # Batch files are intentionally CRLF for cmd.exe.
 *.bat text eol=crlf

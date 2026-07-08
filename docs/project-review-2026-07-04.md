@@ -1,12 +1,12 @@
-# Project review: git-lego
+# Project review: git-nest
 
 Date: 2026-07-04
 
-> Scope note: this review is based on the repository contract and project layout visible in `AGENTS.md` (`README.md`, `docs/implementation-summary.md`, `bin/git-lego`, `bin/git-lego.bat`, `bin/git_lego.sh`, shell integration tests, and `skills/git-lego/`). Local command execution was unavailable in this review session, so items that require runtime confirmation are marked as validation targets.
+> Scope note: this review is based on the repository contract and project layout visible in `AGENTS.md` (`README.md`, `docs/implementation-summary.md`, `bin/git-nest`, `bin/git-nest.bat`, `bin/git_nest.sh`, shell integration tests, and `skills/git-nest/`). Local command execution was unavailable in this review session, so items that require runtime confirmation are marked as validation targets.
 
 ## Executive summary
 
-`git-lego` is a useful idea: it targets the common gap between monorepos and submodules by offering a manifest-driven stack of independent Git repositories that can be initialized, worked on, uploaded, finalized, and synced together. The project is strongest when it behaves as a small, predictable workflow tool rather than a hidden abstraction over Git.
+`git-nest` is a useful idea: it targets the common gap between monorepos and submodules by offering a manifest-driven stack of independent Git repositories that can be initialized, worked on, uploaded, finalized, and synced together. The project is strongest when it behaves as a small, predictable workflow tool rather than a hidden abstraction over Git.
 
 The main product risk is not the concept; it is workflow ambiguity. Users need to understand which commands mutate local checkouts, which commands mutate remotes, which commands rewrite the manifest, and which commands are safe to retry. The highest-return improvements are therefore in command symmetry, dry-run/status output, clearer failure recovery, and deterministic edge-case handling.
 
@@ -15,10 +15,10 @@ The main product risk is not the concept; it is workflow ambiguity. Users need t
 ### What works well
 
 - The tool solves a real problem for teams that need multiple repos to move together without fully committing to Git submodules or a monorepo.
-- A plain manifest (`.gitlego`) is approachable, reviewable, and CI-friendly.
+- A plain manifest (`.gitnest`) is approachable, reviewable, and CI-friendly.
 - The workflow vocabulary (`init`, `add`, `start`, `upload`, `finalize`, `sync`) maps reasonably well to the lifecycle of a coordinated multi-repo change.
 - Pinning finalized entries with `revision=<sha>` is the right safety model for reproducibility.
-- Providing an AI skill in `skills/git-lego/` is a differentiator: it helps agents consume the workflow consistently in downstream projects.
+- Providing an AI skill in `skills/git-nest/` is a differentiator: it helps agents consume the workflow consistently in downstream projects.
 
 ### Main concern
 
@@ -27,7 +27,7 @@ The current command set appears lifecycle-oriented, but the names do not fully r
 ### Actionable recommendations
 
 1. Add a one-screen "mental model" section to the README:
-   - Workspace repo contains `.gitlego`.
+   - Workspace repo contains `.gitnest`.
    - Subprojects are normal Git repos.
    - Branch mode tracks coordinated work.
    - Finalized mode pins exact commits.
@@ -40,7 +40,7 @@ The current command set appears lifecycle-oriented, but the names do not fully r
    - Commits?
    - Pushes?
    - Requires clean working trees?
-3. Explicitly state the "escape hatch": users can always `cd` into a subproject and use normal Git, but must run `git-lego sync/status/finalize` to reconcile manifest state.
+3. Explicitly state the "escape hatch": users can always `cd` into a subproject and use normal Git, but must run `git-nest sync/status/finalize` to reconcile manifest state.
 
 ## Command design and symmetry
 
@@ -74,9 +74,9 @@ This is the most important missing usability command. Before users trust mutatin
 Suggested shape:
 
 ```text
-git lego status
-git lego status --porcelain
-git lego status --json
+git nest status
+git nest status --porcelain
+git nest status --json
 ```
 
 #### Add `plan` or `--dry-run` everywhere
@@ -93,7 +93,7 @@ The output should be deterministic and copy-pasteable into issue reports.
 
 #### Add `remove`
 
-If `add` exists, users will expect `remove`. Without it, they must hand-edit `.gitlego`, which is acceptable for advanced users but unfriendly for early adoption.
+If `add` exists, users will expect `remove`. Without it, they must hand-edit `.gitnest`, which is acceptable for advanced users but unfriendly for early adoption.
 
 Important cases:
 
@@ -104,9 +104,9 @@ Important cases:
 Suggested shape:
 
 ```text
-git lego remove <name>
-git lego remove <name> --delete-working-tree
-git lego remove <name> --force
+git nest remove <name>
+git nest remove <name> --delete-working-tree
+git nest remove <name> --force
 ```
 
 #### Add `rename` or document manual rename
@@ -131,8 +131,8 @@ This can be an alias or superset of validation:
 
 The tests are expected to cover startup from empty folders. The UX should still be clear:
 
-- If no `.gitlego` exists, commands other than `init` should say exactly that.
-- Error messages should suggest `git lego init`.
+- If no `.gitnest` exists, commands other than `init` should say exactly that.
+- Error messages should suggest `git nest init`.
 - Commands should not silently create a manifest unless the command is `init`.
 
 ### Re-running commands
@@ -162,7 +162,7 @@ Low-hanging improvement: add a shared "dirty tree summary" helper that prints th
 Finalized entries pin commits, so sync may put subprojects into detached HEAD. That is correct but surprising. The tool should print a clear message:
 
 - "Checked out pinned revision `<sha>`; this subproject is in detached HEAD."
-- "Run `git lego start <branch>` to resume branch-based work."
+- "Run `git nest start <branch>` to resume branch-based work."
 
 ### Branch names and default branches
 
@@ -184,7 +184,7 @@ Manifest paths should be treated as untrusted input, even though they are local 
 - Do not contain `..` path traversal.
 - Do not resolve outside the workspace.
 - Do not point to the workspace root.
-- Do not collide with `.git`, `.gitlego`, or another subproject path.
+- Do not collide with `.git`, `.gitnest`, or another subproject path.
 
 This matters for both user safety and CI/devops usage.
 
@@ -230,12 +230,12 @@ If CI or users clone subprojects shallowly, `sync` to a pinned revision may fail
 
 ### Windows and path portability
 
-The project includes `bin/git-lego.bat`, which is good. Watch these cases:
+The project includes `bin/git-nest.bat`, which is good. Watch these cases:
 
 - Paths with spaces.
 - Drive-letter paths.
 - Git Bash versus `cmd.exe` invocation.
-- CRLF in `.gitlego`.
+- CRLF in `.gitnest`.
 - Shell scripts sourced from Windows paths.
 - Executable bit absent after checkout on Windows.
 
@@ -245,7 +245,7 @@ Low-hanging fruit: add tests with a workspace path containing spaces.
 
 ### Keep shell helpers small and shared
 
-The split between `bin/git-lego` and `bin/git_lego.sh` is appropriate. To keep behavior consistent, the implementation should avoid each command reimplementing its own parsing, Git checks, dirty-tree checks, and manifest rewrites.
+The split between `bin/git-nest` and `bin/git_nest.sh` is appropriate. To keep behavior consistent, the implementation should avoid each command reimplementing its own parsing, Git checks, dirty-tree checks, and manifest rewrites.
 
 High-value shared helpers:
 
@@ -268,7 +268,7 @@ Manifest rewrites should be atomic:
 
 1. Write to a temporary file in the same directory.
 2. Validate the temporary file.
-3. Move it over `.gitlego`.
+3. Move it over `.gitnest`.
 
 If a command is interrupted, the original manifest should remain valid.
 
@@ -309,7 +309,7 @@ If a command does commit, its commit message format and failure modes should be 
 
 ### Low-hanging UX improvements
 
-1. Add `git lego status`.
+1. Add `git nest status`.
 2. Add `--dry-run` to all mutating commands.
 3. Add `--verbose` and `--quiet`.
 4. Add command examples for the happy path and recovery path.
@@ -320,11 +320,11 @@ If a command does commit, its commit message format and failure modes should be 
    - Missing remote branch.
    - Finalized revision not found.
 6. Print next-step hints after successful commands:
-   - After `init`: "Next: `git lego add ...`"
-   - After `add`: "Next: `git lego sync` or `git lego start <branch>`"
-   - After `start`: "Next: commit in subprojects, then `git lego upload`"
-   - After `upload`: "Next: open PRs or `git lego finalize`"
-   - After `finalize`: "Review and commit `.gitlego`"
+   - After `init`: "Next: `git nest add ...`"
+   - After `add`: "Next: `git nest sync` or `git nest start <branch>`"
+   - After `start`: "Next: commit in subprojects, then `git nest upload`"
+   - After `upload`: "Next: open PRs or `git nest finalize`"
+   - After `finalize`: "Review and commit `.gitnest`"
 
 ## Developer perspective
 
@@ -372,12 +372,12 @@ Devops users need non-interactive, reproducible behavior. Prioritize:
 Document examples such as:
 
 ```sh
-git lego doctor
-git lego sync --frozen
-git lego status --porcelain
+git nest doctor
+git nest sync --frozen
+git nest status --porcelain
 ```
 
-`--frozen` would mean: fail if the manifest is invalid, a pinned revision cannot be checked out, or any command would rewrite `.gitlego`.
+`--frozen` would mean: fail if the manifest is invalid, a pinned revision cannot be checked out, or any command would rewrite `.gitnest`.
 
 ### Release/reproducibility risks
 
@@ -385,7 +385,7 @@ git lego status --porcelain
 - Finalized entries must always include `revision=<sha>`.
 - CI should be able to reject manifests that contain branch-only entries in release contexts.
 
-Low-hanging fruit: add `git lego doctor --release` or `git lego validate --finalized`.
+Low-hanging fruit: add `git nest doctor --release` or `git nest validate --finalized`.
 
 ## Documentation recommendations
 
@@ -393,7 +393,7 @@ Low-hanging fruit: add `git lego doctor --release` or `git lego validate --final
 
 Add these sections near the top:
 
-1. "When to use git-lego instead of submodules or a monorepo"
+1. "When to use git-nest instead of submodules or a monorepo"
 2. "Mental model"
 3. "Command side effects"
 4. "Recovery cookbook"
@@ -457,7 +457,7 @@ Use this as an implementation and test checklist:
 - [ ] Running outside a workspace.
 - [ ] Running in an empty folder.
 - [ ] Running inside a subproject instead of the root.
-- [ ] Existing `.gitlego` with CRLF line endings.
+- [ ] Existing `.gitnest` with CRLF line endings.
 - [ ] Manifest with blank lines and comments.
 - [ ] Duplicate project name.
 - [ ] Duplicate path.

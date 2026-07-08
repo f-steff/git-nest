@@ -24,13 +24,13 @@ make_repo "$outer"
 
 # Initialize the workspace and create the outer project branch in all subprojects.
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$remote_one" libs/one >/dev/null
-"$GIT_LEGO" add "$remote_two" libs/two >/dev/null
-"$GIT_LEGO" add "$remote_three" libs/three >/dev/null
-git add .gitlego .gitignore .gitattributes
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$remote_one" libs/one >/dev/null
+"$GIT_NEST" add "$remote_two" libs/two >/dev/null
+"$GIT_NEST" add "$remote_three" libs/three >/dev/null
+git add .gitnest .gitignore .gitattributes
 git commit -m "initial workspace" >/dev/null
-"$GIT_LEGO" start XX-777-project >/dev/null
+"$GIT_NEST" start XX-777-project >/dev/null
 
 # Move two subprojects onto subproject-specific branch names and commit work there.
 git -C libs/one checkout -b subproject-one/XX-777 >/dev/null
@@ -44,13 +44,13 @@ git -C libs/two add file.txt
 git -C libs/two commit -m "XX-777 two work" >/dev/null
 
 # Upload should push only changed subprojects and record their actual branch names.
-"$GIT_LEGO" upload >/dev/null
+"$GIT_NEST" upload >/dev/null
 
-assert_file_contains .gitlego '[subproject "libs/one"]'
-assert_file_contains .gitlego 'pending_branch=subproject-one/XX-777'
-assert_file_contains .gitlego '[subproject "libs/two"]'
-assert_file_contains .gitlego 'pending_branch=subproject-two-XX-777'
-assert_file_not_contains .gitlego 'pending_branch=XX-777-project'
+assert_file_contains .gitnest '[subproject "libs/one"]'
+assert_file_contains .gitnest 'pending_branch=subproject-one/XX-777'
+assert_file_contains .gitnest '[subproject "libs/two"]'
+assert_file_contains .gitnest 'pending_branch=subproject-two-XX-777'
+assert_file_not_contains .gitnest 'pending_branch=XX-777-project'
 
 # The unchanged candidate branch in subproject three must not be pushed or pending.
 git --git-dir="$remote_one" show-ref --verify --quiet refs/heads/subproject-one/XX-777
@@ -59,20 +59,20 @@ if git --git-dir="$remote_three" show-ref --verify --quiet refs/heads/XX-777-pro
     echo "unchanged candidate subproject should not be pushed" >&2
     exit 1
 fi
-if grep -A5 '^\[subproject "libs/three"\]$' .gitlego | grep -F 'pending_branch=' >/dev/null; then
+if grep -A5 '^\[subproject "libs/three"\]$' .gitnest | grep -F 'pending_branch=' >/dev/null; then
     echo "unchanged candidate subproject should not become pending" >&2
     exit 1
 fi
 
 # Any dirty checked-out subproject blocks upload before manifest state changes.
 printf 'dirty\n' >>libs/three/file.txt
-if "$GIT_LEGO" upload >dirty_upload.out 2>dirty_upload.err; then
+if "$GIT_NEST" upload >dirty_upload.out 2>dirty_upload.err; then
     echo "upload should fail when a subproject has uncommitted changes" >&2
     exit 1
 fi
 assert_file_contains dirty_upload.err "subproject libs/three has uncommitted changes"
 
-if "$GIT_LEGO" upload --unknown >unknown_upload.out 2>unknown_upload.err; then
+if "$GIT_NEST" upload --unknown >unknown_upload.out 2>unknown_upload.err; then
     echo "upload should reject unknown options" >&2
     exit 1
 fi

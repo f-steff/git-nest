@@ -11,9 +11,9 @@ root=$(test_workspace contract_manifest_schema)
 valid="$root/valid"
 make_repo "$valid"
 cd "$valid"
-"$GIT_LEGO" init >/dev/null
-assert_file_contains .gitlego "version=1"
-"$GIT_LEGO" status >/dev/null
+"$GIT_NEST" init >/dev/null
+assert_file_contains .gitnest "version=1"
+"$GIT_NEST" status >/dev/null
 
 case_dir() {
     name=$1
@@ -21,11 +21,11 @@ case_dir() {
     dir="$root/$name"
     make_repo "$dir"
     cd "$dir"
-    printf '%s\n' "$body" >.gitlego
+    printf '%s\n' "$body" >.gitnest
 }
 
 case_dir missing_version '[project]'
-if "$GIT_LEGO" status >out 2>err; then
+if "$GIT_NEST" status >out 2>err; then
     echo "missing version should fail" >&2
     exit 1
 fi
@@ -33,14 +33,14 @@ assert_file_contains err "missing manifest schema version"
 
 case_dir wrong_version '[project]
 version=2'
-assert_exit_code 3 "$GIT_LEGO" status >/dev/null 2>err
+assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "unsupported manifest schema version 2"
 
 case_dir duplicate_section '[project]
 version=1
 [project]
 version=1'
-assert_exit_code 3 "$GIT_LEGO" status >/dev/null 2>err
+assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "duplicate section"
 
 case_dir duplicate_subproject_section '[project]
@@ -49,44 +49,44 @@ version=1
 repo=file:///tmp/foo.git
 [subproject "libs/foo"]
 repo=file:///tmp/foo.git'
-assert_exit_code 3 "$GIT_LEGO" status >/dev/null 2>err
+assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "duplicate section"
 
 case_dir duplicate_key '[project]
 version=1
 version=1'
-assert_exit_code 3 "$GIT_LEGO" status >/dev/null 2>err
+assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "duplicate key"
 
 case_dir unknown_key '[project]
 version=1
 unknown=value'
-"$GIT_LEGO" status >/dev/null
+"$GIT_NEST" status >/dev/null
 
 case_dir unknown_subproject_key '[project]
 version=1
 [subproject "libs/foo"]
 repo=file:///tmp/foo.git
 unexpected=value'
-"$GIT_LEGO" status >/dev/null
+"$GIT_NEST" status >/dev/null
 
 case_dir unknown_section '[project]
 version=1
 [extension "tool"]
 owner=value'
-"$GIT_LEGO" status >/dev/null
+"$GIT_NEST" status >/dev/null
 
 case_dir malformed_section '[project]
 version=1
 [subproject libs/foo]'
-assert_exit_code 3 "$GIT_LEGO" status >/dev/null 2>err
+assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "malformed subproject section"
 
 case_dir missing_repo '[project]
 version=1
 [subproject "libs/foo"]
 target_branch=main'
-assert_exit_code 3 "$GIT_LEGO" status >/dev/null 2>err
+assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "missing repo"
 
 case_dir invalid_clone '[project]
@@ -94,7 +94,7 @@ version=1
 [subproject "libs/foo"]
 repo=file:///tmp/foo.git
 clone=shallow'
-assert_exit_code 3 "$GIT_LEGO" status >/dev/null 2>err
+assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "invalid clone mode"
 
 case_dir incomplete_pending '[project]
@@ -104,7 +104,7 @@ repo=file:///tmp/foo.git
 pending_branch=TOPIC-1
 target_branch=main
 base_revision=abc123'
-assert_exit_code 3 "$GIT_LEGO" status >/dev/null 2>err
+assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "pending subproject missing pushed_commit"
 
 case_dir tag_without_revision '[project]
@@ -112,7 +112,7 @@ version=1
 [subproject "libs/foo"]
 repo=file:///tmp/foo.git
 tag=v1.0.0'
-assert_exit_code 3 "$GIT_LEGO" status >/dev/null 2>err
+assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "tag requires revision"
 
 describe_result "The contract manifest schema behavior matched the expected command output and repository state."

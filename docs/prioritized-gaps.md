@@ -19,7 +19,7 @@ Next steps:
 Next steps:
 
 - Add a small recovery journal for `extract` and `absorb`.
-- Provide an explicit `git-lego recover` or documented manual recovery flow generated from that journal.
+- Provide an explicit `git-nest recover` or documented manual recovery flow generated from that journal.
 - Extend tests with injected filesystem/Git failures after backup creation.
 
 ## P2: Runtime Push Failure After Upload Starts

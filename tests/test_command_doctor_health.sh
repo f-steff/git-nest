@@ -16,16 +16,16 @@ make_bare_remote "$remote" "$seed"
 make_repo "$outer"
 
 cd "$outer"
-"$GIT_LEGO" init >/dev/null
-"$GIT_LEGO" add "$remote" libs/foo >/dev/null
-git add .gitlego .gitignore .gitattributes
+"$GIT_NEST" init >/dev/null
+"$GIT_NEST" add "$remote" libs/foo >/dev/null
+git add .gitnest .gitignore .gitattributes
 git commit -m "initial workspace" >/dev/null
 
-"$GIT_LEGO" doctor --offline >doctor.out
+"$GIT_NEST" doctor --offline >doctor.out
 assert_file_contains doctor.out "I	git-version"
 assert_file_contains doctor.out "I	remotes	remote reachability skipped by --offline"
 
-"$GIT_LEGO" doctor --json --offline >doctor.json
+"$GIT_NEST" doctor --json --offline >doctor.json
 python -m json.tool doctor.json >/dev/null 2>&1 || python3 -m json.tool doctor.json >/dev/null
 assert_file_contains doctor.json '"command":"doctor"'
 assert_file_contains doctor.json '"checks"'
@@ -35,7 +35,7 @@ import importlib.util
 raise SystemExit(0 if importlib.util.find_spec("jsonschema") else 1)
 PY
 then
-    python - "$REPO_ROOT/schemas/git-lego-output-v1.schema.json" doctor.json <<'PY'
+    python - "$REPO_ROOT/schemas/git-nest-output-v1.schema.json" doctor.json <<'PY'
 import json
 import sys
 import jsonschema
@@ -46,8 +46,8 @@ PY
 fi
 
 rm .gitattributes
-"$GIT_LEGO" doctor --offline >doctor_warn.out
+"$GIT_NEST" doctor --offline >doctor_warn.out
 assert_file_contains doctor_warn.out "W	gitattributes"
-assert_exit_code 1 "$GIT_LEGO" doctor --offline --exit-code >/dev/null 2>&1
+assert_exit_code 1 "$GIT_NEST" doctor --offline --exit-code >/dev/null 2>&1
 
 describe_result "The command doctor health behavior matched the expected command output and repository state."
