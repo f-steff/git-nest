@@ -1,6 +1,6 @@
 ---
 name: git-nest
-description: Use git-nest in an application or firmware workspace that consumes the tool. Use when an AI agent needs to inspect, sync, verify, edit, test, or prepare changes in a project with a .gitnest manifest and nested subprojects, while avoiding modifications to the git-nest tool itself.
+description: Use git-nest in an application or firmware workspace that consumes the tool. Use when an AI agent needs to inspect, restore, verify, edit, test, or prepare changes in a project with a .gitnest manifest and nested subprojects, while avoiding modifications to the git-nest tool itself.
 ---
 
 # git-nest
@@ -11,7 +11,7 @@ Use this skill when working in a project that already uses `git-nest`. The goal 
 
 - Do not modify `bin/git-nest`, `bin/git-nest.bat`, or `bin/git_nest.sh` unless the user explicitly asks to change the tool.
 - Treat `.gitnest` as project coordination state. Prefer `git-nest` commands over manual edits.
-- Do not run `git-nest upload`, push branches, install hooks, or finalize subprojects unless the user explicitly asks.
+- Do not push branches, install hooks, discard work, or alter `.gitnest` unless the user explicitly asks.
 - Do not delete subprojects or rewrite branches to clean up unless the user explicitly asks.
 - Preserve each repository boundary. A project root commit and subproject commits are separate Git histories.
 
@@ -43,19 +43,19 @@ Use the command form already used by the project when possible.
 Before editing:
 
 ```sh
-git nest sync
+git nest restore
 git nest status
 git nest outdated
 git nest verify
 ```
 
-Use `sync` to fetch and restore subprojects recorded in `.gitnest`. Use `status` to understand project root and subproject state. Use `verify` to catch missing subprojects, wrong remotes, unresolved refs, or checkout drift.
+Use `restore` to fetch and restore subprojects recorded in `.gitnest` for the current nest. Use `status` to understand nest root and subproject state. Use `verify` to catch missing subprojects, wrong remotes, unresolved refs, or checkout drift.
 
 Use `doctor --offline` as a local sanity check before longer investigations or test runs. Use plain `doctor` when remote reachability is part of the question.
 
 Use `outdated` when the user wants to know whether subproject remotes have newer target-branch commits without updating `.gitnest`, fetching local refs, or changing checkouts.
 
-Use `log` as a read-only project history view. It shows recent commits across the project root and checked-out subprojects without fetching or rewriting history.
+Use `log` as a read-only nest history view. It shows recent commits across the nest root and checked-out subprojects without fetching or rewriting history.
 
 When changing code:
 
@@ -85,7 +85,7 @@ git nest verify --recursive
 git nest snapshot --recursive
 ```
 
-Write-side commands preserve project boundaries. From a parent project, do not run path-changing commands against paths inside a nested project; run from the nested project root instead. Use `snapshot --recursive` only when the user wants recursive local manifest refresh. `no-pending` is scoped to the current project, so run it from each nested project that has its own merge gate. Keep current-project scoped commands such as `diff`, `foreach-*`, and `export` rooted where the user asked you to run them.
+Write-side commands preserve nest boundaries. From a parent nest, do not run path-changing commands against paths inside a nested nest; run from the nested nest root instead. Use `snapshot --recursive` only when the user wants recursive local manifest refresh. Keep current-nest scoped commands such as `diff`, `foreach-*`, and `export` rooted where the user asked you to run them.
 
 Use porcelain output when a script or automation step needs stable records:
 
@@ -94,7 +94,7 @@ git nest status --recursive --porcelain
 git nest outdated --recursive --porcelain
 ```
 
-For `status --porcelain`, non-empty output means the project workspace is dirty or incomplete. For `outdated --porcelain`, non-empty output means newer subproject commits, missing checkouts, or remote query problems were found.
+For `status --porcelain`, non-empty output means the current nest workspace is dirty or incomplete. For `outdated --porcelain`, non-empty output means newer subproject commits, missing checkouts, or remote query problems were found.
 
 Use filtered foreach commands when you need to inspect or operate on a subset of checked-out subprojects:
 
@@ -104,42 +104,28 @@ git nest foreach-clean --porcelain
 git nest foreach-modified -- sh -c 'git status --short'
 ```
 
-`foreach-modified` means dirty working trees. `foreach-clean` means clean checked-out subprojects. `foreach-pending` means manifest entries with `pending_branch=...`; use it for review or PR workflows after `upload`.
+`foreach-modified` means dirty working trees. `foreach-clean` means clean checked-out subprojects.
 
-## Branching
+## Branching And Recording State
 
-Only start coordinated branches when the user asks:
+Use normal Git branch commands. `git-nest` can remember branch names locally, but it does not create, switch, push, or delete Git branches:
 
 ```sh
-git nest start XX-123-short-description
+git switch -c feature/shared-cache
+git nest branch-mark
+git nest branch-list --verbose
 ```
 
-Use `git nest start .` when the user wants `git-nest` to record current branches without creating or switching branches.
-
-If dirty files exist, ask before choosing `--stash-dirty`, `--discard-dirty`, or cancellation. Do not discard work automatically.
-
-## Preparing Review State
-
-Use this only when the user asks to prepare or publish work:
+After a subproject change is committed and pushed with Git, update the manifest:
 
 ```sh
 git nest snapshot
 git nest snapshot --dry-run
-git nest upload
-git nest upload --dry-run
-git nest upload --finalize
-git nest no-pending
 ```
 
-`snapshot` updates local manifest state without pushing. `snapshot --dry-run` prints manifest field changes without writing. `upload` pushes changed subproject branches and records pending subproject state in `.gitnest`. `upload --dry-run` prints planned pushes and manifest changes without pushing, fetching, or writing. `upload --finalize` pushes changed subproject branches and records the pushed commits directly as finalized revisions when the user does not want a separate review/finalize step. `no-pending` fails while pending subprojects remain.
+`snapshot` records clean, reproducible checked-out subproject commits. `snapshot --dry-run` prints manifest field changes without writing. `snapshot --check --strict` checks reproducibility without writing.
 
-`git-nest` does not create pull requests by itself. If the project uses provider tooling, create PRs only when the user asks, commonly after upload:
-
-```sh
-git nest foreach-pending -- az repos pr create ...
-```
-
-## Updating Project Subprojects
+## Updating Nest Subprojects
 
 Only change subproject versions when the user asks. Prefer command-driven updates:
 
@@ -158,22 +144,22 @@ After an update, inspect `.gitnest` and run:
 git nest verify
 ```
 
-## Changing Project Shape
+## Changing Nest Shape
 
 Only change project shape when the user explicitly asks. Prefer command-driven changes:
 
 ```sh
 git nest remove <path>
 git nest remove <path> --keep-files
-git nest mv <old-path> <new-path>
-git nest mv --url <new-url> <path>
+git nest move <old-path> <new-path>
+git nest move --url <new-url> <path>
 git nest extract <path> <remote-url>
 git nest absorb <path>
 ```
 
-`remove` deletes the checkout by default and removes the manifest entry. Use `--keep-files` when the user wants to stop managing the path without deleting the checkout. `mv` moves a managed subproject path and updates `.gitnest` and `.gitignore`; `mv --url` changes only the manifest URL and does not change the checkout remote.
+`remove` deletes the checkout by default and removes the manifest entry. Use `--keep-files` when the user wants to stop managing the path without deleting the checkout. `move`/`mv` moves a managed subproject path and updates `.gitnest` and `.gitignore`; `move --url` changes only the manifest URL and does not change the checkout remote.
 
-`extract` turns tracked outer-repository files into a managed subproject and stages the outer manifest/ignore/file removals. `extract --force` only overrides staged outer-repository changes under the extracted path; it does not override dirty files, untracked files, or non-empty remotes. `absorb` turns a managed subproject back into outer-repository files and leaves the remote untouched. It has no force mode. Inspect `git nest status` and `git status --short` before and after.
+`extract` turns tracked outer-repository files into a managed subproject in the current nest and stages the outer manifest/ignore/file removals. `extract --force` only overrides staged outer-repository changes under the extracted path; it does not override dirty files, untracked files, or non-empty remotes. `absorb` turns a managed subproject back into ordinary outer-repository files and leaves the remote untouched. It has no force mode. Inspect `git nest status` and `git status --short` before and after.
 
 ## Exporting Snapshots
 
@@ -184,21 +170,7 @@ git nest export --output build/source.tar.gz --deterministic
 git nest export --output build/source-dir --format dir
 ```
 
-`export` writes `.gitnest`, a generated `MANIFEST.lock`, and tracked subproject working-tree files. It omits ignored files and strips `.git` directories unless `--include-git` is passed. It refuses dirty subprojects unless the user explicitly asks for `--allow-dirty`.
-
-## Finalizing Pending Subprojects
-
-Only finalize when the user says a subproject change is approved or merged:
-
-```sh
-git nest finalize libs/foo --revision <sha>
-git nest finalize libs/foo --tag v1.2.3
-git nest finalize libs/foo --use-target-head
-git nest finalize libs/foo --dry-run --use-target-head
-git nest no-pending
-```
-
-Use explicit `--revision` or `--tag` when known. Avoid relying on auto-finalize if there is any ambiguity.
+`export` writes `.gitnest`, a generated `MANIFEST.lock`, and tracked subproject working-tree files. It omits ignored files and strips `.git` directories unless `--include-git` is passed. It refuses dirty subprojects unless the user explicitly asks for `--allow-dirty`. Directory exports use shell file copying, `tar.gz` exports require system `tar`, and `zip` exports require `python` or `python3`.
 
 ## IDE And Build Hooks
 
@@ -223,6 +195,6 @@ git nest doctor --offline
 git nest foreach -- git status --short
 ```
 
-Use `git nest sync --dry-run`, `snapshot --dry-run`, `upload --dry-run`, and `finalize --dry-run` to preview supported mutating flows. The README Recovery Cookbook has copy-paste recovery steps for common failures.
+Use `git nest restore --dry-run` and `git nest snapshot --dry-run` to preview the core mutating flows.
 
-Ask before running commands that mutate repositories, push branches, install hooks, finalize subprojects, discard changes, or alter `.gitnest`.
+Ask before running commands that mutate repositories, push branches, install hooks, discard changes, or alter `.gitnest`.

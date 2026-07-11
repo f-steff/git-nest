@@ -58,7 +58,7 @@ sync_partial="$work/sync_partial"
 mkdir -p "$sync_partial"
 cp .gitnest .gitnest-rc "$sync_partial/"
 cd "$sync_partial"
-git nest sync >/dev/null
+git nest restore >/dev/null
 test "$(git -C libs/foo config --get remote.origin.promisor)" = "true"
 test "$(git -C libs/foo config --get remote.origin.partialclonefilter)" = "blob:none"
 test "$(git -C libs/foo rev-parse HEAD)" = "$revision"
@@ -83,7 +83,7 @@ cat >"$sync_global_partial/.gitnest-rc" <<EOF
 mode=partial
 EOF
 cd "$sync_global_partial"
-git nest sync >/dev/null
+git nest restore >/dev/null
 test "$(git -C libs/foo config --get remote.origin.promisor)" = "true"
 git nest verify >/dev/null
 
@@ -107,7 +107,7 @@ cat >"$sync_global_full/.gitnest-rc" <<EOF
 mode=full
 EOF
 cd "$sync_global_full"
-git nest sync >/dev/null
+git nest restore >/dev/null
 if git -C libs/foo config --get remote.origin.promisor >/dev/null 2>&1; then
     echo "global full clone override should not create a partial clone" >&2
     exit 1

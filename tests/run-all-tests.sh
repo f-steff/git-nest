@@ -151,7 +151,7 @@ if [ "$stop_after_hang" -eq 0 ]; then
     printf '\n%s\n' "$heading"
     underline_for "$heading"
     start=$(date +%s)
-    expected_version='git-nest 0.8.0 \\_oOO_//'
+    expected_version='git-nest 0.8.1 \\_oOO_//'
     if {
         sh "$REPO_ROOT/bin/git-nest" --help >/dev/null
         test "$(sh "$REPO_ROOT/bin/git-nest" version)" = "$expected_version"

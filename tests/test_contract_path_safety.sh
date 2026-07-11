@@ -43,9 +43,9 @@ assert_bad_path add "$GIT_NEST" add "$remote" "$bad_path"
 assert_bad_path remove "$GIT_NEST" remove "$bad_path" --force
 assert_bad_path mv_old "$GIT_NEST" mv "$bad_path" libs/bar
 assert_bad_path mv_new "$GIT_NEST" mv libs/foo "$bad_path"
+assert_bad_path move "$GIT_NEST" move libs/foo "$bad_path"
 assert_bad_path config "$GIT_NEST" config set "$bad_path" clone-mode full
 assert_bad_path update "$GIT_NEST" update "$bad_path" --revision HEAD
-assert_bad_path finalize "$GIT_NEST" finalize "$bad_path" --revision HEAD
 assert_bad_path freeze "$GIT_NEST" freeze --only "$bad_path" --dry-run
 
 mkdir -p plain

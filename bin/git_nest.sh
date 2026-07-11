@@ -1,11 +1,11 @@
 #!/bin/sh
 #
-# git-nest 0.8.0
+# git-nest 0.8.1
 #
 # Lightweight multi-repository workspace coordination for ordinary Git remotes.
 # A project root repository tracks a manifest of nested subproject repositories,
-# while this script provides the command behavior for initializing, syncing,
-# branching, uploading, finalizing, and verifying that workspace state.
+# while this script provides the command behavior for initializing, restoring,
+# snapshotting, and verifying that workspace state.
 #
 # This file is the shared shell implementation sourced by bin/git-nest.
 # Keeping command logic here leaves the PATH-facing entrypoint tiny while
@@ -19,7 +19,11 @@
 
 MANIFEST_FILE=${GIT_NEST_MANIFEST:-.gitnest}
 CONFIG_FILE=${GIT_NEST_CONFIG:-.gitnest-rc}
-GIT_NEST_VERSION=0.8.0
+BRANCH_MARKS_FILE=${GIT_NEST_BRANCH_MARKS:-.gitnest-branches}
+PUSH_CANDIDATES_FILE=${GIT_NEST_PUSH_CANDIDATES:-.gitnest-push-candidates}
+GIT_NEST_VERSION=0.8.1
+GIT_NEST_LOCK_TIMEOUT_SECONDS=${GIT_NEST_LOCK_TIMEOUT_SECONDS:-10}
+GIT_NEST_DOCTOR_TIMEOUT_SECONDS=${GIT_NEST_DOCTOR_TIMEOUT_SECONDS:-5}
 MANIFEST_SCHEMA_VERSION=1
 JSON_SCHEMA_VERSION=1
 GITATTRIBUTES_GUARD='.gitnest text eol=lf'
@@ -84,6 +88,15 @@ require_value() {
     [ -n "$value" ] || precondition_error "$message"
 }
 
+validate_positive_integer() {
+    vpi_value=$1
+    vpi_name=$2
+    case "$vpi_value" in
+        *[!0-9]*|"") usage_error "$vpi_name requires a positive integer" ;;
+    esac
+    [ "$vpi_value" -gt 0 ] || usage_error "$vpi_name requires a positive integer"
+}
+
 cleanup_manifest_lock() {
     if [ -n "$MANIFEST_LOCK_HELD" ] && [ -n "$MANIFEST_LOCK_PATH" ]; then
         rm -rf "$MANIFEST_LOCK_PATH" 2>/dev/null || true
@@ -116,10 +129,12 @@ utc_now() {
 
 acquire_manifest_lock() {
     [ -z "$MANIFEST_LOCK_HELD" ] || return 0
+    validate_positive_integer "$GIT_NEST_LOCK_TIMEOUT_SECONDS" GIT_NEST_LOCK_TIMEOUT_SECONDS
     MANIFEST_LOCK_PATH=$MANIFEST_FILE.lock
+    lock_timeout_ms=$((GIT_NEST_LOCK_TIMEOUT_SECONDS * 1000))
     delay=50
     waited=0
-    while [ "$waited" -lt 10000 ]; do
+    while [ "$waited" -lt "$lock_timeout_ms" ]; do
         if mkdir "$MANIFEST_LOCK_PATH" 2>/dev/null; then
             {
                 printf 'pid=%s\n' "$$"
@@ -145,7 +160,7 @@ acquire_manifest_lock() {
         [ -n "$pid" ] || pid=unknown
         [ -n "$created" ] || created=unknown
     fi
-    printf 'Error: could not acquire manifest lock %s after 10 seconds\n' "$MANIFEST_LOCK_PATH" >&2
+    printf 'Error: could not acquire manifest lock %s after %s seconds\n' "$MANIFEST_LOCK_PATH" "$GIT_NEST_LOCK_TIMEOUT_SECONDS" >&2
     printf '  lock pid: %s\n' "$pid" >&2
     printf '  lock created UTC: %s\n' "$created" >&2
     printf '  if no git-nest process is using it, remove it with: rm -rf %s\n' "$MANIFEST_LOCK_PATH" >&2
@@ -295,186 +310,676 @@ resolve_head_commit() {
     resolve_commit "$repo" HEAD "$context"
 }
 
+# Set help color escapes. Output stays plain when stdout is not a terminal,
+# TERM is dumb, or NO_COLOR/GIT_NEST_NO_COLOR is set.
+help_setup_colors() {
+    HELP_RESET=
+    HELP_BOLD=
+    HELP_DIM=
+    HELP_SECTION=
+    HELP_CMD=
+    HELP_OPT=
+    HELP_ARG=
+
+    case "${GIT_NEST_COLOR:-auto}" in
+        never|no|0|false) return 0 ;;
+        always|yes|1|true) use_color=1 ;;
+        *)
+            use_color=0
+            [ -t 1 ] && use_color=1
+            [ "${TERM:-}" = dumb ] && use_color=0
+            [ -n "${NO_COLOR:-}" ] && use_color=0
+            [ -n "${GIT_NEST_NO_COLOR:-}" ] && use_color=0
+            ;;
+    esac
+    [ "$use_color" -eq 1 ] || return 0
+
+    esc=$(printf '\033')
+    HELP_RESET="${esc}[0m"
+    HELP_BOLD="${esc}[1m"
+    HELP_DIM="${esc}[2m"
+    HELP_SECTION="${esc}[1;36m"
+    HELP_CMD="${esc}[32m"
+    HELP_OPT="${esc}[33m"
+    HELP_ARG="${esc}[36m"
+}
+
+help_title() {
+    printf '%s%s%s\n\n' "$HELP_BOLD" "$1" "$HELP_RESET"
+}
+
+help_heading() {
+    printf '%s%s%s\n' "$HELP_SECTION" "$1" "$HELP_RESET"
+}
+
+help_usage_group() {
+    printf '\n  %s%s%s\n' "$HELP_BOLD" "$1" "$HELP_RESET"
+}
+
+help_usage() {
+    printf '    %sgit-nest%s %s%s%s' "$HELP_DIM" "$HELP_RESET" "$HELP_CMD" "$1" "$HELP_RESET"
+    [ -n "${2:-}" ] && printf ' %s' "$2"
+    printf '\n'
+}
+
+help_command_group() {
+    printf '\n  %s%s%s\n' "$HELP_BOLD" "$1" "$HELP_RESET"
+}
+
+help_command() {
+    printf '    %s%s%s\n' "$HELP_CMD" "$1" "$HELP_RESET"
+}
+
+help_text() {
+    printf '        %s\n' "$1"
+}
+
+help_detail() {
+    printf '            %s\n' "$1"
+}
+
 # Show the command surface exposed by the shared implementation.
 usage() {
-    cat <<'EOF'
-git-nest: coordinate branches and pinned revisions across nested Git repositories
+    help_setup_colors
+    help_title "git-nest: record and restore reproducible nests of independent Git repositories"
 
-Usage:
-  git-nest init [--rc]
-  git-nest add [--clone <full|partial>] <repo> <path>
-  git-nest remove|rm <path> [--force] [--keep-files]
-  git-nest mv <old-path> <new-path> [--force]
-  git-nest mv --url <new-url> <path>
-  git-nest clone <outer-repo-url> [target-dir] [--no-sync] [--depth <n>] [--branch <branch>] [--single-branch]
-  git-nest status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]
-  git-nest outdated [--recursive] [--porcelain | --json | --json-pretty]
-  git-nest verify [--recursive] [--json | --json-pretty]
-  git-nest diff [--since <ref>] [--stat] [--json | --json-pretty]
-  git-nest log [--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]
-  git-nest start <ticket-and-slug|.> [--stash-dirty|--discard-dirty|--cancel-dirty] [--hooks] [--sure]
-  git-nest snapshot [--recursive] [--quiet] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
-  git-nest upload [--finalize] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
-  git-nest freeze [--force] [--only <path>[,<path>...]] [--dry-run]
-  git-nest install-hooks
-  git-nest remove-hooks
-  git-nest foreach -- <command> [args...]
-  git-nest foreach-pending -- <command> [args...]
-  git-nest foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]
-  git-nest foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]
-  git-nest no-pending [--json | --json-pretty]
-  git-nest config <get|set|list|unset> ...
-  git-nest update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]
-  git-nest finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]
-  git-nest cleanup-branches
-  git-nest sync [--recursive] [--prune] [--force] [--dry-run]
-  git-nest doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]
-  git-nest completion <bash|zsh|fish>
-  git-nest export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]
-  git-nest extract <path> <remote-url> [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run]
-  git-nest absorb <path> [--commit] [--message <msg>] [--dry-run]
-  git-nest version
+    help_heading "Usage:"
+    help_usage_group "Nest setup"
+    help_usage "init" "[--rc] [--sure]"
+    help_usage "repair" "[--rc]"
+    help_usage "clone" "<nest-repo-url> [target-dir] [--no-restore] [--depth <n>] [--branch <branch>] [--single-branch]"
 
-Commands:
-  init [--rc]
-      Create a .gitnest manifest in the current workspace.
-          --rc also creates .gitnest-rc with default values.
-  add [--clone <full|partial>] <repo> <path>
-      Add and clone a subproject, ignore its path in the outer repo, and
-      record its current target branch and revision.
-          --clone selects full or partial clone storage for this subproject.
-  remove|rm <path> [--force] [--keep-files]
-      Remove a subproject from the manifest.
-          --force skips dirty/current-branch safety checks.
-          --keep-files leaves the checkout on disk and keeps its ignore entry.
-  mv <old-path> <new-path> [--force]
-      Move a subproject path while preserving manifest state.
-          --force skips dirty/current-branch safety checks.
-  mv --url <new-url> <path>
-      Change a subproject repository URL in the manifest only.
-  clone <outer-repo-url> [target-dir] [--no-sync] [--depth <n>] [--branch <branch>] [--single-branch]
-      Clone an outer repository and automatically sync when it has a manifest.
-          --no-sync skips the automatic sync.
-  status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]
-      Show project and subproject state.
-          --recursive includes nested projects.
-          --porcelain prints stable fixed-column records for scripts.
-          --json and --json-pretty print machine-readable output.
-          --exit-code returns 1 when dirty or missing rows exist.
-  outdated [--recursive] [--porcelain | --json | --json-pretty]
-      Check subproject remotes for newer target-branch commits without fetching.
-          --recursive includes nested projects.
-          --porcelain prints stable fixed-column records for scripts.
-          --json and --json-pretty print machine-readable output.
-  verify [--recursive] [--json | --json-pretty]
-      Validate manifest, remotes, refs, clone mode, and checked-out revisions.
-          --recursive includes nested projects.
-          --json and --json-pretty print machine-readable output.
-  diff [--since <ref>] [--stat] [--json | --json-pretty]
-      Show subproject commits between manifest revisions and current checkouts.
-          --since reads manifest revisions from the outer repo at ref.
-          --stat includes file statistics in human output.
-          --json and --json-pretty print machine-readable commit rows.
-  log [--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]
-      Show combined project history. Filters mirror common git log concepts;
-          --max-count limits commits per repository before the final sort.
-          --since and --until filter commits by date.
-          --subproject restricts output to one subproject path.
-          --oneline uses compact commit output.
-          --recursive includes nested projects.
-  start <ticket-and-slug|.> [--stash-dirty|--discard-dirty|--cancel-dirty] [--hooks] [--sure]
-      Start or track a coordinated project branch.
-          --stash-dirty stashes dirty repositories before switching.
-          --discard-dirty discards tracked edits, then rejects untracked files.
-          --cancel-dirty fails if any repository is dirty.
-          --hooks installs managed hooks.
-          --sure confirms startup in a non-Git folder with subdirectories.
-  snapshot [--recursive] [--quiet] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
-      Snapshot local manifest state without pushing.
-          --recursive includes nested projects.
-          --quiet suppresses skip warnings for dirty subprojects.
-          --dry-run prints planned manifest changes without writing.
-          --no-fetch uses local refs for base detection.
-          --base sets an explicit base ref for one subproject.
-  upload [--finalize] [--dry-run] [--no-fetch] [--base <subproject>=<ref>]
-      Push changed subproject branches and the outer branch. By default records
-          pending subproject state.
-          --finalize pins pushed subproject commits directly.
-          --dry-run prints planned pushes and manifest changes without writing.
-          --no-fetch uses local refs for base detection.
-          --base sets an explicit base ref for one subproject.
-  freeze [--force] [--only <path>[,<path>...]] [--dry-run]
-      Pin tracked subprojects to their current checkout commits.
-          --force freezes dirty subprojects with warnings.
-          --only limits freezing to a comma-separated path list.
-          --dry-run prints what would change without writing.
-  install-hooks
-      Install managed local Git hooks for this project.
-  remove-hooks
-      Remove managed local Git hooks for this project.
-  foreach -- <command> [args...]
-      Run a command in every checked-out subproject.
-  foreach-pending -- <command> [args...]
-      Run a command only in manifest-pending subprojects.
-  foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]
-      Run a command in dirty subprojects, or list them with machine output.
-  foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]
-      Run a command in clean checked-out subprojects, or list them with machine output.
-  no-pending [--json | --json-pretty]
-      Fail while any subproject remains pending.
-  config <get|set|list|unset> ...
-      Read or update allowlisted manifest settings.
-  update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]
-      Move one clean, non-pending subproject to a selected revision.
-          --remote and --target-head use the target branch head.
-          --revision pins an explicit commit-ish.
-          --tag pins a tag and records the tag name.
-          --branch retargets before resolving the selected revision.
-          --no-fetch resolves only local refs.
-  finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]
-      Convert a pending subproject to a pinned revision.
-          --revision pins an explicit commit.
-          --tag pins a tag and records the tag name.
-          --use-target-head pins the target branch head.
-          --dry-run prints planned manifest/cleanup changes without writing.
-          --cleanup deletes the local pending branch after finalization.
-  cleanup-branches
-      Delete local branches recorded as finalized cleanup hints.
-  sync [--recursive] [--prune] [--force] [--dry-run]
-      Clone/fetch subprojects and restore the manifest state.
-          --recursive includes nested projects.
-          --prune removes stale local-state paths after review when sync suggests it.
-          --force proceeds when a tag moved away from the recorded revision.
-          --dry-run prints planned clone/fetch/checkout/prune actions without writing.
-  doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]
-      Report environment and workspace health without modifying files.
-  completion <bash|zsh|fish>
-      Print a shell completion script to stdout.
-  export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]
-      Export a source snapshot with .gitnest and MANIFEST.lock.
-          --format overrides output extension inference.
-          --include-git keeps nested .git directories.
-          --deterministic normalizes archive ordering and metadata where supported.
-          --allow-dirty permits dirty subproject working trees.
-  extract <path> <remote-url> [options]
-      Convert a tracked directory into a managed subproject.
-          --branch names the initial branch; default is main.
-          --clone-mode records full or partial clone preference.
-          --preserve-history uses git-filter-repo when installed.
-          --push pushes the new subproject branch to origin.
-          --message sets the initial commit message.
-          --force bypasses metadata conflicts only.
-          --dry-run reports planned changes without writing.
-  absorb <path> [options]
-      Convert a managed subproject back into ordinary outer-repo files.
-          --commit commits the staged outer-repo changes.
-          --message sets the commit message and implies --commit.
-          --dry-run reports planned changes without writing.
-  version
-      Print the git-nest version.
+    help_usage_group "Subprojects"
+    help_usage "add" "[--clone <full|partial>] <repo> <path>"
+    help_usage "remove|rm" "<path> [--force] [--keep-files]"
+    help_usage "move|mv" "<old-path> <new-path> [--force]"
+    help_usage "move|mv" "--url <new-url> <path>"
+    help_usage "config" "<get|set|list|unset> ..."
+    help_usage "update" "<subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
 
-Manifest: .gitnest
-EOF
+    help_usage_group "Workspace state"
+    help_usage "restore" "[--recursive] [--prune] [--force] [--dry-run]"
+    help_usage "snapshot" "[<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
+    help_usage "freeze" "[--force] [--only <path>[,<path>...]] [--dry-run]"
+
+    help_usage_group "Inspection"
+    help_usage "status" "[--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
+    help_usage "outdated" "[--recursive] [--porcelain | --json | --json-pretty]"
+    help_usage "verify" "[--recursive] [--json | --json-pretty]"
+    help_usage "diff" "[--since <ref>] [--stat] [--json | --json-pretty]"
+    help_usage "log" "[--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]"
+    help_usage "doctor" "[--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]"
+
+    help_usage_group "Branch bookmarks"
+    help_usage "branch-mark" "[name]"
+    help_usage "branch-unmark" "<name>"
+    help_usage "branch-list" "[--verbose|--json]"
+    help_usage "branch-cleanup"
+
+    help_usage_group "Hooks"
+    help_usage "hooks-install"
+    help_usage "hooks-uninstall"
+
+    help_usage_group "Iteration"
+    help_usage "foreach" "-- <command> [args...]"
+    help_usage "foreach-modified" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+    help_usage "foreach-clean" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+
+    help_usage_group "Export and outer-repo conversion"
+    help_usage "export" "--output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]"
+    help_usage "extract" "<path> <remote-url> [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run]"
+    help_usage "absorb" "<path> [--commit] [--message <msg>] [--dry-run]"
+
+    help_usage_group "Tooling"
+    help_usage "completion" "<bash|zsh|fish>"
+    help_usage "version"
+
+    printf '\n'
+    help_heading "Commands:"
+    help_command_group "Nest setup"
+    help_command "init [--rc]"
+    help_text "Create a new .gitnest manifest at the current Git root or directory."
+    help_detail "--rc also creates .gitnest-rc with default values."
+    help_detail "--sure allows intentional nested-nest creation inside an existing nest."
+    help_detail "Existing nest roots are reported as already initialized; use repair to refresh support files."
+    help_command "repair [--rc]"
+    help_text "Repair managed support files for the current nest."
+    help_detail "Can be run from anywhere inside the nest."
+    help_command "clone <nest-repo-url> [target-dir] [--no-restore] [--depth <n>] [--branch <branch>] [--single-branch]"
+    help_text "Run git clone for a nest repository and restore when it has a manifest."
+    help_detail "Convenience wrapper around git clone plus git-nest restore."
+    help_detail "It does not copy an existing local checkout."
+    help_detail "--no-restore skips the automatic restore."
+
+    help_command_group "Subprojects"
+    help_command "add [--clone <full|partial>] <repo> <path>"
+    help_text "Add and clone a subproject, ignore its path in the outer repo, and"
+    help_text "record its current target branch and revision."
+    help_detail "<path> is relative to the current nest root; . is not valid here."
+    help_detail "--clone selects full or partial clone storage for this subproject."
+    help_detail "This clone mode is used by restore and is unrelated to the clone command."
+    help_command "remove|rm <path> [--force] [--keep-files]"
+    help_text "Remove a subproject from the manifest."
+    help_detail "<path> is a managed subproject path relative to the current nest root."
+    help_detail "--force skips dirty/current-branch safety checks."
+    help_detail "--keep-files leaves the checkout on disk and keeps its ignore entry."
+    help_command "move|mv <old-path> <new-path> [--force]"
+    help_text "Move a subproject path while preserving manifest state."
+    help_detail "Both paths are relative to the current nest root; . is not valid here."
+    help_detail "--force skips dirty/current-branch safety checks."
+    help_command "move|mv --url <new-url> <path>"
+    help_text "Change a subproject repository URL in the manifest only."
+    help_detail "<path> is a managed subproject path relative to the current nest root."
+    help_command "config <get|set|list|unset> ..."
+    help_text "Read or update allowlisted manifest settings."
+    help_detail "Subproject paths are relative to the current nest root."
+    help_detail "Only clone-mode is currently configurable; values are full or partial."
+    help_detail "clone-mode controls future restore clones, not the clone command."
+    help_detail "config list shows explicitly set config values only."
+    help_command "update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
+    help_text "Move one clean subproject to a selected revision."
+    help_detail "<subproject> is a managed path in the current nest; . is not valid here."
+    help_detail "--remote and --target-head use the target branch head."
+    help_detail "--revision pins an explicit commit-ish."
+    help_detail "--tag pins a tag and records the tag name."
+    help_detail "--branch retargets before resolving the selected revision."
+    help_detail "--no-fetch resolves only local refs."
+
+    help_command_group "Workspace state"
+    help_command "restore [--recursive] [--prune] [--force] [--dry-run]"
+    help_text "Clone/fetch subprojects and restore the manifest state on disk."
+    help_detail "Operates on the whole current nest; it does not accept a path."
+    help_detail "--recursive includes nested projects."
+    help_detail "--prune removes stale local-state paths after review when suggested."
+    help_detail "--force proceeds when a tag moved away from the recorded revision."
+    help_detail "--dry-run prints planned clone/fetch/checkout/prune actions without writing."
+    help_command "snapshot [<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
+    help_text "Record clean, reproducible checked-out subproject commits in .gitnest."
+    help_detail "No path snapshots all subprojects in the current nest."
+    help_detail "At the nest root, . also means all subprojects."
+    help_detail "Inside a managed subproject, . means that subproject only."
+    help_detail "An explicit path may name a managed subproject or a path inside one."
+    help_detail "--recursive includes nested projects."
+    help_detail "--quiet suppresses skip warnings for dirty subprojects."
+    help_detail "--dry-run prints planned manifest changes without writing."
+    help_detail "--check reports stale state without writing."
+    help_detail "--strict returns nonzero for dirty or unreproducible subprojects."
+    help_detail "--no-fetch uses local refs only."
+    help_command "freeze [--force] [--only <path>[,<path>...]] [--dry-run]"
+    help_text "Pin tracked subprojects to their current checkout commits."
+    help_detail "Without --only, freezes every tracked subproject in the current nest."
+    help_detail "--force freezes dirty subprojects with warnings."
+    help_detail "--only limits freezing to a comma-separated path list."
+    help_detail "--dry-run prints what would change without writing."
+
+    help_command_group "Inspection"
+    help_command "status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
+    help_text "Show nest root and subproject state."
+    help_detail "--recursive includes nested projects."
+    help_detail "--porcelain prints stable fixed-column records for scripts."
+    help_detail "--json and --json-pretty print machine-readable output."
+    help_detail "--exit-code returns 1 when dirty or missing rows exist."
+    help_command "outdated [--recursive] [--porcelain | --json | --json-pretty]"
+    help_text "Check subproject remotes for newer target-branch commits without fetching."
+    help_detail "--recursive includes nested projects."
+    help_detail "--porcelain prints stable fixed-column records for scripts."
+    help_detail "--json and --json-pretty print machine-readable output."
+    help_command "verify [--recursive] [--json | --json-pretty]"
+    help_text "Validate manifest, remotes, refs, clone mode, and checked-out revisions."
+    help_detail "--recursive includes nested projects."
+    help_detail "--json and --json-pretty print machine-readable output."
+    help_command "diff [--since <ref>] [--stat] [--json | --json-pretty]"
+    help_text "Show subproject commits between manifest revisions and current checkouts."
+    help_detail "--since reads manifest revisions from the outer repo at ref."
+    help_detail "--stat includes file statistics in human output."
+    help_detail "--json and --json-pretty print machine-readable commit rows."
+    help_command "log [--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]"
+    help_text "Show combined nest history. Filters mirror common git log concepts;"
+    help_detail "--max-count limits commits per repository before the final sort."
+    help_detail "--since and --until filter commits by date."
+    help_detail "--subproject restricts output to one subproject path."
+    help_detail "--oneline uses compact commit output."
+    help_detail "--recursive includes nested projects."
+    help_command "doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]"
+    help_text "Report environment and workspace health without modifying files."
+    help_detail "Can be run from anywhere inside the nest."
+    help_detail "Remote checks default to GIT_NEST_DOCTOR_TIMEOUT_SECONDS or 5 seconds."
+
+    help_command_group "Branch bookmarks"
+    help_command "branch-mark|branch-unmark|branch-list|branch-cleanup"
+    help_text "Manage local branch-name memory for the current nest. These commands do"
+    help_text "not create, switch, push, or delete Git branches."
+    help_detail "branch-mark with no name uses the current Git branch."
+    help_detail "Marks are stored in .gitnest-branches and ignored by Git."
+
+    help_command_group "Hooks"
+    help_command "hooks-install"
+    help_text "Install managed local Git hooks in all checked-out repositories in the current nest."
+    help_detail "Includes the nest root and checked-out subprojects; it is not recursive into nested nests."
+    help_command "hooks-uninstall"
+    help_text "Remove managed local Git hooks from all checked-out repositories in the current nest."
+
+    help_command_group "Iteration"
+    help_command "foreach -- <command> [args...]"
+    help_text "Run a command in every checked-out subproject in the current nest."
+    help_command "foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+    help_text "Run a command in dirty subprojects, or list them with machine output."
+    help_command "foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+    help_text "Run a command in clean checked-out subprojects, or list them with machine output."
+
+    help_command_group "Export and outer-repo conversion"
+    help_command "export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]"
+    help_text "Export a source snapshot with .gitnest and MANIFEST.lock."
+    help_detail "dir output uses shell file copy; tar.gz requires system tar; zip requires python or python3."
+    help_detail "--format overrides output extension inference."
+    help_detail "--include-git keeps nested .git directories."
+    help_detail "--deterministic normalizes archive ordering and metadata where supported."
+    help_detail "--allow-dirty permits dirty subproject working trees."
+    help_command "extract <path> <remote-url> [options]"
+    help_text "Convert an outer-repo tracked directory into a managed subproject."
+    help_detail "This adds the new subproject to the current nest and removes the files from outer tracking."
+    help_detail "--branch names the initial branch; default is main."
+    help_detail "--clone-mode records full or partial clone preference."
+    help_detail "--preserve-history uses git-filter-repo when installed."
+    help_detail "--push pushes the new subproject branch to origin."
+    help_detail "--message sets the initial commit message."
+    help_detail "--force bypasses metadata conflicts only."
+    help_detail "--dry-run reports planned changes without writing."
+    help_command "absorb <path> [options]"
+    help_text "Convert a managed subproject back into ordinary outer-repo files."
+    help_detail "This removes the subproject from the current nest and stages its files in the nest root."
+    help_detail "--commit commits the staged outer-repo changes."
+    help_detail "--message sets the commit message and implies --commit."
+    help_detail "--dry-run reports planned changes without writing."
+
+    help_command_group "Tooling"
+    help_command "completion <bash|zsh|fish>"
+    help_text "Print a shell completion script to stdout."
+    help_command "version"
+    help_text "Print the git-nest version."
+
+    printf '\nManifest: %s\n' "$MANIFEST_FILE"
+}
+
+help_example() {
+    printf '        %s%s%s\n' "$HELP_DIM" "$1" "$HELP_RESET"
+}
+
+help_opposite() {
+    printf '        Opposite: %s\n' "$1"
+}
+
+command_help_branch_bookmarks() {
+    help_command "branch-mark [name]"
+    help_command "branch-unmark <name>"
+    help_command "branch-list [--verbose|--json]"
+    help_command "branch-cleanup"
+    help_text "Branch bookmarks remember useful branch names for the current nest."
+    help_text "They do not create, switch, push, delete, or otherwise manage Git branches."
+    help_text "They are local helper state for humans and scripts that want to reuse the"
+    help_text "same branch name in more than one repository."
+    help_detail "branch-mark with no name records the current Git branch for the current repository."
+    help_detail "branch-unmark removes one remembered branch name for the current repository."
+    help_detail "branch-list shows remembered names and, with --verbose, the origin repository path."
+    help_detail "branch-cleanup removes bookmarks whose local Git branch no longer exists."
+    help_detail "Bookmarks are stored in .gitnest-branches and ignored by Git."
+    help_heading "Examples:"
+    help_example "git switch -c feature/cache"
+    help_example "git-nest branch-mark"
+    help_example "git-nest branch-list --verbose"
+    help_example "git-nest branch-unmark feature/cache"
+}
+
+command_help() {
+    topic=$1
+    case "$topic" in
+        rm) topic=remove ;;
+        mv) topic=move ;;
+        sync) topic=restore ;;
+        install-hooks) topic=hooks-install ;;
+        remove-hooks) topic=hooks-uninstall ;;
+    esac
+
+    help_setup_colors
+    help_title "git-nest help: $topic"
+
+    case "$topic" in
+        init)
+            help_command "init [--rc] [--sure]"
+            help_text "Create a new .gitnest manifest at the current Git root or current directory."
+            help_text "Plain init is creation-only. Use repair for an existing nest."
+            help_detail "--rc also creates .gitnest-rc with default values."
+            help_detail "--sure confirms intentional nested-nest creation inside an existing nest."
+            help_heading "Examples:"
+            help_example "git init"
+            help_example "git-nest init"
+            help_example "git-nest init --rc"
+            help_example "git-nest init --sure"
+            help_opposite "repair refreshes support files for a nest that already exists."
+            ;;
+        repair)
+            help_command "repair [--rc]"
+            help_text "Refresh managed support files for the current nest without creating a new nest."
+            help_text "Can be run from anywhere inside the nest."
+            help_detail "Refreshes files such as .gitattributes and managed ignore entries."
+            help_detail "--rc also creates or refreshes .gitnest-rc defaults."
+            help_heading "Examples:"
+            help_example "git-nest repair"
+            help_example "git-nest repair --rc"
+            help_opposite "init creates a new nest when one does not already exist."
+            ;;
+        clone)
+            help_command "clone <nest-repo-url> [target-dir] [--no-restore] [--depth <n>] [--branch <branch>] [--single-branch]"
+            help_text "Run git clone for a nest repository, then restore it when .gitnest exists."
+            help_detail "This is a convenience wrapper around git clone plus git-nest restore."
+            help_detail "It does not copy an existing local checkout."
+            help_detail "--no-restore leaves subprojects missing until restore is run manually."
+            help_detail "--depth, --branch, and --single-branch are passed to the outer git clone."
+            help_heading "Examples:"
+            help_example "git-nest clone https://example.invalid/product.git"
+            help_example "git-nest clone https://example.invalid/product.git product --branch main"
+            help_example "git-nest clone https://example.invalid/product.git --no-restore"
+            help_opposite "restore materializes subprojects after an ordinary git clone."
+            ;;
+        add)
+            help_command "add [--clone <full|partial>] <repo> <path>"
+            help_text "Add and clone a subproject into the current nest."
+            help_detail "<path> is relative to the current nest root; . is not valid."
+            help_detail "The path is ignored by the outer repository so files stay owned by the subproject."
+            help_detail "--clone records full or partial clone preference for future restore."
+            help_detail "This clone mode is unrelated to the clone command."
+            help_heading "Examples:"
+            help_example "git-nest add https://example.invalid/libs/foo.git libs/foo"
+            help_example "git-nest add --clone partial https://example.invalid/libs/big.git libs/big"
+            help_opposite "remove/rm removes a managed subproject from the nest."
+            ;;
+        remove)
+            help_command "remove|rm <path> [--force] [--keep-files]"
+            help_text "Remove a managed subproject path from the current nest."
+            help_detail "<path> is relative to the current nest root."
+            help_detail "--keep-files leaves the checkout on disk and keeps its ignore entry."
+            help_detail "--force skips dirty/current-branch safety checks."
+            help_heading "Examples:"
+            help_example "git-nest remove libs/foo"
+            help_example "git-nest rm libs/foo --keep-files"
+            help_example "git-nest remove libs/foo --force"
+            help_opposite "add records and clones a subproject into the nest."
+            ;;
+        move)
+            help_command "move|mv <old-path> <new-path> [--force]"
+            help_command "move|mv --url <new-url> <path>"
+            help_text "Move a managed subproject path, or retarget its recorded URL."
+            help_detail "Paths are relative to the current nest root; . is not valid."
+            help_detail "Path moves update the checkout location, .gitnest, and ignore hygiene."
+            help_detail "--url changes only the manifest URL and does not move files."
+            help_heading "Examples:"
+            help_example "git-nest move libs/foo components/foo"
+            help_example "git-nest mv libs/foo components/foo --force"
+            help_example "git-nest move --url https://example.invalid/new/foo.git components/foo"
+            help_opposite "remove/rm detaches a subproject instead of moving it."
+            ;;
+        config)
+            help_command "config <get|set|list|unset> ..."
+            help_text "Read or update allowlisted manifest settings."
+            help_detail "Subproject paths are relative to the current nest root."
+            help_detail "Only clone-mode is currently configurable."
+            help_detail "clone-mode values are full or partial."
+            help_detail "clone-mode controls future restore clones, not the clone command."
+            help_detail "config list shows explicitly set config values only."
+            help_detail "Unknown keys such as repo are rejected for get, set, and unset."
+            help_heading "Examples:"
+            help_example "git-nest config list"
+            help_example "libs/foo    clone-mode=partial"
+            help_example "git-nest config get libs/foo clone-mode"
+            help_example "partial"
+            help_example "git-nest config set libs/foo clone-mode partial"
+            help_example "git-nest config unset libs/foo clone-mode"
+            help_example "git-nest config unset libs/foo repo"
+            help_example "Error: unknown config key: repo"
+            ;;
+        update)
+            help_command "update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
+            help_text "Move one clean managed subproject to a selected revision."
+            help_detail "<subproject> is relative to the current nest root; . is not valid."
+            help_detail "--remote and --target-head use the target branch head."
+            help_detail "--revision pins an explicit commit-ish."
+            help_detail "--tag pins a tag and records the tag name."
+            help_detail "--branch retargets before resolving the selected revision."
+            help_heading "Examples:"
+            help_example "git-nest update libs/foo --remote"
+            help_example "git-nest update libs/foo --revision abc1234"
+            help_example "git-nest update libs/foo --tag v1.2.3"
+            help_opposite "restore returns subprojects to the manifest state instead of advancing one."
+            ;;
+        restore)
+            help_command "restore [--recursive] [--prune] [--force] [--dry-run]"
+            help_text "Clone, fetch, and check out the manifest state on disk."
+            help_detail "Operates on the whole current nest; it does not accept a path."
+            help_detail "--recursive includes nested nests."
+            help_detail "--prune removes reviewed stale local-state paths."
+            help_detail "--force proceeds when a tag moved away from the recorded revision."
+            help_detail "--dry-run shows planned clone/fetch/checkout/prune actions."
+            help_heading "Examples:"
+            help_example "git-nest restore"
+            help_example "git-nest restore --dry-run"
+            help_example "git-nest restore --recursive"
+            help_opposite "snapshot records the current reproducible checkout state into .gitnest."
+            ;;
+        snapshot)
+            help_command "snapshot [<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
+            help_text "Record clean, reproducible checked-out subproject commits in .gitnest."
+            help_detail "No path snapshots all subprojects in the current nest."
+            help_detail "At the nest root, . also means all subprojects."
+            help_detail "Inside a managed subproject, . means that subproject only."
+            help_detail "An explicit path may name a managed subproject or a path inside one."
+            help_detail "--check reports stale state without writing."
+            help_detail "--strict returns nonzero for dirty or unreproducible subprojects."
+            help_heading "Examples:"
+            help_example "git-nest snapshot"
+            help_example "git-nest snapshot ."
+            help_example "git-nest snapshot libs/foo --dry-run"
+            help_example "git-nest snapshot --check --strict"
+            help_opposite "restore materializes the recorded manifest state on disk."
+            ;;
+        freeze)
+            help_command "freeze [--force] [--only <path>[,<path>...]] [--dry-run]"
+            help_text "Pin tracked subprojects to their current checkout commits."
+            help_detail "Without --only, freezes every tracked subproject in the current nest."
+            help_detail "--only limits freezing to a comma-separated path list."
+            help_detail "--force freezes dirty subprojects with warnings."
+            help_heading "Examples:"
+            help_example "git-nest freeze"
+            help_example "git-nest freeze --only libs/foo,libs/bar"
+            help_example "git-nest freeze --dry-run"
+            help_opposite "update moves one subproject to a selected remote/tag/revision."
+            ;;
+        status)
+            help_command "status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
+            help_text "Show nest root and subproject state."
+            help_detail "--recursive includes nested nests."
+            help_detail "--porcelain prints stable fixed-column records for scripts."
+            help_detail "--json and --json-pretty print machine-readable output."
+            help_detail "--exit-code returns 1 when dirty or missing rows exist."
+            help_heading "Examples:"
+            help_example "git-nest status"
+            help_example "git-nest status --recursive"
+            help_example "git-nest status --porcelain --exit-code"
+            ;;
+        outdated)
+            help_command "outdated [--recursive] [--porcelain | --json | --json-pretty]"
+            help_text "Check subproject remotes for newer target-branch commits without changing checkouts."
+            help_detail "--recursive includes nested nests."
+            help_detail "This is an inspection command; use update when you choose to move a subproject."
+            help_heading "Examples:"
+            help_example "git-nest outdated"
+            help_example "git-nest outdated --recursive"
+            help_example "git-nest outdated --json-pretty"
+            help_opposite "update performs a selected subproject move after inspection."
+            ;;
+        verify)
+            help_command "verify [--recursive] [--json | --json-pretty]"
+            help_text "Validate manifest entries, remotes, refs, clone mode, and checkout drift."
+            help_detail "--recursive includes nested nests."
+            help_heading "Examples:"
+            help_example "git-nest verify"
+            help_example "git-nest verify --recursive"
+            help_example "git-nest verify --json-pretty"
+            ;;
+        diff)
+            help_command "diff [--since <ref>] [--stat] [--json | --json-pretty]"
+            help_text "Show subproject commits between manifest revisions and current checkouts."
+            help_detail "--since reads manifest revisions from the outer repo at ref."
+            help_detail "--stat includes file statistics in human output."
+            help_heading "Examples:"
+            help_example "git-nest diff"
+            help_example "git-nest diff --since HEAD~1"
+            help_example "git-nest diff --stat"
+            ;;
+        log)
+            help_command "log [--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]"
+            help_text "Show combined nest history across the nest root and checked-out subprojects."
+            help_detail "--subproject restricts output to one subproject path."
+            help_detail "--recursive includes nested nests."
+            help_heading "Examples:"
+            help_example "git-nest log --max-count 10"
+            help_example "git-nest log --subproject libs/foo --oneline"
+            help_example "git-nest log --recursive --since 2026-01-01"
+            ;;
+        doctor)
+            help_command "doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]"
+            help_text "Report environment and workspace health without modifying files."
+            help_detail "Can be run from anywhere inside the nest."
+            help_detail "--offline skips remote reachability checks."
+            help_detail "--timeout overrides GIT_NEST_DOCTOR_TIMEOUT_SECONDS for remote checks."
+            help_detail "--exit-code returns nonzero when warnings or errors are present."
+            help_heading "Examples:"
+            help_example "git-nest doctor --offline"
+            help_example "git-nest doctor --timeout 20"
+            help_example "git-nest doctor --json-pretty"
+            ;;
+        branch-mark|branch-unmark|branch-list|branch-cleanup)
+            command_help_branch_bookmarks
+            ;;
+        hooks-install)
+            help_command "hooks-install"
+            help_text "Install managed local Git hooks in all checked-out repositories in the current nest."
+            help_detail "Includes the nest root and checked-out subprojects."
+            help_detail "Does not accept --recursive; nested nests manage their own hooks."
+            help_detail "Refuses to overwrite unmanaged hooks."
+            help_heading "Examples:"
+            help_example "git-nest hooks-install"
+            help_example "git-nest doctor --offline"
+            help_opposite "hooks-uninstall removes the managed local hooks."
+            ;;
+        hooks-uninstall)
+            help_command "hooks-uninstall"
+            help_text "Remove managed local Git hooks from all checked-out repositories in the current nest."
+            help_detail "Only git-nest-owned hook blocks are removed."
+            help_detail "Does not accept --recursive; nested nests manage their own hooks."
+            help_heading "Examples:"
+            help_example "git-nest hooks-uninstall"
+            help_example "git-nest doctor --offline"
+            help_opposite "hooks-install installs the managed local hooks."
+            ;;
+        foreach)
+            help_command "foreach -- <command> [args...]"
+            help_text "Run a command in every checked-out subproject in the current nest."
+            help_detail "The command runs inside each subproject checkout."
+            help_detail "Use -- to separate git-nest options from the command to run."
+            help_heading "Examples:"
+            help_example "git-nest foreach -- git status --short"
+            help_example "git-nest foreach -- sh -c 'git rev-parse --show-toplevel'"
+            ;;
+        foreach-modified)
+            help_command "foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+            help_text "Run a command in dirty checked-out subprojects, or list them."
+            help_detail "Without a command, it reports the matching subprojects."
+            help_detail "Machine-readable output cannot be combined with a command."
+            help_heading "Examples:"
+            help_example "git-nest foreach-modified"
+            help_example "git-nest foreach-modified --porcelain"
+            help_example "git-nest foreach-modified -- git status --short"
+            help_opposite "foreach-clean selects clean checked-out subprojects."
+            ;;
+        foreach-clean)
+            help_command "foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+            help_text "Run a command in clean checked-out subprojects, or list them."
+            help_detail "Without a command, it reports the matching subprojects."
+            help_detail "Machine-readable output cannot be combined with a command."
+            help_heading "Examples:"
+            help_example "git-nest foreach-clean"
+            help_example "git-nest foreach-clean --json-pretty"
+            help_example "git-nest foreach-clean -- git fetch --all --prune"
+            help_opposite "foreach-modified selects dirty checked-out subprojects."
+            ;;
+        export)
+            help_command "export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]"
+            help_text "Export a source snapshot with .gitnest and MANIFEST.lock."
+            help_detail "dir output uses shell file copy."
+            help_detail "tar.gz output requires system tar."
+            help_detail "zip output requires python or python3."
+            help_detail "--allow-dirty permits dirty subproject working trees."
+            help_heading "Examples:"
+            help_example "git-nest export --output build/source.tar.gz --deterministic"
+            help_example "git-nest export --output build/source.zip --format zip"
+            help_example "git-nest export --output build/source-dir --format dir"
+            ;;
+        extract)
+            help_command "extract <path> <remote-url> [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run]"
+            help_text "Convert an outer-repo tracked directory into a managed subproject."
+            help_detail "This adds the new subproject to the current nest and removes those files from outer tracking."
+            help_detail "--preserve-history requires git-filter-repo."
+            help_detail "--push pushes the new subproject branch to origin after creation."
+            help_heading "Examples:"
+            help_example "git-nest extract src/lib https://example.invalid/src-lib.git --dry-run"
+            help_example "git-nest extract src/lib https://example.invalid/src-lib.git --push --message 'Create src-lib'"
+            help_opposite "absorb converts a managed subproject back into ordinary outer-repo files."
+            ;;
+        absorb)
+            help_command "absorb <path> [--commit] [--message <msg>] [--dry-run]"
+            help_text "Convert a managed subproject back into ordinary outer-repo files."
+            help_detail "This removes the subproject from the current nest and stages its files in the nest root."
+            help_detail "--message sets the commit message and implies --commit."
+            help_heading "Examples:"
+            help_example "git-nest absorb libs/foo --dry-run"
+            help_example "git-nest absorb libs/foo --commit --message 'Inline foo'"
+            help_opposite "extract converts outer-repo tracked files into a managed subproject."
+            ;;
+        completion)
+            help_command "completion <bash|zsh|fish>"
+            help_text "Print a shell completion script to stdout."
+            help_heading "Examples:"
+            help_example "git-nest completion bash > ~/.local/share/bash-completion/completions/git-nest"
+            help_example "git-nest completion zsh > ~/.zfunc/_git-nest"
+            help_example "git-nest completion fish > ~/.config/fish/completions/git-nest.fish"
+            ;;
+        version)
+            help_command "version"
+            help_text "Print the tool name, version, and logo."
+            help_heading "Example:"
+            help_example "git-nest version"
+            ;;
+        help)
+            help_command "help [command]"
+            help_text "Show the grouped command overview or focused help for one command."
+            help_detail "Alias topics such as rm, mv, sync, install-hooks, and remove-hooks point to their current command names."
+            help_heading "Examples:"
+            help_example "git-nest help"
+            help_example "git-nest help snapshot"
+            help_example "git-nest help branch-mark"
+            ;;
+        *)
+            usage_error "unknown help topic: $1"
+            ;;
+    esac
+}
+
+cmd_help() {
+    case $# in
+        0) usage ;;
+        1) command_help "$1" ;;
+        *) usage_error "usage: git-nest help [command]" ;;
+    esac
 }
 
 # Dispatch the public command name to the matching command handler.
@@ -483,10 +988,11 @@ git_nest_main() {
     [ $# -gt 0 ] && shift || true
 
     case "$cmd" in
-        init) enter_workspace_root_if_present; cmd_init "$@" ;;
+        init) require_git; cmd_init "$@" ;;
+        repair) enter_project_root_required; cmd_repair "$@" ;;
         add) enter_workspace_root_if_present; cmd_add "$@" ;;
         remove|rm) enter_project_root_required; cmd_remove "$@" ;;
-        mv) enter_project_root_required; cmd_mv "$@" ;;
+        move|mv) enter_project_root_required; cmd_mv "$@" ;;
         clone) cmd_clone "$@" ;;
         status) enter_project_root_required; cmd_status "$@" ;;
         outdated) enter_project_root_required; cmd_outdated "$@" ;;
@@ -494,25 +1000,32 @@ git_nest_main() {
         verify) enter_project_root_required; cmd_verify "$@" ;;
         diff) enter_project_root_required; cmd_diff "$@" ;;
         log) enter_project_root_required; cmd_log "$@" ;;
-        start) enter_workspace_root_if_present; cmd_start "$@" ;;
+        start) usage_error "unknown command: start; use Git branch commands and git-nest snapshot" ;;
         snapshot) enter_project_root_required; cmd_snapshot "$@" ;;
         refresh) usage_error "unknown command: refresh; use snapshot" ;;
         record) usage_error "unknown command: record; use snapshot" ;;
-        upload) enter_project_root_required; cmd_upload "$@" ;;
+        upload) usage_error "unknown command: upload; use git push and git-nest snapshot" ;;
         freeze) enter_project_root_required; cmd_freeze "$@" ;;
-        install-hooks) enter_project_root_required; cmd_install_hooks "$@" ;;
-        remove-hooks) enter_project_root_required; cmd_remove_hooks "$@" ;;
+        hooks-install) enter_project_root_required; cmd_hooks_install "$@" ;;
+        hooks-uninstall) enter_project_root_required; cmd_hooks_uninstall "$@" ;;
+        install-hooks) usage_error "unknown command: install-hooks; use hooks-install" ;;
+        remove-hooks) usage_error "unknown command: remove-hooks; use hooks-uninstall" ;;
         foreach) enter_project_root_required; cmd_foreach "$@" ;;
-        foreach-pending) enter_project_root_required; cmd_foreach_pending "$@" ;;
+        foreach-pending) usage_error "unknown command: foreach-pending; pending manifest state is no longer supported" ;;
         foreach-modified) enter_project_root_required; cmd_foreach_modified "$@" ;;
         foreach-clean) enter_project_root_required; cmd_foreach_clean "$@" ;;
-        no-pending) enter_project_root_required; cmd_no_pending "$@" ;;
+        no-pending) usage_error "unknown command: no-pending; pending manifest state is no longer supported" ;;
         config) enter_project_root_required; cmd_config "$@" ;;
-        check) usage_error "unknown command: check; use no-pending" ;;
+        check) usage_error "unknown command: check; pending manifest state is no longer supported" ;;
+        branch-mark) enter_project_root_required; cmd_branch_mark "$@" ;;
+        branch-unmark) enter_project_root_required; cmd_branch_unmark "$@" ;;
+        branch-list) enter_project_root_required; cmd_branch_list "$@" ;;
+        branch-cleanup) enter_project_root_required; cmd_branch_cleanup "$@" ;;
         update) enter_project_root_required; cmd_update "$@" ;;
-        finalize) enter_project_root_required; cmd_finalize "$@" ;;
-        cleanup-branches) enter_project_root_required; cmd_cleanup_branches "$@" ;;
-        sync) enter_project_root_required; cmd_sync "$@" ;;
+        finalize) usage_error "unknown command: finalize; use git-nest snapshot to record reproducible revisions" ;;
+        cleanup-branches) usage_error "unknown command: cleanup-branches; git-nest no longer deletes Git branches" ;;
+        restore) enter_project_root_required; cmd_restore "$@" ;;
+        sync) usage_error "unknown command: sync; use restore" ;;
         doctor) cmd_doctor "$@" ;;
         completion) cmd_completion "$@" ;;
         export) enter_project_root_required; cmd_export "$@" ;;
@@ -520,8 +1033,10 @@ git_nest_main() {
         absorb) enter_project_root_required; cmd_absorb "$@" ;;
         __complete) cmd_internal_complete "$@" ;;
         __owning-manifest) cmd_internal_owning_manifest "$@" ;;
+        __hook) enter_project_root_required; cmd_internal_hook "$@" ;;
         version|--version) cmd_version "$@" ;;
-        -h|--help|help|"") usage ;;
+        help) cmd_help "$@" ;;
+        -h|--help|"") usage ;;
         *) usage_error "unknown command: $cmd" ;;
     esac
 }
@@ -535,6 +1050,47 @@ cmd_version() {
 cmd_internal_owning_manifest() {
     [ $# -le 1 ] || usage_error "usage: git-nest __owning-manifest [path]"
     find_owning_manifest "$@"
+}
+
+cmd_internal_hook() {
+    hook_action=${1:-}
+    shift || true
+    case "$hook_action" in
+        root-post-checkout)
+            root=$(pwd -P)
+            printf 'git-nest: manifest changed; run `git-nest restore` inside %s to restore this nest.\n' "$root"
+            ;;
+        root-pre-commit)
+            before=$(git diff -- "$MANIFEST_FILE" 2>/dev/null || true)
+            cmd_snapshot --quiet || true
+            after=$(git diff -- "$MANIFEST_FILE" 2>/dev/null || true)
+            if [ "$before" != "$after" ]; then
+                warn "$MANIFEST_FILE changed during hook; review and stage it before committing if intended"
+            fi
+            ;;
+        root-pre-push)
+            if ! cmd_snapshot --check --strict --quiet; then
+                warn "nest is not fully reproducible from $MANIFEST_FILE; run git-nest snapshot, review, commit, and push again"
+            fi
+            ;;
+        subproject-pre-push)
+            [ $# -eq 1 ] || usage_error "usage: git-nest __hook subproject-pre-push <path>"
+            path=$1
+            ensure_gitignore_line "$PUSH_CANDIDATES_FILE"
+            [ -f "$PUSH_CANDIDATES_FILE" ] || : >"$PUSH_CANDIDATES_FILE"
+            origin=$(repo_origin_url_for_mark "$path")
+            now=$(utc_now)
+            while read -r local_ref local_sha remote_ref remote_sha; do
+                [ -n "$local_ref" ] || continue
+                case "$local_sha" in
+                    0000000000000000000000000000000000000000) continue ;;
+                esac
+                printf '%s\t%s\t%s\t%s\t%s\n' "$path" "$local_ref" "$local_sha" "$remote_ref" "$now" >>"$PUSH_CANDIDATES_FILE"
+            done
+            [ -n "$origin" ] || true
+            ;;
+        *) usage_error "unknown hook action: $hook_action" ;;
+    esac
 }
 
 # Ensure Git is available before commands depend on it.
@@ -618,6 +1174,7 @@ enter_workspace_root_if_present() {
 # subproject paths in .gitnest are interpreted consistently.
 enter_project_root_required() {
     require_git
+    GIT_NEST_CALLER_PWD=$(pwd -P)
     root=$(find_project_root 2>/dev/null) ||
         {
             if legacy_root=$(find_legacy_manifest_root 2>/dev/null); then
@@ -649,7 +1206,7 @@ gitattributes_has_guard() {
         /^[[:space:]]*\.gitnest[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { gitnest=1 }
         /^[[:space:]]*\.gitnest-rc[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { rc=1 }
         /^[[:space:]]*bin\/git-nest[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { entrypoint=1 }
-        /^[[:space:]]*bin\/GIT_NEST\.sh[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { shell=1 }
+        /^[[:space:]]*bin\/git_nest\.sh[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { shell=1 }
         /^[[:space:]]*bin\/git-nest\.bat[[:space:]]+text[[:space:]]+eol=crlf[[:space:]]*$/ { batch=1 }
         END { exit !(gitnest && rc && entrypoint && shell && batch) }
     ' .gitattributes
@@ -687,7 +1244,7 @@ ensure_gitattributes_guard() {
                 if (trimmed ~ /^\.gitnest([[:space:]]|$)/) next
                 if (trimmed ~ /^\.gitnest-rc([[:space:]]|$)/) next
                 if (trimmed ~ /^bin\/git-nest([[:space:]]|$)/) next
-                if (trimmed ~ /^bin\/GIT_NEST\.sh([[:space:]]|$)/) next
+                if (trimmed ~ /^bin\/git_nest\.sh([[:space:]]|$)/) next
                 if (trimmed ~ /^bin\/git-nest\.bat([[:space:]]|$)/) next
                 print
             }
@@ -698,7 +1255,7 @@ ensure_gitattributes_guard() {
 
 warn_missing_gitattributes_guard() {
     gitattributes_has_guard && return 0
-    warn "missing or stale git-nest .gitattributes guard; run git-nest init to repair it"
+    warn "missing or stale git-nest .gitattributes guard; run git-nest repair to refresh it"
 }
 
 warn_old_managed_hooks() {
@@ -709,7 +1266,7 @@ warn_old_managed_hooks() {
         [ -n "$hook_file" ] || continue
         [ -f "$hook_file" ] || continue
         if grep -F 'refresh --quiet' "$hook_file" >/dev/null 2>&1; then
-            warn "old git-stack managed hook detected; run git-nest install-hooks to update hooks"
+            warn "old git-stack managed hook detected; run git-nest hooks-install to update hooks"
             OLD_HOOK_WARNING_PRINTED=1
             return 0
         fi
@@ -941,6 +1498,7 @@ validate_manifest_schema() {
                 pending = value_for[section SUBSEP "pending_branch"]
                 base = value_for[section SUBSEP "base_revision"]
                 pushed = value_for[section SUBSEP "pushed_commit"]
+                cleanup = value_for[section SUBSEP "finalized_from_branch"]
                 revision = value_for[section SUBSEP "revision"]
                 target = value_for[section SUBSEP "target_branch"]
                 tag = value_for[section SUBSEP "tag"]
@@ -951,13 +1509,10 @@ validate_manifest_schema() {
                     add_error("subproject " path " is missing repo")
                 }
                 if (clone != "" && clone != "full" && clone != "partial") add_error("invalid clone mode in [" section "]: " clone)
-                if (pending != "") {
-                    if (target == "") add_error("pending subproject missing target_branch in [" section "]")
-                    if (base == "") add_error("pending subproject missing base_revision in [" section "]")
-                    if (pushed == "") add_error("pending subproject missing pushed_commit in [" section "]")
-                } else if (base != "" || pushed != "") {
-                    add_error("base_revision/pushed_commit require pending_branch in [" section "]")
-                }
+                if (pending != "") add_error("pending_branch is no longer supported in [" section "]; use git-nest snapshot after pushing the subproject commit")
+                if (base != "") add_error("base_revision is no longer supported in [" section "]")
+                if (pushed != "") add_error("pushed_commit is no longer supported in [" section "]")
+                if (cleanup != "") add_error("finalized_from_branch is no longer supported in [" section "]")
                 if (tag != "" && revision == "") add_error("tag requires revision in [" section "]")
             }
         }
@@ -1060,21 +1615,17 @@ manifest_write_subproject() {
     previous_clone=
     [ -f "$MANIFEST_FILE" ] && previous_clone=$(subproject_key "$path" clone || true)
     preserved=$(mktemp)
-    [ -f "$MANIFEST_FILE" ] && manifest_preserved_keys "$(subproject_section "$path")" "^(repo|clone|target_branch|revision|tag|pending_branch|base_revision|pushed_commit|finalized_from_branch)$" >"$preserved" || : >"$preserved"
+    [ -f "$MANIFEST_FILE" ] && manifest_preserved_keys "$(subproject_section "$path")" "^(repo|clone|target_branch|revision|tag)$" >"$preserved" || : >"$preserved"
 
     require_value "$path" "cannot write manifest subproject with an empty path"
     require_value "$repo" "cannot write manifest subproject $path without a repository URL"
     case "$state" in
         finalized)
-            require_value "$a" "cannot finalize $path without a resolved revision; fetch the subproject or pass --revision <sha>"
+            require_value "$a" "cannot pin $path without a resolved revision; fetch the subproject or pass --revision <sha>"
             clone=${d:-$previous_clone}
             ;;
         pending)
-            require_value "$a" "cannot mark $path pending without a target branch"
-            require_value "$b" "cannot mark $path pending without a pending branch; check out a named branch first"
-            require_value "$c" "cannot mark $path pending without a base revision; fetch the subproject target branch"
-            require_value "$d" "cannot mark $path pending without a pushed commit; commit work before upload"
-            clone=${e:-$previous_clone}
+            die "pending manifest state is no longer supported; use git-nest snapshot after pushing the subproject commit"
             ;;
         tracked)
             require_value "$a" "cannot track $path without a target branch"
@@ -1098,15 +1649,6 @@ manifest_write_subproject() {
                     printf 'tag=%s\n' "$b"
                 fi
                 printf 'revision=%s\n' "$a"
-                if [ -n "$c" ]; then
-                    printf 'finalized_from_branch=%s\n' "$c"
-                fi
-                ;;
-            pending)
-                printf 'target_branch=%s\n' "$a"
-                printf 'pending_branch=%s\n' "$b"
-                printf 'base_revision=%s\n' "$c"
-                printf 'pushed_commit=%s\n' "$d"
                 ;;
             tracked)
                 printf 'target_branch=%s\n' "$a"
@@ -1266,7 +1808,7 @@ repo_is_partial_clone() {
 checkout_target_branch() {
     path=$1
     target=$2
-    require_value "$target" "cannot sync tracked subproject $path without a target branch"
+    require_value "$target" "cannot restore tracked subproject $path without a target branch"
     if git -C "$path" show-ref --verify --quiet "refs/heads/$target"; then
         git -C "$path" checkout "$target" || die "failed to check out target branch $target in $path"
     elif git -C "$path" rev-parse --verify "origin/$target^{commit}" >/dev/null 2>&1; then
@@ -1537,7 +2079,7 @@ reconcile_stale_subprojects() {
                 notice "removed stale subproject $old_path with --prune despite local state: $reason"
                 continue
             fi
-            warn "stale subproject $old_path $reason; leaving it in place. Review it, then commit/stash/discard the work, push/delete local-only branches, or run git-nest sync --prune to remove it."
+            warn "stale subproject $old_path $reason; leaving it in place. Review it, then commit/stash/discard the work, push/delete local-only branches, or run git-nest restore --prune to remove it."
             continue
         fi
 
@@ -1872,20 +2414,72 @@ remove_gitignore_entry() {
 ensure_gitignore_hygiene() {
     ensure_gitignore_line "$GITIGNORE_GIT_DIR_GUARD_ONE"
     ensure_gitignore_line "$GITIGNORE_GIT_DIR_GUARD_TWO"
+    ensure_gitignore_line "$BRANCH_MARKS_FILE"
+    ensure_gitignore_line "$PUSH_CANDIDATES_FILE"
+}
+
+# Repair managed support files for an existing nest.
+cmd_repair() {
+    create_rc=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --rc) create_rc=1; shift ;;
+            *) usage_error "unknown repair option: $1" ;;
+        esac
+    done
+    ensure_outer_repo
+    acquire_manifest_lock
+    ensure_manifest
+    validate_manifest_schema
+    ensure_gitattributes_guard
+    [ -f .gitignore ] || : >.gitignore
+    ensure_gitignore_hygiene
+    [ "$create_rc" -eq 0 ] || ensure_config
+    printf 'Repaired git-nest managed support files.\n'
+}
+
+nearest_parent_manifest_root() {
+    dir=$(pwd -P)
+    parent=$(dirname "$dir")
+    while [ "$parent" != "$dir" ]; do
+        if [ -f "$parent/$MANIFEST_FILE" ]; then
+            printf '%s\n' "$parent"
+            return 0
+        fi
+        dir=$parent
+        parent=$(dirname "$dir")
+    done
+    return 1
 }
 
 # Initialize an outer workspace and create default manifest/config files.
 cmd_init() {
     create_rc=0
+    sure=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --rc)
                 create_rc=1
                 shift
                 ;;
-            *) die "unknown init option: $1" ;;
+            --sure)
+                sure=1
+                shift
+                ;;
+            *) usage_error "unknown init option: $1" ;;
         esac
     done
+    if root=$(git rev-parse --show-toplevel 2>/dev/null); then
+        cd "$root" || die "cannot enter Git root $root"
+    fi
+    if [ -f "$MANIFEST_FILE" ]; then
+        printf 'git-nest workspace already initialized at %s.\n' "$(pwd)"
+        printf 'Run git-nest doctor to inspect it or git-nest repair to refresh managed support files.\n'
+        return 0
+    fi
+    if parent_root=$(nearest_parent_manifest_root 2>/dev/null); then
+        [ "$sure" -eq 1 ] || precondition_error "this directory is inside existing git-nest workspace $parent_root; rerun git-nest init --sure to create an intentional nested nest"
+    fi
     ensure_outer_repo
     acquire_manifest_lock
     ensure_manifest
@@ -2075,7 +2669,7 @@ cmd_mv() {
     old_arg=
     new_arg=
     if [ "${1:-}" = "--url" ]; then
-        [ $# -eq 3 ] || usage_error "usage: git-nest mv --url <new-url> <path>"
+        [ $# -eq 3 ] || usage_error "usage: git-nest move|mv --url <new-url> <path>"
         new_url=$2
         reject_backslash_path "$3"
         path=$(normalize_path "$3")
@@ -2099,20 +2693,20 @@ cmd_mv() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --force) force=1; shift ;;
-            --*) usage_error "unknown mv option: $1" ;;
+            --*) usage_error "unknown move option: $1" ;;
             *)
                 if [ -z "${old_arg:-}" ]; then
                     old_arg=$1
                 elif [ -z "${new_arg:-}" ]; then
                     new_arg=$1
                 else
-                    usage_error "usage: git-nest mv <old-path> <new-path> [--force]"
+                    usage_error "usage: git-nest move|mv <old-path> <new-path> [--force]"
                 fi
                 shift
                 ;;
         esac
     done
-    [ -n "${old_arg:-}" ] && [ -n "${new_arg:-}" ] || usage_error "usage: git-nest mv <old-path> <new-path> [--force]"
+    [ -n "${old_arg:-}" ] && [ -n "${new_arg:-}" ] || usage_error "usage: git-nest move|mv <old-path> <new-path> [--force]"
     reject_backslash_path "$old_arg"
     reject_backslash_path "$new_arg"
     old_path=$(normalize_path "$old_arg")
@@ -2145,13 +2739,14 @@ cmd_mv() {
 }
 
 cmd_clone() {
-    no_sync=0
+    no_restore=0
     depth=
     branch=
     single_branch=0
     while [ $# -gt 0 ]; do
         case "$1" in
-            --no-sync) no_sync=1; shift ;;
+            --no-restore) no_restore=1; shift ;;
+            --no-sync) usage_error "unknown clone option: --no-sync; use --no-restore" ;;
             --depth)
                 [ $# -ge 2 ] || usage_error "--depth requires a value"
                 depth=$2
@@ -2167,7 +2762,7 @@ cmd_clone() {
             *) break ;;
         esac
     done
-    [ $# -ge 1 ] && [ $# -le 2 ] || usage_error "usage: git-nest clone <outer-repo-url> [target-dir]"
+    [ $# -ge 1 ] && [ $# -le 2 ] || usage_error "usage: git-nest clone <nest-repo-url> [target-dir]"
     outer_repo=$1
     target_dir=${2:-}
     set -- git clone
@@ -2187,14 +2782,14 @@ cmd_clone() {
         target_dir=$(basename -- "$outer_repo")
         target_dir=${target_dir%.git}
     fi
-    if [ "$no_sync" -eq 1 ]; then
+    if [ "$no_restore" -eq 1 ]; then
         printf 'Cloned %s.\n' "$target_dir"
         return 0
     fi
     if [ -f "$target_dir/$MANIFEST_FILE" ]; then
-        (cd "$target_dir" && git_nest_main sync) || return $?
+        (cd "$target_dir" && git_nest_main restore) || return $?
     else
-        notice "cloned repository has no $MANIFEST_FILE; skipped sync"
+        notice "cloned repository has no $MANIFEST_FILE; skipped restore"
     fi
 }
 
@@ -2323,7 +2918,7 @@ status_current() {
         elif [ -n "$revision" ]; then
             dirty=
             repo_dirty "$path" && dirty=' dirty'
-            printf '  %s: finalized %.12s%s\n' "$path" "$revision" "$dirty"
+            printf '  %s: pinned %.12s%s\n' "$path" "$revision" "$dirty"
         else
             printf '  %s: tracked\n' "$path"
         fi
@@ -2809,7 +3404,7 @@ verify_current() {
         fi
         mode=$(effective_clone_mode "$path")
         if [ ! -d "$path/.git" ]; then
-            printf 'Error: %s: subproject checkout is missing; run git-nest sync\n' "$path" >>"$errors"
+            printf 'Error: %s: subproject checkout is missing; run git-nest restore\n' "$path" >>"$errors"
             continue
         fi
 
@@ -2821,10 +3416,10 @@ verify_current() {
 
         if [ "$mode" = partial ]; then
             repo_is_partial_clone "$path" ||
-                printf 'Error: %s: manifest/config requests clone=partial, but existing checkout is full; remove the subproject and run git-nest sync or use clone=full\n' "$path" >>"$errors"
+                printf 'Error: %s: manifest/config requests clone=partial, but existing checkout is full; remove the subproject and run git-nest restore or use clone=full\n' "$path" >>"$errors"
         else
             if repo_is_partial_clone "$path"; then
-                printf 'Error: %s: manifest/config requests clone=full, but existing checkout is partial; remove the subproject and run git-nest sync or use clone=partial\n' "$path" >>"$errors"
+                printf 'Error: %s: manifest/config requests clone=full, but existing checkout is partial; remove the subproject and run git-nest restore or use clone=full\n' "$path" >>"$errors"
             fi
         fi
 
@@ -3194,103 +3789,118 @@ cmd_start() {
     printf 'Started project branch %s.\n' "$branch"
 }
 
-# Record pending metadata for one clean subproject that has committed local work.
-record_subproject_if_needed() {
-    path=$1
-    quiet=$2
-    [ -d "$path/.git" ] || return 0
-    if repo_has_dirty "$path"; then
-        [ "$quiet" -eq 1 ] || warn "skipping dirty subproject $path during snapshot"
+# Resolve a snapshot path argument relative to the caller, then map it to a
+# manifest subproject. Empty output means "all subprojects".
+snapshot_selected_subprojects() {
+    arg=${1:-}
+    if [ -z "$arg" ]; then
+        manifest_subprojects
         return 0
     fi
-    repo=$(subproject_repo "$path")
-    require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-nest add again or fix the manifest"
-    target=$(subproject_key "$path" target_branch || true)
-    [ -n "$target" ] || target=$(default_target_branch "$path")
-    mod_branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-    [ -n "$mod_branch" ] || return 0
-    work_count=$(subproject_work_count "$path" "$target")
-    if [ "$work_count" -gt 0 ]; then
-        base=$(base_for_subproject "$path" "$target")
-        pushed=$(resolve_head_commit "$path" "cannot snapshot subproject $path")
-        manifest_write_subproject "$path" "$repo" pending "$target" "$mod_branch" "$base" "$pushed"
-        [ "$quiet" -eq 1 ] || printf 'Recorded subproject %s branch %s at %.12s.\n' "$path" "$mod_branch" "$pushed"
+    caller=${GIT_NEST_CALLER_PWD:-$(pwd -P)}
+    root=$(pwd -P)
+    target_abs=$(CDPATH= cd -- "$caller" && {
+        if [ -d "$arg" ]; then
+            CDPATH= cd -P -- "$arg" && pwd
+        else
+            dir=$(dirname -- "$arg")
+            base=$(basename -- "$arg")
+            CDPATH= cd -P -- "$dir" && printf '%s/%s\n' "$(pwd)" "$base"
+        fi
+    }) || precondition_error "cannot resolve snapshot path: $arg"
+    if [ "$target_abs" = "$root" ]; then
+        manifest_subprojects
+        return 0
     fi
+    match=
+    manifest_subprojects | while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        [ -d "$path" ] || continue
+        path_abs=$(CDPATH= cd -P -- "$path" && pwd) || continue
+        case "$target_abs" in
+            "$path_abs"|"$path_abs"/*)
+                printf '%s\n' "$path"
+                exit 0
+                ;;
+        esac
+    done
 }
 
-preflight_subproject_snapshot() {
+subproject_head_is_reproducible() {
     path=$1
-    [ -d "$path/.git" ] || return 0
-    repo_has_dirty "$path" && return 0
+    head=$2
+    if [ "$GIT_NEST_DRY_RUN" -eq 0 ] && [ "$GIT_NEST_NO_FETCH" -eq 0 ]; then
+        fetch_quiet "$path" 2>/dev/null || return 1
+    fi
+    git -C "$path" branch -r --contains "$head" 2>/dev/null | grep -E '^[* ]+origin/' >/dev/null 2>&1 && return 0
+    git -C "$path" tag --contains "$head" 2>/dev/null | grep . >/dev/null 2>&1 && return 0
+    return 1
+}
+
+snapshot_one_subproject() {
+    path=$1
+    quiet=$2
+    dry_run=$3
+    strict=$4
+    check_only=$5
+    [ -d "$path/.git" ] || {
+        [ "$quiet" -eq 1 ] || warn "skipping missing subproject $path during snapshot"
+        [ "$strict" -eq 1 ] && return "$EXIT_PRECONDITION"
+        return 0
+    }
     repo=$(subproject_repo "$path")
     require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-nest add again or fix the manifest"
+    if repo_has_dirty "$path"; then
+        [ "$quiet" -eq 1 ] || warn "cannot snapshot $path: working tree is dirty; commit, stash, or discard changes first"
+        [ "$strict" -eq 1 ] && return "$EXIT_ISSUES"
+        return 0
+    fi
+    head=$(resolve_head_commit "$path" "cannot snapshot subproject $path")
     target=$(subproject_key "$path" target_branch || true)
     [ -n "$target" ] || target=$(default_target_branch "$path")
-    mod_branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-    [ -n "$mod_branch" ] || return 0
-    subproject_work_count "$path" "$target" >/dev/null
+    if ! subproject_head_is_reproducible "$path" "$head"; then
+        [ "$quiet" -eq 1 ] || warn "cannot snapshot $path at $(printf '%s' "$head" | cut -c1-12): commit is not reachable from origin or a local tag"
+        [ "$strict" -eq 1 ] && return "$EXIT_ISSUES"
+        return 0
+    fi
+    old_revision=$(subproject_key "$path" revision || true)
+    if [ "$old_revision" = "$head" ]; then
+        [ "$quiet" -eq 1 ] || printf 'Snapshot unchanged for %s at %.12s.\n' "$path" "$head"
+        return 0
+    fi
+    if [ "$dry_run" -eq 1 ] || [ "$check_only" -eq 1 ]; then
+        printf '[dry-run] %s revision: %s -> %s\n' "$path" "${old_revision:-<unset>}" "$head"
+        [ "$check_only" -eq 1 ] && return "$EXIT_ISSUES"
+        return 0
+    fi
+    manifest_write_subproject "$path" "$repo" tracked "$target" "$head"
+    [ "$quiet" -eq 1 ] || printf 'Snapshotted %s at %.12s.\n' "$path" "$head"
 }
 
 snapshot_current() {
     quiet=$1
     dry_run=${2:-0}
+    selected=${3:-}
+    strict=${4:-0}
+    check_only=${5:-0}
     ensure_outer_repo
-    [ "$dry_run" -eq 1 ] || acquire_manifest_lock
+    [ "$dry_run" -eq 1 ] || [ "$check_only" -eq 1 ] || acquire_manifest_lock
     ensure_manifest
     validate_manifest_schema
-    branch=$(current_branch)
-    [ "$branch" != "HEAD" ] || die "snapshot requires the outer repository to be on a named branch"
-    ticket=$(ticket_from_branch "$branch")
-    manifest_subprojects | while IFS= read -r path; do
-        if [ "$dry_run" -eq 1 ]; then
-            [ -d "$path/.git" ] || continue
-            repo_has_dirty "$path" && continue
-            repo=$(subproject_repo "$path")
-            require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-nest add again or fix the manifest"
-        else
-            preflight_subproject_snapshot "$path"
-        fi
-    done
-    if [ "$dry_run" -eq 1 ]; then
-        old_id=$(manifest_get project id || true)
-        old_branch=$(manifest_get project branch || true)
-        printf '[dry-run] project id: %s -> %s\n' "${old_id:-<unset>}" "${ticket:-<unset>}"
-        printf '[dry-run] project branch: %s -> %s\n' "${old_branch:-<unset>}" "$branch"
-        manifest_subprojects | while IFS= read -r path; do
-            [ -d "$path/.git" ] || continue
-            if repo_has_dirty "$path"; then
-                [ "$quiet" -eq 1 ] || printf '[dry-run] %s: would skip dirty subproject\n' "$path"
-                continue
-            fi
-            target=$(subproject_key "$path" target_branch || true)
-            [ -n "$target" ] || target=$(default_target_branch "$path")
-            mod_branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-            [ -n "$mod_branch" ] || continue
-            if count=$(subproject_work_count "$path" "$target" 2>/dev/null); then
-                if [ "$count" -gt 0 ]; then
-                    base=$(base_for_subproject "$path" "$target" 2>/dev/null || printf 'unknown')
-                    pushed=$(resolve_head_commit "$path" "cannot snapshot subproject $path")
-                    old_pending=$(subproject_key "$path" pending_branch || true)
-                    old_base=$(subproject_key "$path" base_revision || true)
-                    old_pushed=$(subproject_key "$path" pushed_commit || true)
-                    printf '[dry-run] %s target_branch: %s -> %s\n' "$path" "${target:-<unset>}" "$target"
-                    printf '[dry-run] %s pending_branch: %s -> %s\n' "$path" "${old_pending:-<unset>}" "$mod_branch"
-                    printf '[dry-run] %s base_revision: %s -> %s\n' "$path" "${old_base:-<unset>}" "$base"
-                    printf '[dry-run] %s pushed_commit: %s -> %s\n' "$path" "${old_pushed:-<unset>}" "$pushed"
-                fi
-            else
-                printf '[dry-run] %s pending state: unknown; real run would fetch first if needed\n' "$path"
-            fi
-        done
-        clear_base_overrides
+    selected_paths=$(snapshot_selected_subprojects "$selected")
+    if [ -z "$selected_paths" ]; then
+        [ -z "$selected" ] || precondition_error "snapshot path is not the nest root or a managed subproject: $selected"
+        [ "$quiet" -eq 1 ] || [ "$check_only" -eq 1 ] || printf 'Refreshed git-nest snapshot.\n'
         return 0
     fi
-    manifest_write_project "$ticket" "$branch"
-    manifest_subprojects | while IFS= read -r path; do
-        record_subproject_if_needed "$path" "$quiet"
-    done
+    rc=0
+    printf '%s\n' "$selected_paths" | while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        snapshot_one_subproject "$path" "$quiet" "$dry_run" "$strict" "$check_only" || exit $?
+    done || rc=$?
     clear_base_overrides
-    [ "$quiet" -eq 1 ] || printf 'Refreshed current git-nest state.\n'
+    [ "$quiet" -eq 1 ] || [ "$check_only" -eq 1 ] || printf 'Refreshed git-nest snapshot.\n'
+    return "$rc"
 }
 
 snapshot_recursive() {
@@ -3298,13 +3908,15 @@ snapshot_recursive() {
     visited=$2
     quiet=$3
     dry_run=${4:-0}
+    strict=${5:-0}
+    check_only=${6:-0}
     root_abs=$(abs_path_for .)
     if grep -F -x "$root_abs" "$visited" >/dev/null 2>&1; then
         return 0
     fi
     printf '%s\n' "$root_abs" >>"$visited"
     [ "$quiet" -eq 1 ] || printf 'Snapshotting project: %s\n' "$label"
-    snapshot_current "$quiet" "$dry_run"
+    snapshot_current "$quiet" "$dry_run" "" "$strict" "$check_only"
     cleanup_manifest_lock
 
     subprojects_tmp=$(tmp_for "$MANIFEST_FILE.snapshot_recursive")
@@ -3316,7 +3928,7 @@ snapshot_recursive() {
             child_label=$(join_project_label "$label" "$path")
             (
                 cd "$path" || exit 1
-                snapshot_recursive "$child_label" "$visited" "$quiet" "$dry_run"
+                snapshot_recursive "$child_label" "$visited" "$quiet" "$dry_run" "$strict" "$check_only"
             ) || rc=1
         fi
     done <"$subprojects_tmp"
@@ -3329,30 +3941,41 @@ cmd_snapshot() {
     quiet=0
     recursive=0
     dry_run=0
+    strict=0
+    check_only=0
+    selected=
     clear_base_overrides
     while [ $# -gt 0 ]; do
         case "$1" in
             --recursive) recursive=1; shift ;;
             --quiet) quiet=1; shift ;;
             --dry-run) dry_run=1; GIT_NEST_DRY_RUN=1; shift ;;
+            --check) check_only=1; GIT_NEST_DRY_RUN=1; shift ;;
+            --strict) strict=1; shift ;;
             --no-fetch) GIT_NEST_NO_FETCH=1; shift ;;
             --base)
                 [ $# -ge 2 ] || usage_error "--base requires <subproject>=<ref>"
                 add_base_override "$2"
                 shift 2
                 ;;
-            *) usage_error "unknown snapshot option: $1" ;;
+            --*) usage_error "unknown snapshot option: $1" ;;
+            *)
+                [ -z "$selected" ] || usage_error "snapshot accepts at most one path"
+                selected=$1
+                shift
+                ;;
         esac
     done
+    [ "$recursive" -eq 0 ] || [ -z "$selected" ] || usage_error "snapshot --recursive cannot be combined with a path"
     if [ "$recursive" -eq 1 ]; then
         visited=$(mktemp)
         : >"$visited"
-        snapshot_recursive "." "$visited" "$quiet" "$dry_run"
+        snapshot_recursive "." "$visited" "$quiet" "$dry_run" "$strict" "$check_only"
         rc=$?
         rm -f "$visited"
         return "$rc"
     fi
-    snapshot_current "$quiet" "$dry_run"
+    snapshot_current "$quiet" "$dry_run" "$selected" "$strict" "$check_only"
     [ "$quiet" -eq 1 ] || notice_nested_snapshot_candidates
 }
 
@@ -3997,6 +4620,121 @@ cmd_foreach_clean() {
     run_foreach_filtered foreach-clean "$@"
 }
 
+current_repo_mark_path() {
+    caller=${GIT_NEST_CALLER_PWD:-$(pwd -P)}
+    root=$(pwd -P)
+    if git_root=$(CDPATH= cd -- "$caller" && git rev-parse --show-toplevel 2>/dev/null); then
+        git_root=$(CDPATH= cd -P -- "$git_root" && pwd)
+    else
+        git_root=$root
+    fi
+    if [ "$git_root" = "$root" ]; then
+        printf '.\n'
+        return 0
+    fi
+    manifest_subprojects | while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        [ -d "$path" ] || continue
+        path_abs=$(CDPATH= cd -P -- "$path" && pwd) || continue
+        [ "$git_root" = "$path_abs" ] && { printf '%s\n' "$path"; exit 0; }
+    done
+}
+
+repo_origin_url_for_mark() {
+    path=$1
+    git -C "$path" remote get-url origin 2>/dev/null || true
+}
+
+ensure_branch_marks_file() {
+    [ -f "$BRANCH_MARKS_FILE" ] || : >"$BRANCH_MARKS_FILE"
+    ensure_gitignore_line "$BRANCH_MARKS_FILE"
+}
+
+cmd_branch_mark() {
+    [ $# -le 1 ] || usage_error "usage: git-nest branch-mark [name]"
+    repo_path=$(current_repo_mark_path)
+    [ -n "$repo_path" ] || precondition_error "current Git repository is not the nest root or a managed subproject"
+    branch=${1:-}
+    if [ -z "$branch" ]; then
+        branch=$(git -C "$repo_path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+        [ -n "$branch" ] || precondition_error "cannot mark detached HEAD; pass a branch name explicitly"
+    fi
+    origin=$(repo_origin_url_for_mark "$repo_path")
+    now=$(utc_now)
+    ensure_branch_marks_file
+    tmp=$(tmp_for "$BRANCH_MARKS_FILE")
+    awk -F '	' -v repo="$repo_path" -v branch="$branch" '!(($1 == repo) && ($2 == branch))' "$BRANCH_MARKS_FILE" >"$tmp"
+    printf '%s\t%s\t%s\t%s\n' "$repo_path" "$branch" "$origin" "$now" >>"$tmp"
+    mv "$tmp" "$BRANCH_MARKS_FILE"
+    printf 'Marked branch %s for %s.\n' "$branch" "$repo_path"
+}
+
+cmd_branch_unmark() {
+    [ $# -eq 1 ] || usage_error "usage: git-nest branch-unmark <name>"
+    repo_path=$(current_repo_mark_path)
+    [ -n "$repo_path" ] || precondition_error "current Git repository is not the nest root or a managed subproject"
+    branch=$1
+    [ -f "$BRANCH_MARKS_FILE" ] || { printf 'No branch marks.\n'; return 0; }
+    tmp=$(tmp_for "$BRANCH_MARKS_FILE")
+    awk -F '	' -v repo="$repo_path" -v branch="$branch" '!(($1 == repo) && ($2 == branch))' "$BRANCH_MARKS_FILE" >"$tmp"
+    mv "$tmp" "$BRANCH_MARKS_FILE"
+    printf 'Unmarked branch %s for %s.\n' "$branch" "$repo_path"
+}
+
+cmd_branch_list() {
+    verbose=0
+    json=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --verbose) verbose=1; shift ;;
+            --json) json=1; shift ;;
+            *) usage_error "unknown branch-list option: $1" ;;
+        esac
+    done
+    if [ ! -s "$BRANCH_MARKS_FILE" ]; then
+        [ "$json" -eq 1 ] && printf '{"branches":[]}\n' || printf 'No branch marks.\n'
+        return 0
+    fi
+    if [ "$json" -eq 1 ]; then
+        printf '{"branches":['
+        first=1
+        while IFS='	' read -r repo branch origin seen; do
+            [ -n "$repo" ] || continue
+            [ "$first" -eq 1 ] || printf ','
+            first=0
+            printf '{"repo":'; json_string "$repo"; printf ',"branch":'; json_string "$branch"; printf ',"origin":'; json_string "$origin"; printf ',"last_seen":'; json_string "$seen"; printf '}'
+        done <"$BRANCH_MARKS_FILE"
+        printf ']}\n'
+        return 0
+    fi
+    while IFS='	' read -r repo branch origin seen; do
+        [ -n "$repo" ] || continue
+        if [ "$verbose" -eq 1 ]; then
+            printf '%s\t%s\t%s\t%s\n' "$branch" "$repo" "$origin" "$seen"
+        else
+            printf '%s\t%s\n' "$branch" "$repo"
+        fi
+    done <"$BRANCH_MARKS_FILE"
+}
+
+cmd_branch_cleanup() {
+    [ $# -eq 0 ] || usage_error "branch-cleanup takes no arguments"
+    [ -f "$BRANCH_MARKS_FILE" ] || { printf 'No branch marks.\n'; return 0; }
+    tmp=$(tmp_for "$BRANCH_MARKS_FILE")
+    : >"$tmp"
+    removed=0
+    while IFS='	' read -r repo branch origin seen; do
+        [ -n "$repo" ] || continue
+        if [ -d "$repo/.git" ] && git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+            printf '%s\t%s\t%s\t%s\n' "$repo" "$branch" "$origin" "$seen" >>"$tmp"
+        else
+            removed=$((removed + 1))
+        fi
+    done <"$BRANCH_MARKS_FILE"
+    mv "$tmp" "$BRANCH_MARKS_FILE"
+    printf 'Removed %s stale branch mark(s).\n' "$removed"
+}
+
 # Resolve the actual hook path for a repo, handling Git's relative path output.
 hook_path_for() {
     hook_path_repo=$1
@@ -4010,7 +4748,7 @@ hook_path_for() {
     esac
 }
 
-# Write a managed hook that calls snapshot --quiet from the outer workspace.
+# Write a managed hook for the root or a subproject.
 write_managed_hook() {
     write_hook_repo=$1
     write_hook_name=$2
@@ -4026,7 +4764,28 @@ write_managed_hook() {
         printf '%s\n' '# git-nest managed hook'
         printf '%s\n' '[ "${GIT_NEST_HOOK:-}" = "1" ] && exit 0'
         printf 'cd "%s" || exit 0\n' "$write_hook_outer_root"
-        printf 'GIT_NEST_HOOK=1 "%s" snapshot --quiet >/dev/null 2>&1 || true\n' "$write_hook_git_nest_path"
+        if [ "$write_hook_repo" = "." ]; then
+            case "$write_hook_name" in
+                post-checkout)
+                    printf 'GIT_NEST_HOOK=1 "%s" __hook root-post-checkout || true\n' "$write_hook_git_nest_path"
+                    ;;
+                pre-commit)
+                    printf 'GIT_NEST_HOOK=1 "%s" __hook root-pre-commit || true\n' "$write_hook_git_nest_path"
+                    ;;
+                pre-push)
+                    printf 'GIT_NEST_HOOK=1 "%s" __hook root-pre-push || true\n' "$write_hook_git_nest_path"
+                    ;;
+            esac
+        else
+            case "$write_hook_name" in
+                post-checkout)
+                    printf 'GIT_NEST_HOOK=1 "%s" snapshot "%s" --quiet || true\n' "$write_hook_git_nest_path" "$write_hook_repo"
+                    ;;
+                pre-push)
+                    printf 'GIT_NEST_HOOK=1 "%s" __hook subproject-pre-push "%s" || true\n' "$write_hook_git_nest_path" "$write_hook_repo"
+                    ;;
+            esac
+        fi
     } >"$write_hook_file"
     chmod +x "$write_hook_file" 2>/dev/null || true
 }
@@ -4035,7 +4794,12 @@ write_managed_hook() {
 managed_hooks_installed_in_repo() {
     managed_hooks_repo=$1
     git -C "$managed_hooks_repo" rev-parse --git-dir >/dev/null 2>&1 || return 1
-    for managed_hooks_name in post-checkout post-commit pre-push; do
+    if [ "$managed_hooks_repo" = "." ]; then
+        managed_hooks_name_list="post-checkout pre-commit pre-push"
+    else
+        managed_hooks_name_list="post-checkout pre-push"
+    fi
+    for managed_hooks_name in $managed_hooks_name_list; do
         managed_hooks_file=$(hook_path_for "$managed_hooks_repo" "$managed_hooks_name")
         [ -f "$managed_hooks_file" ] || return 1
         grep -F '# git-nest managed hook' "$managed_hooks_file" >/dev/null 2>&1 || return 1
@@ -4052,10 +4816,8 @@ install_hooks_in_repo_if_project_managed() {
     install_hooks_outer_root=$(CDPATH= cd -- "$install_hooks_outer_root" && pwd)
     install_hooks_git_nest_path=$(CDPATH= cd -- "$(dirname -- "${0}")" && pwd)/git-nest
     preflight_managed_hook "$install_hooks_repo" post-checkout
-    preflight_managed_hook "$install_hooks_repo" post-commit
-    preflight_managed_hook "$install_hooks_repo" pre-push
     write_managed_hook "$install_hooks_repo" post-checkout "$install_hooks_outer_root" "$install_hooks_git_nest_path"
-    write_managed_hook "$install_hooks_repo" post-commit "$install_hooks_outer_root" "$install_hooks_git_nest_path"
+    preflight_managed_hook "$install_hooks_repo" pre-push
     write_managed_hook "$install_hooks_repo" pre-push "$install_hooks_outer_root" "$install_hooks_git_nest_path"
     printf 'Installed hooks in %s.\n' "$install_hooks_repo"
 }
@@ -4089,7 +4851,7 @@ preflight_hooks_all() {
     while IFS= read -r repo; do
         [ -n "$repo" ] || continue
         preflight_managed_hook "$repo" post-checkout
-        preflight_managed_hook "$repo" post-commit
+        [ "$repo" != "." ] || preflight_managed_hook "$repo" pre-commit
         preflight_managed_hook "$repo" pre-push
     done <"$targets"
 }
@@ -4110,7 +4872,7 @@ install_hooks_all() {
     while IFS= read -r repo; do
         [ -n "$repo" ] || continue
         write_managed_hook "$repo" post-checkout "$outer_root" "$GIT_NEST_path"
-        write_managed_hook "$repo" post-commit "$outer_root" "$GIT_NEST_path"
+        [ "$repo" != "." ] || write_managed_hook "$repo" pre-commit "$outer_root" "$GIT_NEST_path"
         write_managed_hook "$repo" pre-push "$outer_root" "$GIT_NEST_path"
         printf 'Installed hooks in %s.\n' "$repo"
     done <"$targets"
@@ -4118,8 +4880,8 @@ install_hooks_all() {
 }
 
 # Command wrapper for managed hook installation.
-cmd_install_hooks() {
-    [ $# -eq 0 ] || die "install-hooks takes no arguments"
+cmd_hooks_install() {
+    [ $# -eq 0 ] || usage_error "hooks-install takes no arguments"
     install_hooks_all
 }
 
@@ -4137,15 +4899,15 @@ remove_managed_hook() {
 }
 
 # Command wrapper for managed hook removal across all hook targets.
-cmd_remove_hooks() {
-    [ $# -eq 0 ] || die "remove-hooks takes no arguments"
+cmd_hooks_uninstall() {
+    [ $# -eq 0 ] || usage_error "hooks-uninstall takes no arguments"
     ensure_manifest
     targets=$(mktemp)
     hook_targets_file "$targets"
     while IFS= read -r repo; do
         [ -n "$repo" ] || continue
         remove_managed_hook "$repo" post-checkout
-        remove_managed_hook "$repo" post-commit
+        [ "$repo" != "." ] || remove_managed_hook "$repo" pre-commit
         remove_managed_hook "$repo" pre-push
         printf 'Removed managed hooks in %s.\n' "$repo"
     done <"$targets"
@@ -4246,11 +5008,9 @@ cmd_update() {
     ensure_manifest
     validate_manifest_schema
     assert_path_not_inside_nested_project "$path"
-    [ -d "$path/.git" ] || die "$path is not a checked-out subproject; run git-nest sync first"
+    [ -d "$path/.git" ] || die "$path is not a checked-out subproject; run git-nest restore first"
     repo=$(subproject_repo "$path")
     [ -n "$repo" ] || die "$path is not in $MANIFEST_FILE"
-    pending=$(subproject_key "$path" pending_branch || true)
-    [ -z "$pending" ] || die "$path is pending on branch $pending; finalize or remove pending state before update"
     if repo_has_dirty "$path"; then
         die "$path has uncommitted changes; commit, stash, or discard them before update"
     fi
@@ -4486,14 +5246,14 @@ cmd_finalize() {
     printf 'Finalized %s at %.12s.\n' "$path" "$revision"
 }
 
-# Clone/fetch subprojects and restore their pending or finalized manifest state.
-sync_current() {
+# Clone/fetch subprojects and restore their recorded manifest state.
+restore_current() {
     prune=${1:-0}
     force=${2:-0}
     dry_run=${3:-0}
     ensure_manifest
-    subprojects_tmp=$(tmp_for "$MANIFEST_FILE.sync")
-    failures_tmp=$(tmp_for "$MANIFEST_FILE.sync_failures")
+    subprojects_tmp=$(tmp_for "$MANIFEST_FILE.restore")
+    failures_tmp=$(tmp_for "$MANIFEST_FILE.restore_failures")
     manifest_subprojects >"$subprojects_tmp"
     : >"$failures_tmp"
     rc=0
@@ -4515,7 +5275,6 @@ sync_current() {
             [ -n "$repo" ] || die "missing repo for $path"
             created=0
             clone_mode=$(effective_clone_mode "$path")
-            pending=$(subproject_key "$path" pending_branch || true)
             tag=$(subproject_key "$path" tag || true)
             revision=$(subproject_key "$path" revision || true)
             target=$(subproject_key "$path" target_branch || true)
@@ -4524,11 +5283,9 @@ sync_current() {
                 if [ ! -d "$path/.git" ]; then
                     printf '[dry-run] would clone %s into %s using clone=%s\n' "$repo" "$path" "$clone_mode"
                 else
-                    printf '[dry-run] would fetch %s before sync\n' "$path"
+                    printf '[dry-run] would fetch %s before restore\n' "$path"
                 fi
-                if [ -n "$pending" ]; then
-                    printf '[dry-run] would check out pending branch %s in %s\n' "$pending" "$path"
-                elif [ -n "$tag" ]; then
+                if [ -n "$tag" ]; then
                     remote_tag=unknown
                     if [ -n "$revision" ]; then
                         tag_tmp=$(tmp_for "$MANIFEST_FILE.sync_tag")
@@ -4557,18 +5314,7 @@ sync_current() {
                 install_hooks_in_repo_if_project_managed "$path"
             fi
             fetch_quiet "$path"
-            # Pending branches take precedence because they represent work still in
-            # review; finalized tags/revisions are checked out only after pending is gone.
-            if [ -n "$pending" ]; then
-                if git -C "$path" show-ref --verify --quiet "refs/heads/$pending"; then
-                    git -C "$path" checkout "$pending" || die "failed to check out pending branch $pending in $path"
-                elif git -C "$path" rev-parse --verify "origin/$pending^{commit}" >/dev/null 2>&1; then
-                    git -C "$path" checkout -b "$pending" "origin/$pending" ||
-                        die "failed to create pending branch $pending from origin/$pending in $path"
-                else
-                    warn "pending branch $pending not found for $path"
-                fi
-            elif [ -n "$tag" ]; then
+            if [ -n "$tag" ]; then
                 if [ -n "$revision" ]; then
                     tag_tmp=$(tmp_for "$MANIFEST_FILE.sync_tag")
                     remote_tag=$(remote_tag_commit "$repo" "$tag" "$tag_tmp" || true)
@@ -4586,15 +5332,15 @@ sync_current() {
                         fi
                     fi
                 fi
-                resolve_commit "$path" "$tag" "cannot sync $path tag $tag" >/dev/null
+                resolve_commit "$path" "$tag" "cannot restore $path tag $tag" >/dev/null
                 git -C "$path" checkout "$tag" || die "failed to check out tag $tag in $path"
             elif [ -n "$revision" ]; then
-                revision=$(resolve_commit "$path" "$revision" "cannot sync $path revision")
+                revision=$(resolve_commit "$path" "$revision" "cannot restore $path revision")
                 git -C "$path" checkout "$revision" || die "failed to check out revision $revision in $path"
             elif [ "$created" -eq 1 ] && [ "$clone_mode" = partial ]; then
                 checkout_target_branch "$path" "$target"
             fi
-            printf 'Synced %s.\n' "$path"
+            printf 'Restored %s.\n' "$path"
         ); then
             :
         else
@@ -4605,11 +5351,11 @@ sync_current() {
 
     rm -f "$subprojects_tmp"
     if [ "$rc" -ne 0 ]; then
-        printf 'Error: sync failed for one or more subprojects:\n' >&2
+        printf 'Error: restore failed for one or more subprojects:\n' >&2
         while IFS= read -r path; do
             [ -n "$path" ] && printf '  %s\n' "$path" >&2
         done <"$failures_tmp"
-        printf 'Recovery: review the error for each listed subproject, fix the manifest, remote access, or local checkout, then rerun git-nest sync. Run git-nest verify for a read-only consistency report.\n' >&2
+        printf 'Recovery: review the error for each listed subproject, fix the manifest, remote access, or local checkout, then rerun git-nest restore. Run git-nest verify for a read-only consistency report.\n' >&2
         rm -f "$failures_tmp"
         return 1
     fi
@@ -4617,8 +5363,8 @@ sync_current() {
     [ "$dry_run" -eq 1 ] || write_materialized_state
 }
 
-# Recursively sync the current project and nested project roots.
-sync_recursive() {
+# Recursively restore the current project and nested project roots.
+restore_recursive() {
     label=$1
     visited=$2
     prune=${3:-0}
@@ -4629,10 +5375,10 @@ sync_recursive() {
         return 0
     fi
     printf '%s\n' "$root_abs" >>"$visited"
-    printf 'Syncing project: %s\n' "$label"
-    sync_current "$prune" "$force" "$dry_run" || return 1
+    printf 'Restoring project: %s\n' "$label"
+    restore_current "$prune" "$force" "$dry_run" || return 1
 
-    subprojects_tmp=$(tmp_for "$MANIFEST_FILE.sync_recursive")
+    subprojects_tmp=$(tmp_for "$MANIFEST_FILE.restore_recursive")
     manifest_subprojects >"$subprojects_tmp"
     rc=0
     while IFS= read -r path; do
@@ -4641,7 +5387,7 @@ sync_recursive() {
             child_label=$(join_project_label "$label" "$path")
             (
                 cd "$path" || exit 1
-                sync_recursive "$child_label" "$visited" "$prune" "$force" "$dry_run"
+                restore_recursive "$child_label" "$visited" "$prune" "$force" "$dry_run"
             ) || rc=1
         fi
     done <"$subprojects_tmp"
@@ -4649,8 +5395,8 @@ sync_recursive() {
     return "$rc"
 }
 
-# Sync project state, optionally including nested projects.
-cmd_sync() {
+# Restore project state, optionally including nested projects.
+cmd_restore() {
     recursive=0
     prune=0
     force=0
@@ -4661,18 +5407,18 @@ cmd_sync() {
             --prune) prune=1; shift ;;
             --force) force=1; shift ;;
             --dry-run) dry_run=1; GIT_NEST_DRY_RUN=1; shift ;;
-            *) usage_error "unknown sync option: $1" ;;
+            *) usage_error "unknown restore option: $1" ;;
         esac
     done
     if [ "$recursive" -eq 1 ]; then
         visited=$(mktemp)
         : >"$visited"
-        sync_recursive "." "$visited" "$prune" "$force" "$dry_run"
+        restore_recursive "." "$visited" "$prune" "$force" "$dry_run"
         rc=$?
         rm -f "$visited"
         return "$rc"
     fi
-    sync_current "$prune" "$force" "$dry_run"
+    restore_current "$prune" "$force" "$dry_run"
     notice_nested_projects
 }
 
@@ -4747,10 +5493,23 @@ doctor_hook_status() {
 doctor_ls_remote() {
     repo=$1
     timeout_seconds=$2
+    validate_positive_integer "$timeout_seconds" "--timeout"
     if command -v timeout >/dev/null 2>&1; then
         timeout "$timeout_seconds" git ls-remote --exit-code "$repo" HEAD >/dev/null 2>&1
     else
-        git ls-remote --exit-code "$repo" HEAD >/dev/null 2>&1
+        git ls-remote --exit-code "$repo" HEAD >/dev/null 2>&1 &
+        child=$!
+        elapsed=0
+        while kill -0 "$child" 2>/dev/null; do
+            [ "$elapsed" -lt "$timeout_seconds" ] || {
+                kill "$child" 2>/dev/null || true
+                wait "$child" 2>/dev/null || true
+                return 124
+            }
+            sleep 1
+            elapsed=$((elapsed + 1))
+        done
+        wait "$child"
     fi
 }
 
@@ -4758,7 +5517,7 @@ cmd_doctor() {
     json=0
     json_pretty=0
     offline=0
-    timeout_seconds=5
+    timeout_seconds=$GIT_NEST_DOCTOR_TIMEOUT_SECONDS
     use_exit_code=0
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -4768,16 +5527,14 @@ cmd_doctor() {
             --timeout)
                 [ $# -ge 2 ] || usage_error "--timeout requires seconds"
                 timeout_seconds=$2
-                case "$timeout_seconds" in
-                    *[!0-9]*|"") usage_error "--timeout requires a positive integer" ;;
-                esac
-                [ "$timeout_seconds" -gt 0 ] || usage_error "--timeout requires a positive integer"
+                validate_positive_integer "$timeout_seconds" "--timeout"
                 shift 2
                 ;;
             --exit-code) use_exit_code=1; shift ;;
             *) usage_error "unknown doctor option: $1" ;;
         esac
     done
+    validate_positive_integer "$timeout_seconds" GIT_NEST_DOCTOR_TIMEOUT_SECONDS
 
     require_git
     root=$(find_project_root 2>/dev/null || true)
@@ -4822,7 +5579,7 @@ cmd_doctor() {
     if gitattributes_has_guard; then
         doctor_add_check "$checks" I gitattributes "git-nest attributes guard present"
     else
-        doctor_add_check "$checks" W gitattributes "missing or stale git-nest attributes guard; run git-nest init to repair it"
+        doctor_add_check "$checks" W gitattributes "missing or stale git-nest attributes guard; run git-nest repair to refresh it"
     fi
 
     if [ -f .gitignore ]; then
@@ -4838,7 +5595,12 @@ cmd_doctor() {
 
     for repo in . $(manifest_subprojects 2>/dev/null); do
         [ "$repo" = "." ] || [ -d "$repo/.git" ] || continue
-        for hook in post-checkout post-commit pre-push; do
+        if [ "$repo" = "." ]; then
+            hook_list="post-checkout pre-commit pre-push"
+        else
+            hook_list="post-checkout pre-push"
+        fi
+        for hook in $hook_list; do
             status=$(doctor_hook_status "$repo" "$hook")
             case "$status" in
                 unmanaged) code=W ;;
@@ -4868,6 +5630,19 @@ cmd_doctor() {
         doctor_add_check "$checks" I git-filter-repo "not found; required only for extract --preserve-history"
     fi
 
+    if command -v tar >/dev/null 2>&1; then
+        doctor_add_check "$checks" I export-tar "available; required for export --format tar.gz"
+    else
+        doctor_add_check "$checks" I export-tar "not found; required only for export --format tar.gz"
+    fi
+
+    export_python=$(command -v python 2>/dev/null || command -v python3 2>/dev/null || true)
+    if [ -n "$export_python" ]; then
+        doctor_add_check "$checks" I export-zip "python available; required for export --format zip"
+    else
+        doctor_add_check "$checks" I export-zip "python/python3 not found; required only for export --format zip"
+    fi
+
     if grep -E '^(W|E)	' "$checks" >/dev/null 2>&1; then
         ok=0
     else
@@ -4889,7 +5664,7 @@ cmd_doctor() {
 }
 
 GIT_NEST_command_names() {
-    printf '%s\n' "init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version"
+    printf '%s\n' "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help"
 }
 
 # Internal completion data endpoint used by generated shell completion scripts.
@@ -4915,7 +5690,7 @@ _git_nest_complete()
     local cur cmd commands subprojects
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
-    commands="init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version"
+    commands="init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -4926,6 +5701,9 @@ _git_nest_complete()
     case "$cmd" in
         completion)
             COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+            ;;
+        help)
+            COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
             ;;
         export)
             COMPREPLY=( $(compgen -W "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir" -- "$cur") )
@@ -4946,7 +5724,7 @@ _git_nest_complete()
         verify)
             COMPREPLY=( $(compgen -W "--recursive --json --json-pretty" -- "$cur") )
             ;;
-        sync)
+        restore)
             COMPREPLY=( $(compgen -W "--recursive --prune --force --dry-run" -- "$cur") )
             ;;
         doctor)
@@ -4958,14 +5736,12 @@ _git_nest_complete()
         log)
             COMPREPLY=( $(compgen -W "--max-count --since --until --subproject --oneline --recursive" -- "$cur") )
             ;;
-        start)
-            COMPREPLY=( $(compgen -W "--stash-dirty --discard-dirty --cancel-dirty --hooks --sure" -- "$cur") )
-            ;;
         snapshot)
-            COMPREPLY=( $(compgen -W "--recursive --quiet --dry-run --no-fetch --base" -- "$cur") )
+            subprojects="$(git-nest __complete subprojects 2>/dev/null)"
+            COMPREPLY=( $(compgen -W "$subprojects --recursive --quiet --dry-run --check --strict --no-fetch" -- "$cur") )
             ;;
-        upload)
-            COMPREPLY=( $(compgen -W "--finalize --dry-run --no-fetch --base" -- "$cur") )
+        branch-list)
+            COMPREPLY=( $(compgen -W "--verbose --json" -- "$cur") )
             ;;
         freeze)
             COMPREPLY=( $(compgen -W "--force --only --dry-run" -- "$cur") )
@@ -4983,9 +5759,9 @@ _git_nest_complete()
                 COMPREPLY=( $(compgen -W "clone-mode full partial" -- "$cur") )
             fi
             ;;
-        remove|rm|mv|update|finalize)
+        remove|rm|move|mv|update)
             subprojects="$(git-nest __complete subprojects 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "$subprojects --force --keep-files --url --remote --target-head --revision --tag --branch --no-fetch --dry-run --cleanup --use-target-head" -- "$cur") )
+            COMPREPLY=( $(compgen -W "$subprojects --force --keep-files --url --remote --target-head --revision --tag --branch --no-fetch --dry-run" -- "$cur") )
             ;;
     esac
 }
@@ -5001,7 +5777,7 @@ completion_zsh() {
 _git_nest()
 {
     local -a commands subprojects
-    commands=(init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version)
+    commands=(init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help)
 
     if (( CURRENT == 2 )); then
         _describe 'git-nest command' commands
@@ -5012,6 +5788,9 @@ _git_nest()
     case "$cmd" in
         completion)
             _arguments '1:shell:(bash zsh fish)'
+            ;;
+        help)
+            _arguments '1:command:(init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help)'
             ;;
         export)
             _arguments '--output[write archive or directory]:path:_files' '--format[archive format]:format:(tar.gz zip dir)' '--include-git[keep .git directories]' '--deterministic[normalize archive metadata]' '--allow-dirty[allow dirty subprojects]'
@@ -5031,7 +5810,7 @@ _git_nest()
         verify)
             _arguments '--recursive[include nested projects]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
             ;;
-        sync)
+        restore)
             _arguments '--recursive[include nested projects]' '--prune[remove reviewed stale paths]' '--force[proceed past tag drift warnings]' '--dry-run[show planned actions without writing]'
             ;;
         doctor)
@@ -5043,14 +5822,11 @@ _git_nest()
         log)
             _arguments '--max-count[count]:count:' '--since[date]:date:' '--until[date]:date:' '--subproject[path]:subproject:' '--oneline[compact output]' '--recursive[include nested projects]'
             ;;
-        start)
-            _arguments '--stash-dirty[stash dirty repositories]' '--discard-dirty[discard tracked edits]' '--cancel-dirty[fail on dirty repositories]' '--hooks[install managed hooks]' '--sure[confirm noninteractive startup]'
-            ;;
         snapshot)
-            _arguments '--recursive[include nested projects]' '--quiet[suppress dirty skip warnings]' '--dry-run[show planned changes without writing]' '--no-fetch[use local refs]' '--base[set explicit base]:subproject=ref:'
+            _arguments '1:subproject:__git_nest_subprojects' '--recursive[include nested projects]' '--quiet[suppress dirty skip warnings]' '--dry-run[show planned changes without writing]' '--check[check without writing]' '--strict[fail for unreproducible state]' '--no-fetch[use local refs]'
             ;;
-        upload)
-            _arguments '--finalize[pin pushed commits directly]' '--dry-run[show planned pushes without writing]' '--no-fetch[use local refs]' '--base[set explicit base]:subproject=ref:'
+        branch-list)
+            _arguments '--verbose[include origin and timestamp]' '--json[print JSON]'
             ;;
         freeze)
             _arguments '--force[freeze dirty subprojects]' '--only[limit paths]:paths:' '--dry-run[show changes without writing]'
@@ -5065,7 +5841,7 @@ _git_nest()
                 _describe 'subproject' subprojects
             fi
             ;;
-        remove|rm|mv|update|finalize)
+        remove|rm|move|mv|update)
             subprojects=("${(@f)$(_call_program subprojects git-nest __complete subprojects 2>/dev/null)}")
             _describe 'subproject' subprojects
             ;;
@@ -5082,7 +5858,8 @@ function __git_nest_subprojects
     git-nest __complete subprojects 2>/dev/null
 end
 
-complete -c git-nest -f -n "__fish_use_subcommand" -a "init add remove rm mv clone status outdated verify diff log start snapshot upload freeze install-hooks remove-hooks foreach foreach-pending foreach-modified foreach-clean no-pending config update finalize cleanup-branches sync doctor completion export extract absorb version"
+complete -c git-nest -f -n "__fish_use_subcommand" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help"
+complete -c git-nest -f -n "__fish_seen_subcommand_from help" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help"
 complete -c git-nest -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
 complete -c git-nest -f -n "__fish_seen_subcommand_from export" -a "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir"
 complete -c git-nest -f -n "__fish_seen_subcommand_from extract" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run full partial"
@@ -5090,18 +5867,17 @@ complete -c git-nest -f -n "__fish_seen_subcommand_from absorb" -a "--commit --m
 complete -c git-nest -f -n "__fish_seen_subcommand_from status" -a "--recursive --porcelain --json --json-pretty --exit-code"
 complete -c git-nest -f -n "__fish_seen_subcommand_from outdated" -a "--recursive --porcelain --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from verify" -a "--recursive --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from sync" -a "--recursive --prune --force --dry-run"
+complete -c git-nest -f -n "__fish_seen_subcommand_from restore" -a "--recursive --prune --force --dry-run"
 complete -c git-nest -f -n "__fish_seen_subcommand_from doctor" -a "--json --json-pretty --offline --timeout --exit-code"
 complete -c git-nest -f -n "__fish_seen_subcommand_from diff" -a "--since --stat --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from log" -a "--max-count --since --until --subproject --oneline --recursive"
-complete -c git-nest -f -n "__fish_seen_subcommand_from start" -a "--stash-dirty --discard-dirty --cancel-dirty --hooks --sure"
-complete -c git-nest -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --dry-run --no-fetch --base"
-complete -c git-nest -f -n "__fish_seen_subcommand_from upload" -a "--finalize --dry-run --no-fetch --base"
+complete -c git-nest -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --dry-run --check --strict --no-fetch (__git_nest_subprojects)"
+complete -c git-nest -f -n "__fish_seen_subcommand_from branch-list" -a "--verbose --json"
 complete -c git-nest -f -n "__fish_seen_subcommand_from freeze" -a "--force --only --dry-run"
 complete -c git-nest -f -n "__fish_seen_subcommand_from foreach-modified" -a "--continue-on-error --porcelain --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from foreach-clean" -a "--continue-on-error --porcelain --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from config" -a "get set list unset clone-mode full partial"
-complete -c git-nest -f -n "__fish_seen_subcommand_from remove rm mv update finalize config" -a "(__git_nest_subprojects)"
+complete -c git-nest -f -n "__fish_seen_subcommand_from remove rm move mv update config" -a "(__git_nest_subprojects)"
 EOF
 }
 
@@ -5238,7 +6014,7 @@ stage_export_tree() {
     manifest_subprojects | while IFS= read -r path; do
         [ -n "$path" ] || continue
         if [ ! -d "$path/.git" ]; then
-            precondition_error "cannot export missing subproject $path; run git-nest sync"
+            precondition_error "cannot export missing subproject $path; run git-nest restore"
         fi
         copy_subproject_files_to_stage "$path" "$stage" "$include_git"
     done

@@ -39,7 +39,7 @@ cd "$absent"
 "$GIT_NEST" init >/dev/null
 printf '*.tmp' >.gitignore
 "$GIT_NEST" add "$remote" libs/foo >/dev/null
-printf '*.tmp\n**/.git/\n**/.git\nlibs/foo/\n' >expected
+printf '*.tmp\n**/.git/\n**/.git\n.gitnest-branches\n.gitnest-push-candidates\nlibs/foo/\n' >expected
 cmp .gitignore expected >/dev/null
 
 describe_result "The contract gitignore hygiene behavior matched the expected command output and repository state."

@@ -24,7 +24,7 @@ git remote add origin "$outer_remote"
 git push -u origin main >/dev/null
 git --git-dir="$outer_remote" symbolic-ref HEAD refs/heads/main
 
-test_step "Clone a managed workspace" "the workflow starts from a normal consumer clone that should sync subprojects automatically."
+test_step "Clone a managed workspace" "the workflow starts from a normal consumer clone that should restore subprojects automatically."
 clone="$root/clone"
 run_ok "outer repository cloned with subproject checkout" -- "$GIT_NEST" clone "$outer_remote" "$clone"
 test -d "$clone/libs/foo/.git"

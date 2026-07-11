@@ -37,14 +37,14 @@ outer_dir=$(to_windows_path "$outer")
 "$busybox" sh -c '
     set -eu
     cd "$1"
-    expected_version="git-nest 0.8.0 \\\\_oOO_//"
+    expected_version="git-nest 0.8.1 \\\\_oOO_//"
     test "$("$2" version)" = "$expected_version"
     "$2" --help >/dev/null
     "$2" init >/dev/null
     test -f .gitnest
     test ! -f .gitnest-rc
     test -f .gitignore
-    "$2" init --rc >/dev/null
+    "$2" repair --rc >/dev/null
     test -f .gitnest-rc
 ' busybox-test "$outer_dir" "$script"
 

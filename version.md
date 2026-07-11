@@ -1,6 +1,6 @@
 # Version History
 
-## 0.8.0 - 2026-07-06
+## 0.8.1 - 2026-07-08
 
 - Changed name from `git-lego` to `git-nest` to better reflect the tool's role as a shared home for independent Git repositories and to avoid using the name of a commercial product.
 - Renamed the command surface from `git-lego` / `git lego` to `git-nest` / `git nest`.
@@ -10,8 +10,22 @@
 - Added the `\\_oOO_//` nest-and-eggs logo after the name and version in version command output, keeping the first two fields script-friendly.
 - Added platform-specific installation and invocation guidance for Windows, Linux, and macOS.
 - Added a README command quick reference with a brief purpose statement for each command.
+- Added grouped help output and `git-nest help <command>` pages with command-specific explanations, examples, and symmetric command guidance.
+- Clarified `git-nest clone <nest-repo-url>` as a `git clone` plus `git-nest restore` convenience, distinct from subproject `clone-mode`.
+- Clarified `config` as an allowlisted manifest setting command; currently only `clone-mode=full|partial` is public, and unknown keys are rejected.
+- Added `doctor` informational checks for optional export helpers: system `tar` for `tar.gz` output and `python` / `python3` for `zip` output.
 - Updated generated test result tables so test names render as inline code.
 - Added `todo.md` to track pending design work, documentation suggestions, and completed release tasks.
+- Cleaned up `todo.md` into active todo, suggestions, and done sections, including future submodule/subtree/git-subrepo conversion design notes.
+- Reworked the workflow around normal Git branch, commit, and push operations plus `git-nest snapshot` for recording reproducible subproject revisions.
+- Replaced the public `sync` command with `restore`, so restoring files from the manifest is named separately from recording manifest state.
+- Removed the public branch/upload/finalize/pending workflow commands; old names now fail with guidance toward the new workflow.
+- Added `repair` so `init` creates only, while managed support files are refreshed explicitly.
+- Added local branch-memory commands: `branch-mark`, `branch-unmark`, `branch-list`, and `branch-cleanup`.
+- Added `move` as the long-form alias for `mv`, matching `remove` / `rm` symmetry.
+- Renamed hook management to `hooks-install` and `hooks-uninstall`, and split root and subproject hook behavior around restore/snapshot reproducibility.
+- Added nested `init --sure` protection so accidental nests inside managed subprojects are rejected by default.
+- Updated README, implementation summary, maintainer guidance, AGENTS.md, and the portable AI skill for the restore/snapshot model.
 
 ## 0.7.1 - 2026-07-04
 

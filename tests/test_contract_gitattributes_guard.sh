@@ -43,7 +43,7 @@ cp .gitattributes before
 "$GIT_NEST" init >/dev/null
 cmp .gitattributes before >/dev/null
 
-# init repairs stale/conflicting git-nest-owned entries and doctor reports them.
+# repair refreshes stale/conflicting git-nest-owned entries and doctor reports them.
 repair="$root/repair"
 make_repo "$repair"
 cd "$repair"
@@ -57,7 +57,7 @@ bin/git-nest text eol=crlf
 EOF
 "$GIT_NEST" doctor --offline >doctor_attrs.out
 assert_file_contains doctor_attrs.out "W	gitattributes	missing or stale git-nest attributes guard"
-"$GIT_NEST" init >/dev/null
+"$GIT_NEST" repair >/dev/null
 assert_git_nest_attrs
 assert_file_contains .gitattributes "*.md text"
 assert_file_not_contains .gitattributes ".gitnest text eol=crlf"

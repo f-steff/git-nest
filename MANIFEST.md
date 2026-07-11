@@ -9,18 +9,11 @@ Manifest schema version: `1`
 ```ini
 [project]
 version=1
-id=XX-123
-branch=XX-123-short-description
 ```
 
 Required key:
 
 - `version=1`
-
-Optional keys:
-
-- `id=<ticket-or-project-id>`
-- `branch=<outer-branch>`
 
 ## Subproject Sections
 
@@ -39,17 +32,14 @@ Common keys:
 - `clone=<full|partial>` is optional.
 - `target_branch=<branch>` records the upstream branch used for comparisons.
 
-Tracked/finalized state:
+Recorded state:
 
 - `revision=<sha>` pins a commit.
 - `tag=<tag>` may be present only with `revision=<sha>`.
-- `finalized_from_branch=<branch>` is an optional local cleanup hint.
 
-Pending state:
+Obsolete keys from earlier unreleased workflows are invalid:
 
 - `pending_branch=<branch>`
-- `target_branch=<branch>`
 - `base_revision=<sha>`
 - `pushed_commit=<sha>`
-
-When `pending_branch` is present, `target_branch`, `base_revision`, and `pushed_commit` are required.
+- `finalized_from_branch=<branch>`

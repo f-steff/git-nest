@@ -48,16 +48,6 @@ cmp -s outdated_order_one.out outdated_order_two.out
 test "$(git -C libs/foo rev-parse HEAD)" = "$head_before"
 cmp -s .gitnest project.before
 
-git -C libs/foo checkout -b OUTDATED-100-subproject >/dev/null
-printf 'pending\n' >>libs/foo/file.txt
-git -C libs/foo add file.txt
-git -C libs/foo commit -m "AVAIL-100 pending" >/dev/null
-"$GIT_NEST" upload >/dev/null
-"$GIT_NEST" outdated >outdated_pending.out
-assert_file_contains outdated_pending.out "libs/foo: pending OUTDATED-100-subproject"
-"$GIT_NEST" outdated --porcelain >outdated_pending_porcelain.out
-test ! -s outdated_pending_porcelain.out
-
 missing="$root/missing_checkout"
 mkdir -p "$missing"
 cp project.before "$missing/.gitnest"

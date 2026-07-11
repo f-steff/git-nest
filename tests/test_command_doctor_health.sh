@@ -24,6 +24,12 @@ git commit -m "initial workspace" >/dev/null
 "$GIT_NEST" doctor --offline >doctor.out
 assert_file_contains doctor.out "I	git-version"
 assert_file_contains doctor.out "I	remotes	remote reachability skipped by --offline"
+assert_file_contains doctor.out "I	export-tar"
+assert_file_contains doctor.out "I	export-zip"
+GIT_NEST_DOCTOR_TIMEOUT_SECONDS=7 "$GIT_NEST" doctor --offline >doctor_env.out
+assert_file_contains doctor_env.out "I	remotes	remote reachability skipped by --offline"
+run_fail "invalid doctor timeout environment rejected" any -- sh -c 'GIT_NEST_DOCTOR_TIMEOUT_SECONDS=bad "$1" doctor --offline >doctor_bad_timeout.out 2>doctor_bad_timeout.err' sh "$GIT_NEST"
+assert_file_contains doctor_bad_timeout.err "GIT_NEST_DOCTOR_TIMEOUT_SECONDS requires a positive integer"
 
 "$GIT_NEST" doctor --json --offline >doctor.json
 python -m json.tool doctor.json >/dev/null 2>&1 || python3 -m json.tool doctor.json >/dev/null

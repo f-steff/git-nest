@@ -106,16 +106,4 @@ fi
 assert_file_contains dirty.err "uncommitted changes"
 git -C libs/foo checkout -- file.txt
 
-# Pending subprojects must be finalized or cleared before update rewrites version state.
-git -C libs/foo checkout -b UPD-100-subproject >/dev/null
-printf 'pending\n' >>libs/foo/file.txt
-git -C libs/foo add file.txt
-git -C libs/foo commit -m "UPD-100 pending" >/dev/null
-"$GIT_NEST" upload >/dev/null
-if "$GIT_NEST" update libs/foo --target-head >pending.out 2>pending.err; then
-    echo "update should fail on pending subprojects" >&2
-    exit 1
-fi
-assert_file_contains pending.err "is pending on branch"
-
 describe_result "The command update modes behavior matched the expected command output and repository state."

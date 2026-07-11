@@ -13,7 +13,7 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
 - Use `Error:`, `Warning:`, and `Notice:` for user-facing diagnostics.
 - Keep manifest rewrites deterministic and readable.
 - Do not add mandatory provider integration or automatic PR creation.
-- Keep hooks opt-in; hooks may run `git-nest snapshot --quiet` but must not push or upload automatically.
+- Keep hooks opt-in; hooks may run `git-nest snapshot --quiet` or reproducibility checks but must not push automatically.
 
 ## Change Workflow
 
@@ -46,7 +46,7 @@ Tests should narrate important behavior with `test_step`, `run_ok`, `run_fail`, 
 
 The full suite is long-running and may exceed 10 minutes on Windows. That is acceptable while stdio output continues. The runner streams test output while also capturing it to per-test logs, records total suite time in `test-result.md`, and fails any active test that produces no output for more than `TEST_WATCHDOG_SECONDS` seconds. The default watchdog is 180 seconds, and the suite stops after the first hung test. Keep individual tests chatty enough that a healthy long operation emits progress before the watchdog threshold.
 
-Cover both successful behavior and negative paths. New parser branches, missing refs, dirty/pending protections, manifest state transitions, Git-style invocation, portability paths, and recursive nested-project behavior should have tests when touched.
+Cover both successful behavior and negative paths. New parser branches, missing refs, dirty or unreproducible protections, manifest state transitions, Git-style invocation, portability paths, and recursive nested-project behavior should have tests when touched.
 
 ## Scope Guardrails
 

@@ -69,8 +69,8 @@ assert_file_contains status.err "Notice: nested project found at firmware"
 assert_file_contains verify.out "Project verified."
 assert_file_contains verify.err "Notice: nested project found at firmware"
 
-"$GIT_NEST" sync >sync.out 2>sync.err
-assert_file_contains sync.err "Notice: nested project found at firmware"
+"$GIT_NEST" restore >restore.out 2>restore.err
+assert_file_contains restore.err "Notice: nested project found at firmware"
 test ! -d firmware/drivers/io/.git
 
 "$GIT_NEST" log --max-count 5 >log.out 2>log.err
@@ -84,12 +84,12 @@ assert_file_contains "$root/inner_status.out" "drivers/io: missing"
 assert_file_not_contains "$root/inner_status.out" "firmware:"
 cd "$outer"
 
-"$GIT_NEST" sync --recursive >sync_recursive.out
+"$GIT_NEST" restore --recursive >sync_recursive.out
 test -d firmware/drivers/io/.git
 test -d firmware/drivers/io/chips/adc/.git
-assert_file_contains sync_recursive.out "Syncing project: ."
-assert_file_contains sync_recursive.out "Syncing project: firmware"
-assert_file_contains sync_recursive.out "Syncing project: firmware/drivers/io"
+assert_file_contains sync_recursive.out "Restoring project: ."
+assert_file_contains sync_recursive.out "Restoring project: firmware"
+assert_file_contains sync_recursive.out "Restoring project: firmware/drivers/io"
 
 "$GIT_NEST" status --recursive >status_recursive.out
 assert_file_contains status_recursive.out "project: ."

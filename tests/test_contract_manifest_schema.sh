@@ -97,7 +97,7 @@ clone=shallow'
 assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "invalid clone mode"
 
-case_dir incomplete_pending '[project]
+case_dir obsolete_pending '[project]
 version=1
 [subproject "libs/foo"]
 repo=file:///tmp/foo.git
@@ -105,7 +105,8 @@ pending_branch=TOPIC-1
 target_branch=main
 base_revision=abc123'
 assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
-assert_file_contains err "pending subproject missing pushed_commit"
+assert_file_contains err "pending_branch is no longer supported"
+assert_file_contains err "base_revision is no longer supported"
 
 case_dir tag_without_revision '[project]
 version=1

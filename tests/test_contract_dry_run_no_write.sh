@@ -32,33 +32,28 @@ git -C "$seed" push origin main >/dev/null
 new_origin=$(git --git-dir="$remote" rev-parse refs/heads/main)
 test "$old_origin" != "$new_origin"
 
-"$GIT_NEST" sync --dry-run >sync.out
-assert_file_contains sync.out "[dry-run]"
+"$GIT_NEST" restore --dry-run >restore.out
+assert_file_contains restore.out "[dry-run]"
 test "$(git -C libs/foo rev-parse origin/main)" = "$old_origin"
 
-git -C libs/foo checkout -b DRY-1 >/dev/null
+git -C libs/foo checkout main >/dev/null
 printf 'local work\n' >>libs/foo/file.txt
 git -C libs/foo add file.txt
 git -C libs/foo commit -m "DRY-1 local work" >/dev/null
+git -C libs/foo push origin HEAD:dry-run >/dev/null
 
 "$GIT_NEST" snapshot --dry-run >snapshot.out
 assert_file_contains snapshot.out "[dry-run]"
 test "$(git hash-object .gitnest)" = "$old_manifest"
 test ! -e .gitnest.lock
-test "$(git -C libs/foo rev-parse origin/main)" = "$old_origin"
-
-"$GIT_NEST" upload --dry-run >upload.out
-assert_file_contains upload.out "[dry-run] would push subproject libs/foo branch DRY-1"
 test "$(git hash-object .gitnest)" = "$old_manifest"
-test "$(git -C libs/foo rev-parse origin/main)" = "$old_origin"
 
-"$GIT_NEST" upload --no-fetch --base libs/foo="$old_origin" >/dev/null
-pending_manifest=$(git hash-object .gitnest)
-"$GIT_NEST" finalize libs/foo --dry-run --use-target-head >finalize.out
-assert_file_contains finalize.out "[dry-run] libs/foo revision:"
-assert_file_contains finalize.out "$new_origin"
-test "$(git hash-object .gitnest)" = "$pending_manifest"
+"$GIT_NEST" snapshot >/dev/null
+snapshotted_manifest=$(git hash-object .gitnest)
+test "$snapshotted_manifest" != "$old_manifest"
+"$GIT_NEST" restore --dry-run >restore_after_snapshot.out
+assert_file_contains restore_after_snapshot.out "[dry-run]"
+test "$(git hash-object .gitnest)" = "$snapshotted_manifest"
 test ! -e .gitnest.lock
-test "$(git -C libs/foo rev-parse origin/main)" = "$old_origin"
 
 describe_result "The contract dry run no write behavior matched the expected command output and repository state."

@@ -2,11 +2,11 @@
 
 set -eu
 . "$(dirname "$0")/helper.sh"
-test_begin command_sync_stale_subprojects
+test_begin command_restore_stale_subprojects
 
-test_step "Exercise command sync stale subprojects" "This test verifies the documented command sync stale subprojects behavior and fails if command output or repository state differs from the expected result."
+test_step "Exercise command restore stale subprojects" "This test verifies the documented command restore stale subprojects behavior and fails if command output or repository state differs from the expected result."
 
-root=$(test_workspace command_sync_stale_subprojects)
+root=$(test_workspace command_restore_stale_subprojects)
 remote_one="$root/remotes/one.git"
 remote_two="$root/remotes/two.git"
 remote_shared="$root/remotes/shared.git"
@@ -28,7 +28,7 @@ cd "$project"
 test -d old/one/.git
 test -d remove/two/.git
 
-# A clean subproject path move should relocate the existing checkout before sync
+# A clean subproject path move should relocate the existing checkout before restore
 # fetches/checks out the manifest state.
 revision_one=$(git -C old/one rev-parse HEAD)
 cat >.gitnest <<EOF
@@ -42,7 +42,7 @@ repo=$remote_one
 target_branch=main
 revision=$revision_one
 EOF
-"$GIT_NEST" sync >move.out 2>move.err
+"$GIT_NEST" restore >move.out 2>move.err
 test -d new/one/.git
 test ! -e old/one
 test ! -e remove/two
@@ -63,11 +63,11 @@ repo=$remote_one
 target_branch=main
 revision=$revision_one
 EOF
-"$GIT_NEST" sync >dirty.out 2>dirty.err
+"$GIT_NEST" restore >dirty.out 2>dirty.err
 test -d dirty/two/.git
 assert_file_contains dirty.err "Warning: stale subproject dirty/two has local changes or untracked files"
-assert_file_contains dirty.err "git-nest sync --prune"
-"$GIT_NEST" sync --prune >prune.out 2>prune.err
+assert_file_contains dirty.err "git-nest restore --prune"
+"$GIT_NEST" restore --prune >prune.out 2>prune.err
 test ! -e dirty/two
 assert_file_contains prune.err "Notice: removed stale subproject dirty/two with --prune despite local state"
 
@@ -88,11 +88,11 @@ repo=$remote_one
 target_branch=main
 revision=$revision_one
 EOF
-"$GIT_NEST" sync >branch.out 2>branch.err
+"$GIT_NEST" restore >branch.out 2>branch.err
 test -d branch/two/.git
 assert_file_contains branch.err "Warning: stale subproject branch/two has local-only branch tip local-only"
-assert_file_contains branch.err "git-nest sync --prune"
-"$GIT_NEST" sync --prune >branch_prune.out 2>branch_prune.err
+assert_file_contains branch.err "git-nest restore --prune"
+"$GIT_NEST" restore --prune >branch_prune.out 2>branch_prune.err
 test ! -e branch/two
 
 # Ambiguous same-repo moves are never pruned automatically or suggested.
@@ -114,11 +114,11 @@ repo=$remote_shared
 target_branch=main
 revision=$revision_shared
 EOF
-"$GIT_NEST" sync >ambig.out 2>ambig.err || true
+"$GIT_NEST" restore >ambig.out 2>ambig.err || true
 test -d ambig/old/.git
 test -d ambig/new-one/.git
 test -d ambig/new-two/.git
 assert_file_contains ambig.err "Warning: stale subproject ambig/old could match multiple paths"
-assert_file_not_contains ambig.err "git-nest sync --prune"
+assert_file_not_contains ambig.err "git-nest restore --prune"
 
-describe_result "The command sync stale subprojects behavior matched the expected command output and repository state."
+describe_result "The command restore stale subprojects behavior matched the expected command output and repository state."
