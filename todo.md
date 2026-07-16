@@ -1,22 +1,8 @@
 # todo
 
-- Design Git submodule conversion commands:
-  - `git-nest submodules`: list Git submodules from `.gitmodules`, showing path, URL, branch when present, and whether the submodule checkout exists.
-  - `git-nest adopt-submodule <path>`: convert an existing Git submodule into a git-nest subproject at the same path.
-  - `git-nest eject-submodule <path>`: convert a git-nest subproject back into a Git submodule.
-  - The conversion commands must be explicit, reversible by design, and dry-run friendly. They must explain which files and Git metadata will change before changing them.
-  - Do not silently rewrite `.gitmodules`, `.git/config`, `.gitnest`, or nested repository state. Do not treat subtree conversion as the same problem as submodule conversion.
-- Design unmanaged nested repository discovery:
-  - Add either `git-nest discover` or an explicit `git-nest status --unmanaged` mode that scans for nested `.git` repositories not listed in `.gitnest`.
-  - Support bounded scans with a depth option and exclude patterns for directories such as `node_modules`, `vendor`, build output, caches, and generated dependency folders.
-  - Report enough context to act on the result: path, whether it is inside an existing module, whether it is already a nest root, and a suggested next command when safe.
-  - Keep this as discovery only. Do not auto-add, auto-sync, or auto-register repositories with IDEs.
-  - Do not scan unbounded directory trees by default, and do not follow symlinks without an explicit decision and tests.
-- Design a public module listing command:
-  - Add `git-nest list` to list `.gitnest` modules in a stable order.
-  - Include script-friendly output and JSON output so callers do not have to parse human `status` text.
-  - Include at least path, URL, target branch, revision, tag, current checkout state, and reproducibility status.
-  - Keep `status` focused on workspace health. Do not make scripts depend on decorative or human-oriented status output.
+- Deepen test coverage incrementally, one or a few commands per pass, auditing each command against its help/contract and adding the missing cases. Report and fix any bugs the new tests expose.
+  - Done so far: hooks (install/uninstall/triggered) and verify.
+  - Remaining audit candidates (roughly shallow or scenario-thin): restore (recovery paths, --prune/--force, partial-clone), status (--exit-code, recursive, composite/mismatch states), outdated, diff --since edge cases, log filters, freeze, config, update modes, clone modes, export formats, doctor checks, and the workflow scenarios.
 - Design a conservative current-branch update workflow:
   - Consider `git-nest pull`, `git-nest update-current`, or a documented `foreach-clean -- git pull --ff-only` recipe.
   - The command should update checked-out modules on their current branches without first rewriting module state from `.gitnest`.
@@ -39,24 +25,16 @@
   - If binary releases are added later, test native Windows artifacts on Windows and decide whether Windows ARM64 is supported.
   - If installer output uses color, provide a no-color path for CI, logs, and terminals without color support.
   - Do not let the installer hide required PATH or shell-profile steps behind decorative output.
-- Keep subtree and git-subrepo support as separate future designs:
-  - Subtree import/export may be useful, but it changes repository content and history semantics in a way that is different from nest modules and Git submodules.
-  - Git-subrepo import/export may also be useful for users who already rely on git-subrepo-style embedded repositories.
-  - Keep these conversions simple: support conversion from the chosen point forward only, without attempting to reconstruct, rewrite, or preserve older history before the conversion point.
-  - Each conversion family must have explicit terminology, tests, and documentation so users understand whether they are working with a Git submodule, Git subtree, git-subrepo, or git-nest module.
-  - Do not merge subtree or git-subrepo behavior into `adopt-submodule`, `eject-submodule`, `restore`, or `snapshot`.
+- Keep subtree and git-subrepo support as deferred, explicit `absorb` source types:
+  - Add them only as explicit modes such as `absorb --subtree <path> <url>` and `absorb --subrepo <path>`, never auto-detected. A Git subtree leaves no reliable on-disk marker, so it cannot be detected; a git-subrepo can be detected by `<path>/.gitrepo` but is still deferred.
+  - Treat subtree absorb as equivalent to the plain-folder path plus a remembered upstream URL: forward-only, with no earlier history carried across.
+  - Keep git-subrepo conversions forward-only as well, without attempting to reconstruct, rewrite, or preserve older history before the conversion point.
+  - Each conversion family must have explicit terminology, tests, and documentation so users understand whether they are working with a Git submodule, Git subtree, git-subrepo, or git-nest subproject.
+  - Do not merge subtree or git-subrepo behavior into the auto-detected `absorb` cases, `inline`, `detach`, `remove`, `restore`, or `snapshot`.
   - Do not hide history-loss or history-boundary semantics behind a friendly command name. The dry-run and confirmation text must say exactly what history is and is not being carried across.
 
 # suggestions
 
-- Revisit the names of the outer-repo conversion commands from the nest's point of view.
-  - Current issue: `extract` and `absorb` describe what happens to files from the outer repository's mechanical perspective, but they do not read clearly from the nest's perspective.
-  - Possible direction: rename current `extract` to something like `adopt` because the nest is adding a directory as a managed subproject.
-  - Possible direction: rename current `absorb` to something like `inline` because the nest stops managing the subproject and the outer repository tracks the files directly.
-  - Pros: nest-view names make direction easier to understand and reduce the risk of users running the opposite conversion.
-  - Cons: metaphor names can be less obvious in scripts and may require extra help text for users who think in Git mechanics.
-  - How to do it: keep old names as rejected aliases with clear guidance during the unreleased redesign window, update tests and docs together, and make dry-run output state exactly whether the path is being added to or removed from the nest.
-  - How not to do it: do not use `expel` for the current `absorb` behavior unless the command leaves a standalone repository outside the nest. `expel` sounds like "remove from the nest but keep as a repository", which is closer to `remove --keep-files` or a future detach command than to folding files into the outer repository.
 - Use nest-related vocabulary in documentation examples to make command explanations more memorable, while keeping the actual command names literal and script-friendly.
   - Example: describe `restore` as bringing the nest back into shape, or as hatching missing checkouts, without adding `hatch` as a code alias.
   - Do not add metaphor aliases to the CLI unless there is a later explicit product decision.
@@ -68,6 +46,14 @@
 
 # done
 
+- Gave every test a globally unique four-digit ID (filename prefix `test_<NNNN>_<category>_<behavior>.sh`) in category blocks stepping by 10 (command 0010+, contract 2000+, platform 3000+, symmetry 4000+, workflow 5000+), and added a `# Test:` description header to each. The runner (`.sh` and, by forwarding, `.bat`) gained commands `list` (ID + description), `only <ids>`, `except <ids>`, and `help`, plus a `--stop-on-fail` option; unknown commands, options, or IDs print help and stop. The former inline invocation-smoke check is now the real test `test_3030_platform_invocation_smoke.sh`. Docs and naming conventions updated in AGENTS.md, README.md, and docs/maintainer.md.
+- Added a dedicated `verify` test (`test_command_verify_health.sh`) covering a clean pass, dirty and unmanaged-repo warnings, and missing-checkout, wrong-remote, revision-drift, and unresolvable-revision errors plus exit codes and JSON. It exposed a bug: `verify --json` always returned empty `errors`/`warnings` arrays because `verify_current` reused the global temp-file variable names `errors`/`warnings`, clobbering (and deleting) the caller's files. Refactored `verify_current` to write to caller-provided files and not print, added a `verify_report_human` wrapper, and gave `cmd_verify` uniquely named JSON variables so errors and warnings are now reported.
+- Deepened hooks coverage into three tests and fixed a bug they exposed. `test_command_hooks_install.sh` covers hook-set placement, all-or-nothing unmanaged-hook refusal, recursion rejection, and auto-install on `add`; `test_command_hooks_uninstall.sh` covers managed removal, unmanaged preservation with a warning, and that removed hooks stop firing; `test_workflow_hooks_triggered.sh` drives every managed hook through real Git checkout/commit/push and asserts each effect. The utilization test uncovered that `cmd_snapshot` returned the trailing notice's status instead of the snapshot result, so the root pre-push reproducibility warning never fired inside the hook's `if ! cmd_snapshot ...`; `cmd_snapshot` now captures and returns the real result.
+- Reworked conversion backups into transient, self-documenting recovery directories. `inline` and `absorb --preserve-history` create `.gitnest-recovery-<op>-<name>-<timestamp>/` with a `RECOVERY.txt` explaining restore/cleanup, ignore it on demand via the repo-local `.git/info/exclude` (never the committed `.gitignore`), and remove it on success. Interrupted conversions leave the backup with instructions, and `git-nest doctor` reports leftovers (`recovery-backup` check); `discover` prunes `.gitnest-recovery-*`. Backup-dir ignore constants were removed from the managed block.
+- Managed nest-owned `.gitignore` entries in a self-healing `# BEGIN git-nest ignores` block. `init`/`repair`/`add`/`absorb`/`move`/`remove`/`inline` reconcile the block; stray nest-owned entries a user moves outside are pulled back in and deduped; user lines are preserved. `repair` prunes stale nest-owned entries (path neither managed nor present) and reports each; `doctor` warns when stale entries exist; `detach` keeps its entry for later pruning and hints at `repair`; `discover` labels a present former subproject as `detached`. Covered by a rewritten `test_contract_gitignore_hygiene.sh` and additions to `test_command_detach_keep_repo.sh`.
+- Implemented the nest-membership conversion command set. `absorb` brings outer-repository files, a standalone nested repository, or a Git submodule into the nest (auto-detected), refuses already-managed paths and deeper nested repositories, and requires a remote for the files source. `inline` dissolves a subproject into outer files (the former `absorb`), `detach` keeps the checkout as a standalone ignored repository (the former `remove --keep-files`), and `remove`/`rm` deletes the checkout. `extract` and `remove --keep-files` are rejected with guidance. All four mutating verbs support `--dry-run` and `--json`/`--json-pretty`. Covered by `test_symmetry_absorb_inline.sh`, `test_command_absorb_sources.sh`, `test_command_detach_keep_repo.sh`, and updates to `test_symmetry_mv_remove.sh` and `test_platform_git_invocation.sh`.
+- Implemented `git-nest discover`: a bounded, read-only scan for nested repositories and submodules not managed by `.gitnest`, with `--max-depth`, repeatable `--exclude`, a default prune list, symlink-safe traversal, kind classification, next-step suggestions, and porcelain/JSON output. Covered by `test_command_discover_unmanaged.sh`.
+- Implemented `git-nest list`: a stable-order inventory of managed subprojects with URL, target branch, revision, tag, checkout state, and reproducibility, in human, porcelain, and JSON forms. Covered by `test_command_list_inventory.sh`.
 - Added platform-specific installation and invocation tips for Windows, Linux, and macOS to `README.md`.
 - Added a command quick-reference table to the `README.md` command section.
 - Replaced the old branch/upload/finalize workflow with normal Git branch/commit/push plus `git-nest snapshot`.

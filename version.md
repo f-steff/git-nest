@@ -1,5 +1,39 @@
 # Version History
 
+## 0.8.2 - 2026-07-16
+
+### Nest membership commands
+
+- Reworked outer-repository conversion into a direction-clear set. `absorb` now brings something already on disk into the nest, auto-detecting the source: outer-repository tracked files (the former `extract`, requiring a remote URL and supporting `--branch`, `--clone-mode`, `--preserve-history`, `--push`, `--message`, and `--force`), a standalone nested repository (recording its own remote and current commit), or a Git submodule (converted into a standalone managed subproject).
+- Renamed the old fold-out behavior to `inline` (dissolve a subproject into ordinary outer-repository files) and added `detach` (remove a subproject from the nest but keep its checkout as a standalone, still-ignored repository, formerly `remove --keep-files`).
+- `remove`/`rm` now always deletes the checkout; `extract` and `remove --keep-files` are rejected with guidance. `absorb` refuses a path that is already a subproject and refuses deeper nested repositories/submodules. All of `absorb`, `inline`, `detach`, and `remove` support `--dry-run` and `--json`/`--json-pretty`.
+- Added `discover`: a bounded, read-only scan for nested repositories and submodules not managed by `.gitnest`, with `--max-depth` and repeatable `--exclude`, symlink-safe traversal, kind classification (including `detached` former subprojects), and suggested next steps.
+- Added `list`: a stable-order inventory of managed subprojects with URL, target branch, revision, tag, checkout state, and reproducibility, in human, `--porcelain`, and `--json` forms.
+
+### Ignore hygiene and recovery backups
+
+- Managed nest-owned `.gitignore` entries in a self-healing `# BEGIN git-nest ignores` block: entries a user moves outside the block are pulled back in and deduped, `repair` prunes stale entries whose path is gone, and `doctor` warns when stale entries exist.
+- Reworked conversion backups into transient, self-documenting `.gitnest-recovery-<op>-<name>-<timestamp>/` directories with a `RECOVERY.txt`, ignored on demand through the repo-local `.git/info/exclude` (never the committed `.gitignore`) and removed on success. `doctor` reports leftover recovery backups from an interrupted conversion.
+
+### Bug fixes
+
+- `cmd_snapshot` returned the trailing notice's status instead of the snapshot result, so the root pre-push hook's reproducibility warning never fired; it now returns the real result.
+- `verify --json` always returned empty `errors`/`warnings` arrays because `verify_current` clobbered the caller's temp-file variables; it now writes to caller-provided files with separated errors and warnings.
+- Submodule `absorb` relocates the submodule git directory into the checkout and clears the stale `core.worktree`, leaving a usable standalone repository.
+
+### Test framework
+
+- Gave every test a globally unique four-digit ID (filename prefix `test_<NNNN>_<category>_<behavior>.sh`) in category blocks stepping by 10, and a `# Test:` description header per file.
+- Added runner commands `list` (ID + description), `only <ids>`, `except <ids>`, and `help`, plus a `--stop-on-fail` option; an unknown command, option, or test ID prints help and stops.
+- The console shows a curated per-test narrative (each git-nest command with its output) by default; `--verbose` streams the full raw output with a shell trace, and a failing test dumps its full raw output. Summary columns size to the longest test name.
+- Added a full-run log (`run-all-tests.log` by default, `--no-log`/`--log FILE`) and renamed the Markdown summary to `run-all-tests-results.md`.
+- Added and deepened tests for absorb sources, detach, discover, list, verify health, and hooks (install, uninstall, and real trigger-through-Git), and made the invocation smoke check a real test.
+
+### Skills and documentation
+
+- Made `skills/git-nest/SKILL.md` the single source of truth for the usage skill, with a discoverable pointer at `.agents/skills/git-nest/SKILL.md`, and documented the two skill trees and development-agent bootstrap in `AGENTS.md`.
+- Updated `README.md`, `docs/implementation-summary.md`, `docs/technical_docs.md`, `docs/maintainer.md`, and the usage skill throughout for the new commands and workflows.
+
 ## 0.8.1 - 2026-07-08
 
 - Changed name from `git-lego` to `git-nest` to better reflect the tool's role as a shared home for independent Git repositories and to avoid using the name of a commercial product.

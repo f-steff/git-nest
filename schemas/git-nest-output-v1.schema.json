@@ -9,7 +9,7 @@
     "version": { "const": 1 },
     "command": {
       "type": "string",
-      "enum": ["status", "verify", "outdated", "diff", "foreach-modified", "foreach-clean", "doctor"]
+      "enum": ["status", "verify", "outdated", "diff", "foreach-modified", "foreach-clean", "doctor", "absorb", "inline", "detach", "remove", "list", "discover"]
     },
     "dry_run": { "type": "boolean" },
     "recursive": { "type": "boolean" },

@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# git-nest 0.8.1
+# git-nest 0.8.2
 #
 # Lightweight multi-repository workspace coordination for ordinary Git remotes.
 # A project root repository tracks a manifest of nested subproject repositories,
@@ -21,7 +21,7 @@ MANIFEST_FILE=${GIT_NEST_MANIFEST:-.gitnest}
 CONFIG_FILE=${GIT_NEST_CONFIG:-.gitnest-rc}
 BRANCH_MARKS_FILE=${GIT_NEST_BRANCH_MARKS:-.gitnest-branches}
 PUSH_CANDIDATES_FILE=${GIT_NEST_PUSH_CANDIDATES:-.gitnest-push-candidates}
-GIT_NEST_VERSION=0.8.1
+GIT_NEST_VERSION=0.8.2
 GIT_NEST_LOCK_TIMEOUT_SECONDS=${GIT_NEST_LOCK_TIMEOUT_SECONDS:-10}
 GIT_NEST_DOCTOR_TIMEOUT_SECONDS=${GIT_NEST_DOCTOR_TIMEOUT_SECONDS:-5}
 MANIFEST_SCHEMA_VERSION=1
@@ -31,6 +31,9 @@ GITATTRIBUTES_BEGIN='# BEGIN git-nest attributes'
 GITATTRIBUTES_END='# END git-nest attributes'
 GITIGNORE_GIT_DIR_GUARD_ONE='**/.git/'
 GITIGNORE_GIT_DIR_GUARD_TWO='**/.git'
+GITIGNORE_BEGIN='# BEGIN git-nest ignores'
+GITIGNORE_END='# END git-nest ignores'
+RECOVERY_BACKUP_PREFIX='.gitnest-recovery'
 OLD_HOOK_WARNING_PRINTED=0
 MANIFEST_LOCK_HELD=
 MANIFEST_LOCK_PATH=
@@ -287,6 +290,31 @@ emit_json_result() {
     printf '}\n'
 }
 
+# Emit the shared JSON envelope for a mutating command as a single-row result.
+# absorb, inline, detach, and remove use this so their machine output stays on
+# the same schema as the inspection commands instead of inventing new shapes.
+json_single_row_result() {
+    jsr_pretty=$1
+    jsr_command=$2
+    jsr_ok=$3
+    jsr_code=$4
+    jsr_path=$5
+    jsr_state=$6
+    jsr_target=$7
+    jsr_current=$8
+    jsr_expected=$9
+    shift 9
+    jsr_detail=${1:-}
+    # Build a one-line porcelain row and reuse the standard emitter and its
+    # temp-file contract so dry-run and escaping behavior stay identical.
+    jsr_rows=$(mktemp)
+    jsr_empty=$(mktemp)
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$jsr_code" "$jsr_path" "$jsr_state" "$jsr_target" "$jsr_current" "$jsr_expected" "$jsr_detail" >"$jsr_rows"
+    emit_json_result "$jsr_command" 0 "$jsr_ok" "$jsr_rows" "$jsr_empty" "$jsr_empty" "$jsr_pretty"
+    rm -f "$jsr_rows" "$jsr_empty"
+}
+
 # Resolve a ref to a commit SHA and explain how to recover if it cannot resolve.
 resolve_commit() {
     repo=$1
@@ -391,7 +419,8 @@ usage() {
 
     help_usage_group "Subprojects"
     help_usage "add" "[--clone <full|partial>] <repo> <path>"
-    help_usage "remove|rm" "<path> [--force] [--keep-files]"
+    help_usage "remove|rm" "<path> [--force] [--dry-run] [--json|--json-pretty]"
+    help_usage "detach" "<path> [--dry-run] [--json|--json-pretty]"
     help_usage "move|mv" "<old-path> <new-path> [--force]"
     help_usage "move|mv" "--url <new-url> <path>"
     help_usage "config" "<get|set|list|unset> ..."
@@ -408,6 +437,8 @@ usage() {
     help_usage "verify" "[--recursive] [--json | --json-pretty]"
     help_usage "diff" "[--since <ref>] [--stat] [--json | --json-pretty]"
     help_usage "log" "[--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]"
+    help_usage "list" "[--porcelain | --json | --json-pretty]"
+    help_usage "discover" "[--max-depth <n>] [--exclude <name>]... [--porcelain | --json | --json-pretty]"
     help_usage "doctor" "[--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]"
 
     help_usage_group "Branch bookmarks"
@@ -425,10 +456,10 @@ usage() {
     help_usage "foreach-modified" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
     help_usage "foreach-clean" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 
-    help_usage_group "Export and outer-repo conversion"
+    help_usage_group "Export and nest membership"
     help_usage "export" "--output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]"
-    help_usage "extract" "<path> <remote-url> [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run]"
-    help_usage "absorb" "<path> [--commit] [--message <msg>] [--dry-run]"
+    help_usage "absorb" "<path> [<remote-url>] [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run] [--json|--json-pretty]"
+    help_usage "inline" "<path> [--commit] [--message <msg>] [--dry-run] [--json|--json-pretty]"
 
     help_usage_group "Tooling"
     help_usage "completion" "<bash|zsh|fish>"
@@ -458,11 +489,15 @@ usage() {
     help_detail "<path> is relative to the current nest root; . is not valid here."
     help_detail "--clone selects full or partial clone storage for this subproject."
     help_detail "This clone mode is used by restore and is unrelated to the clone command."
-    help_command "remove|rm <path> [--force] [--keep-files]"
-    help_text "Remove a subproject from the manifest."
+    help_command "remove|rm <path> [--force] [--dry-run] [--json|--json-pretty]"
+    help_text "Remove a subproject from the nest and delete its checkout on disk."
     help_detail "<path> is a managed subproject path relative to the current nest root."
     help_detail "--force skips dirty/current-branch safety checks."
-    help_detail "--keep-files leaves the checkout on disk and keeps its ignore entry."
+    help_detail "The remote is never touched; to keep the checkout use detach instead."
+    help_command "detach <path> [--dry-run] [--json|--json-pretty]"
+    help_text "Remove a subproject from the nest but keep its checkout as a standalone repo."
+    help_detail "<path> is a managed subproject path relative to the current nest root."
+    help_detail "Keeps the files and the ignore entry; the remote is never touched."
     help_command "move|mv <old-path> <new-path> [--force]"
     help_text "Move a subproject path while preserving manifest state."
     help_detail "Both paths are relative to the current nest root; . is not valid here."
@@ -540,6 +575,13 @@ usage() {
     help_detail "--subproject restricts output to one subproject path."
     help_detail "--oneline uses compact commit output."
     help_detail "--recursive includes nested projects."
+    help_command "list [--porcelain | --json | --json-pretty]"
+    help_text "List managed subprojects with URL, target branch, revision, tag, state, and reproducibility."
+    help_detail "Stable order for scripts; --porcelain and --json/--json-pretty print machine-readable output."
+    help_command "discover [--max-depth <n>] [--exclude <name>]... [--porcelain | --json | --json-pretty]"
+    help_text "Scan for nested Git repositories and submodules not managed by .gitnest."
+    help_detail "Bounded by --max-depth (default 4) and pruned by default and extra --exclude directory names."
+    help_detail "Discovery only; it never adds, syncs, or registers anything."
     help_command "doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]"
     help_text "Report environment and workspace health without modifying files."
     help_detail "Can be run from anywhere inside the nest."
@@ -575,22 +617,19 @@ usage() {
     help_detail "--include-git keeps nested .git directories."
     help_detail "--deterministic normalizes archive ordering and metadata where supported."
     help_detail "--allow-dirty permits dirty subproject working trees."
-    help_command "extract <path> <remote-url> [options]"
-    help_text "Convert an outer-repo tracked directory into a managed subproject."
-    help_detail "This adds the new subproject to the current nest and removes the files from outer tracking."
-    help_detail "--branch names the initial branch; default is main."
-    help_detail "--clone-mode records full or partial clone preference."
-    help_detail "--preserve-history uses git-filter-repo when installed."
-    help_detail "--push pushes the new subproject branch to origin."
-    help_detail "--message sets the initial commit message."
-    help_detail "--force bypasses metadata conflicts only."
-    help_detail "--dry-run reports planned changes without writing."
-    help_command "absorb <path> [options]"
-    help_text "Convert a managed subproject back into ordinary outer-repo files."
+    help_command "absorb <path> [<remote-url>] [options]"
+    help_text "Bring something already on disk into the nest as a managed subproject."
+    help_detail "Auto-detects the source: outer-repo tracked files, a standalone nested repo, or a submodule."
+    help_detail "Outer-repo files require a remote URL and support --branch, --clone-mode, --preserve-history, --push, --message, and --force."
+    help_detail "An existing repo or submodule keeps its own history and records its own remote."
+    help_detail "Refuses a path that is already a subproject and refuses deeper nested repos/submodules."
+    help_detail "--dry-run reports planned changes without writing; --json/--json-pretty print machine output."
+    help_command "inline <path> [options]"
+    help_text "Dissolve a managed subproject into the outer repo as ordinary tracked files."
     help_detail "This removes the subproject from the current nest and stages its files in the nest root."
     help_detail "--commit commits the staged outer-repo changes."
     help_detail "--message sets the commit message and implies --commit."
-    help_detail "--dry-run reports planned changes without writing."
+    help_detail "--dry-run reports planned changes without writing; --json/--json-pretty print machine output."
 
     help_command_group "Tooling"
     help_command "completion <bash|zsh|fish>"
@@ -638,6 +677,7 @@ command_help() {
         sync) topic=restore ;;
         install-hooks) topic=hooks-install ;;
         remove-hooks) topic=hooks-uninstall ;;
+        extract) topic=absorb ;;
     esac
 
     help_setup_colors
@@ -694,16 +734,27 @@ command_help() {
             help_opposite "remove/rm removes a managed subproject from the nest."
             ;;
         remove)
-            help_command "remove|rm <path> [--force] [--keep-files]"
-            help_text "Remove a managed subproject path from the current nest."
+            help_command "remove|rm <path> [--force] [--dry-run] [--json|--json-pretty]"
+            help_text "Remove a managed subproject from the nest and delete its checkout on disk."
             help_detail "<path> is relative to the current nest root."
-            help_detail "--keep-files leaves the checkout on disk and keeps its ignore entry."
             help_detail "--force skips dirty/current-branch safety checks."
+            help_detail "The remote is never touched. To keep the checkout, use detach instead."
             help_heading "Examples:"
             help_example "git-nest remove libs/foo"
-            help_example "git-nest rm libs/foo --keep-files"
             help_example "git-nest remove libs/foo --force"
+            help_example "git-nest remove libs/foo --dry-run"
             help_opposite "add records and clones a subproject into the nest."
+            ;;
+        detach)
+            help_command "detach <path> [--dry-run] [--json|--json-pretty]"
+            help_text "Remove a managed subproject from the nest but keep its checkout as a standalone repo."
+            help_detail "<path> is relative to the current nest root."
+            help_detail "Keeps the files on disk and keeps the ignore entry; the remote is never touched."
+            help_detail "Does not rebuild a submodule/subtree/subrepo; it only guarantees a standalone repo remains."
+            help_heading "Examples:"
+            help_example "git-nest detach libs/foo"
+            help_example "git-nest detach libs/foo --dry-run"
+            help_opposite "absorb brings an existing repository into the nest."
             ;;
         move)
             help_command "move|mv <old-path> <new-path> [--force]"
@@ -857,6 +908,31 @@ command_help() {
             help_example "git-nest doctor --timeout 20"
             help_example "git-nest doctor --json-pretty"
             ;;
+        list)
+            help_command "list [--porcelain | --json | --json-pretty]"
+            help_text "List managed subprojects in a stable order with their recorded and on-disk state."
+            help_detail "Shows path, repository URL, target branch, revision, tag, checkout state, and reproducibility."
+            help_detail "The leading code is reproducibility: R reproducible, D drift, M missing, U unpinned."
+            help_detail "--porcelain prints fixed-column records; --json/--json-pretty print machine-readable output."
+            help_heading "Examples:"
+            help_example "git-nest list"
+            help_example "git-nest list --porcelain"
+            help_example "git-nest list --json-pretty"
+            help_detail "status stays focused on workspace health; use list for a scriptable inventory."
+            ;;
+        discover)
+            help_command "discover [--max-depth <n>] [--exclude <name>]... [--porcelain | --json | --json-pretty]"
+            help_text "Scan the current nest for nested Git repositories and submodules not in .gitnest."
+            help_detail "--max-depth bounds the scan depth (default 4)."
+            help_detail "--exclude adds directory names to the default prune list; it may be repeated."
+            help_detail "The leading code is the kind: S submodule, R nested repo, N nested nest root."
+            help_detail "Discovery only; it never adds, syncs, or registers repositories. Symlinked directories are not followed."
+            help_heading "Examples:"
+            help_example "git-nest discover"
+            help_example "git-nest discover --max-depth 6 --exclude third_party"
+            help_example "git-nest discover --porcelain"
+            help_opposite "absorb brings a discovered repository into the nest."
+            ;;
         branch-mark|branch-unmark|branch-list|branch-cleanup)
             command_help_branch_bookmarks
             ;;
@@ -924,26 +1000,30 @@ command_help() {
             help_example "git-nest export --output build/source.zip --format zip"
             help_example "git-nest export --output build/source-dir --format dir"
             ;;
-        extract)
-            help_command "extract <path> <remote-url> [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run]"
-            help_text "Convert an outer-repo tracked directory into a managed subproject."
-            help_detail "This adds the new subproject to the current nest and removes those files from outer tracking."
-            help_detail "--preserve-history requires git-filter-repo."
-            help_detail "--push pushes the new subproject branch to origin after creation."
-            help_heading "Examples:"
-            help_example "git-nest extract src/lib https://example.invalid/src-lib.git --dry-run"
-            help_example "git-nest extract src/lib https://example.invalid/src-lib.git --push --message 'Create src-lib'"
-            help_opposite "absorb converts a managed subproject back into ordinary outer-repo files."
-            ;;
         absorb)
-            help_command "absorb <path> [--commit] [--message <msg>] [--dry-run]"
-            help_text "Convert a managed subproject back into ordinary outer-repo files."
+            help_command "absorb <path> [<remote-url>] [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run] [--json|--json-pretty]"
+            help_text "Bring something already on disk into the nest as a managed subproject."
+            help_detail "Auto-detects the source: outer-repo tracked files, a standalone nested repo, or a submodule."
+            help_detail "Outer-repo files require a remote URL; --branch, --clone-mode, --preserve-history, --push, --message, and --force apply to that source only."
+            help_detail "An existing repo or submodule keeps its own history and records its own remote."
+            help_detail "Refuses a path already tracked as a subproject and refuses deeper nested repos/submodules."
+            help_detail "extract is the old name for the files source and now points here."
+            help_heading "Examples:"
+            help_example "git-nest absorb src/lib https://example.invalid/src-lib.git --push --message 'Create src-lib'"
+            help_example "git-nest absorb libs/foo   # existing nested repo, uses its origin remote"
+            help_example "git-nest absorb vendor/bar --dry-run   # a Git submodule"
+            help_opposite "inline dissolves a subproject into outer files; detach keeps it as a standalone repo; remove deletes it."
+            ;;
+        inline)
+            help_command "inline <path> [--commit] [--message <msg>] [--dry-run] [--json|--json-pretty]"
+            help_text "Dissolve a managed subproject into the outer repo as ordinary tracked files."
             help_detail "This removes the subproject from the current nest and stages its files in the nest root."
             help_detail "--message sets the commit message and implies --commit."
+            help_detail "The subproject's own Git history is discarded; the remote is left untouched."
             help_heading "Examples:"
-            help_example "git-nest absorb libs/foo --dry-run"
-            help_example "git-nest absorb libs/foo --commit --message 'Inline foo'"
-            help_opposite "extract converts outer-repo tracked files into a managed subproject."
+            help_example "git-nest inline libs/foo --dry-run"
+            help_example "git-nest inline libs/foo --commit --message 'Inline foo'"
+            help_opposite "absorb brings outer-repo files into the nest as a subproject."
             ;;
         completion)
             help_command "completion <bash|zsh|fish>"
@@ -1027,10 +1107,14 @@ git_nest_main() {
         restore) enter_project_root_required; cmd_restore "$@" ;;
         sync) usage_error "unknown command: sync; use restore" ;;
         doctor) cmd_doctor "$@" ;;
+        discover) enter_project_root_required; cmd_discover "$@" ;;
+        list) enter_project_root_required; cmd_list "$@" ;;
         completion) cmd_completion "$@" ;;
         export) enter_project_root_required; cmd_export "$@" ;;
-        extract) enter_project_root_required; cmd_extract "$@" ;;
         absorb) enter_project_root_required; cmd_absorb "$@" ;;
+        inline) enter_project_root_required; cmd_inline "$@" ;;
+        detach) enter_project_root_required; cmd_detach "$@" ;;
+        extract) usage_error "unknown command: extract; use git-nest absorb to bring files, repositories, or submodules into the nest" ;;
         __complete) cmd_internal_complete "$@" ;;
         __owning-manifest) cmd_internal_owning_manifest "$@" ;;
         __hook) enter_project_root_required; cmd_internal_hook "$@" ;;
@@ -1381,7 +1465,7 @@ assert_path_not_containing_nested_project() {
     candidate=$1
     [ -d "$candidate" ] || return 0
     if find "$candidate" -mindepth 1 -name "$MANIFEST_FILE" -type f 2>/dev/null | sed -n '1p' | grep . >/dev/null 2>&1; then
-        precondition_error "$candidate contains a nested git-nest project; recursive extract/absorb is not supported yet"
+        precondition_error "$candidate contains a nested git-nest project; recursive absorb is not supported yet"
     fi
 }
 
@@ -2354,26 +2438,143 @@ clear_base_overrides() {
     GIT_NEST_NO_FETCH=0
 }
 
-ensure_gitignore_entry() {
-    path=$1
-    [ -f .gitignore ] || : >.gitignore
-    if awk -v path="$path" '
-        {
-            line=$0
-            sub(/^[[:space:]]+/, "", line)
-            sub(/[[:space:]]+$/, "", line)
-            if (line == path || line == path "/") found=1
-        }
-        END { exit !found }
-    ' .gitignore; then
-        return 0
-    fi
-    if [ -s .gitignore ] && [ "$(tail -c 1 .gitignore | wc -l | tr -d ' ')" = "0" ]; then
-        printf '\n' >>.gitignore
-    fi
-    printf '%s/\n' "$path" >>.gitignore
+# Print the constant lines git-nest always keeps inside its managed ignore block,
+# in a deterministic order. These are workspace hygiene rules, not subproject
+# paths. Transient conversion backups are intentionally absent: they are ignored
+# on demand through the repo-local exclude file so they never linger here.
+print_gitignore_constants() {
+    printf '%s\n' "$GITIGNORE_GIT_DIR_GUARD_ONE"
+    printf '%s\n' "$GITIGNORE_GIT_DIR_GUARD_TWO"
+    printf '%s\n' "$BRANCH_MARKS_FILE"
+    printf '%s\n' "$PUSH_CANDIDATES_FILE"
 }
 
+# Report whether a trimmed .gitignore line is one of the managed constant rules.
+is_gitignore_constant() {
+    case "$1" in
+        "$GITIGNORE_GIT_DIR_GUARD_ONE"|"$GITIGNORE_GIT_DIR_GUARD_TWO"|"$BRANCH_MARKS_FILE"|"$PUSH_CANDIDATES_FILE") return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Print the bare subproject paths (no trailing slash) recorded inside the managed
+# ignore block, excluding the constant hygiene rules. These are the entries whose
+# fate (keep, retain, or prune) reconcile_gitignore must decide.
+gitignore_block_paths() {
+    [ -f .gitignore ] || return 0
+    awk -v b="$GITIGNORE_BEGIN" -v e="$GITIGNORE_END" '
+        $0 == b { inb = 1; next }
+        $0 == e { inb = 0; next }
+        inb {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            sub(/[[:space:]]+$/, "", line)
+            if (line != "") print line
+        }
+    ' .gitignore | sed 's#/*$##' | while IFS= read -r p; do
+        is_gitignore_constant "$p/" && continue
+        is_gitignore_constant "$p" && continue
+        [ -n "$p" ] && printf '%s\n' "$p"
+    done
+}
+
+# Rewrite .gitignore so all nest-owned entries live in a single managed block at
+# the end of the file, self-healing entries a user moved outside the block and
+# deduping them, while preserving user-authored lines in order. add_path adds a
+# subproject path, del_path drops one. When prune is 1, orphan block paths that
+# are neither managed nor present on disk are removed and reported to report_file.
+reconcile_gitignore() {
+    rg_add=$(printf '%s' "${1:-}" | sed 's#/*$##')
+    rg_del=$(printf '%s' "${2:-}" | sed 's#/*$##')
+    rg_prune=${3:-0}
+    rg_report=${4:-/dev/null}
+    [ -f .gitignore ] || : >.gitignore
+
+    rg_managed=$(mktemp)
+    rg_desired=$(mktemp)
+    rg_strip=$(mktemp)
+    rg_user=$(mktemp)
+    : >"$rg_report" 2>/dev/null || true
+
+    # Current managed subproject paths (bare).
+    manifest_subprojects | sed 's#/*$##' | sort -u >"$rg_managed"
+
+    # Seed the desired path set with managed paths and the added path.
+    cp "$rg_managed" "$rg_desired"
+    [ -z "$rg_add" ] || printf '%s\n' "$rg_add" >>"$rg_desired"
+
+    # Decide the fate of each orphan block path (in the block but not managed).
+    gitignore_block_paths | sort -u | while IFS= read -r orphan; do
+        [ -n "$orphan" ] || continue
+        grep -Fxq "$orphan" "$rg_managed" && continue
+        if [ "$rg_prune" -eq 1 ] && [ ! -e "$orphan" ]; then
+            printf '%s\n' "$orphan" >>"$rg_report"
+        else
+            printf '%s\n' "$orphan" >>"$rg_desired"
+        fi
+    done
+
+    # Remove the explicitly deleted path from the desired set.
+    if [ -n "$rg_del" ]; then
+        rg_tmp_desired=$(mktemp)
+        grep -Fxv "$rg_del" "$rg_desired" >"$rg_tmp_desired" 2>/dev/null || true
+        mv "$rg_tmp_desired" "$rg_desired"
+    fi
+    sort -u "$rg_desired" -o "$rg_desired"
+
+    # Build the set of exact lines to strip from outside the block: every
+    # nest-owned path (managed, orphan, added, or deleted) in both slash forms,
+    # plus the constant rules. Anything else stays as a user line.
+    {
+        gitignore_block_paths
+        cat "$rg_managed"
+        [ -z "$rg_add" ] || printf '%s\n' "$rg_add"
+        [ -z "$rg_del" ] || printf '%s\n' "$rg_del"
+    } | sed 's#/*$##' | sort -u | while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        printf '%s\n%s/\n' "$p" "$p"
+    done >"$rg_strip"
+    print_gitignore_constants >>"$rg_strip"
+
+    # Emit user lines (outside the old block, not nest-owned), dropping trailing
+    # blank lines so the managed block attaches cleanly at the end.
+    awk -v b="$GITIGNORE_BEGIN" -v e="$GITIGNORE_END" -v stripfile="$rg_strip" '
+        BEGIN { while ((getline s < stripfile) > 0) strip[s] = 1 }
+        $0 == b { inb = 1; next }
+        $0 == e { inb = 0; next }
+        inb { next }
+        {
+            t = $0
+            sub(/^[[:space:]]+/, "", t)
+            sub(/[[:space:]]+$/, "", t)
+            if (t in strip) next
+            print
+        }
+    ' .gitignore | awk '
+        # Buffer trailing blank lines so they do not separate user content from
+        # the managed block; emit them only when more content follows.
+        /^[[:space:]]*$/ { blanks = blanks "\n"; next }
+        { if (seen) printf "%s", blanks; blanks = ""; print; seen = 1 }
+    ' >"$rg_user"
+
+    rg_out=$(tmp_for .gitignore)
+    {
+        cat "$rg_user"
+        [ -s "$rg_user" ] && printf '\n' || true
+        printf '%s\n' "$GITIGNORE_BEGIN"
+        print_gitignore_constants
+        while IFS= read -r p; do
+            [ -n "$p" ] && printf '%s/\n' "$p"
+        done <"$rg_desired"
+        printf '%s\n' "$GITIGNORE_END"
+    } >"$rg_out"
+    mv "$rg_out" .gitignore
+    rm -f "$rg_managed" "$rg_desired" "$rg_strip" "$rg_user"
+}
+
+# Append a single literal line to .gitignore if absent. Used for lightweight,
+# location-local ignore needs (branch-mark and push-candidate hook state) that
+# must not trigger a full manifest-based reconcile of the managed block.
 ensure_gitignore_line() {
     line_to_add=$1
     [ -f .gitignore ] || : >.gitignore
@@ -2394,28 +2595,34 @@ ensure_gitignore_line() {
     printf '%s\n' "$line_to_add" >>.gitignore
 }
 
-remove_gitignore_entry() {
-    path=$1
-    [ -f .gitignore ] || return 0
-    tmp=$(tmp_for .gitignore)
-    awk -v path="$path" '
-        {
-            line=$0
-            trimmed=line
-            sub(/^[[:space:]]+/, "", trimmed)
-            sub(/[[:space:]]+$/, "", trimmed)
-            if (trimmed == path || trimmed == path "/") next
-            print line
-        }
-    ' .gitignore >"$tmp"
-    mv "$tmp" .gitignore
+# Add a subproject path to the managed ignore block (self-healing, no pruning).
+ensure_gitignore_entry() {
+    reconcile_gitignore "$1" "" 0
 }
 
+# Remove a subproject path from the managed ignore block wherever it appears.
+remove_gitignore_entry() {
+    reconcile_gitignore "" "$1" 0
+}
+
+# Ensure the managed ignore block exists with its constant hygiene rules and the
+# current subproject paths, healing stray entries without pruning present orphans.
 ensure_gitignore_hygiene() {
-    ensure_gitignore_line "$GITIGNORE_GIT_DIR_GUARD_ONE"
-    ensure_gitignore_line "$GITIGNORE_GIT_DIR_GUARD_TWO"
-    ensure_gitignore_line "$BRANCH_MARKS_FILE"
-    ensure_gitignore_line "$PUSH_CANDIDATES_FILE"
+    reconcile_gitignore "" "" 0
+}
+
+# Report bare paths in the managed ignore block that are neither managed nor
+# present on disk, i.e. stale orphans that repair would prune. Read-only.
+stale_gitignore_orphans() {
+    rg_managed=$(mktemp)
+    manifest_subprojects | sed 's#/*$##' | sort -u >"$rg_managed"
+    gitignore_block_paths | sort -u | while IFS= read -r orphan; do
+        [ -n "$orphan" ] || continue
+        grep -Fxq "$orphan" "$rg_managed" && continue
+        [ -e "$orphan" ] && continue
+        printf '%s\n' "$orphan"
+    done
+    rm -f "$rg_managed"
 }
 
 # Repair managed support files for an existing nest.
@@ -2433,7 +2640,17 @@ cmd_repair() {
     validate_manifest_schema
     ensure_gitattributes_guard
     [ -f .gitignore ] || : >.gitignore
-    ensure_gitignore_hygiene
+    # repair is the one place that prunes stale nest-owned ignore entries: orphan
+    # block paths that are neither managed nor present on disk (the leftover after
+    # a detached repo is physically removed). Report what was pruned.
+    pruned=$(mktemp)
+    reconcile_gitignore "" "" 1 "$pruned"
+    if [ -s "$pruned" ]; then
+        while IFS= read -r stale; do
+            [ -n "$stale" ] && printf 'Pruned stale ignore entry: %s/\n' "$stale"
+        done <"$pruned"
+    fi
+    rm -f "$pruned"
     [ "$create_rc" -eq 0 ] || ensure_config
     printf 'Repaired git-nest managed support files.\n'
 }
@@ -2621,23 +2838,33 @@ remote_head_commit_for_url() {
     git ls-remote "$repo" HEAD 2>/dev/null | awk 'NR == 1 { print $1 }'
 }
 
+# remove drops a subproject from the nest and deletes its checkout on disk. It
+# is the destructive leave-the-nest verb; the remote is never touched. Use detach
+# to keep the checkout as a standalone repository instead of deleting it.
 cmd_remove() {
     force=0
-    keep_files=0
+    dry_run=0
+    json=0
+    pretty=0
     path_arg=
     while [ $# -gt 0 ]; do
         case "$1" in
             --force) force=1; shift ;;
-            --keep-files) keep_files=1; shift ;;
+            # --keep-files used to mean "remove entry but keep files"; that is now
+            # the dedicated detach command, so reject it with clear guidance.
+            --keep-files) usage_error "remove now always deletes the checkout; use git-nest detach <path> to leave the nest but keep the checkout" ;;
+            --dry-run) dry_run=1; shift ;;
+            --json) json=1; shift ;;
+            --json-pretty) json=1; pretty=1; shift ;;
             --*) usage_error "unknown remove option: $1" ;;
             *)
-                [ -z "$path_arg" ] || usage_error "usage: git-nest remove <path> [--force] [--keep-files]"
+                [ -z "$path_arg" ] || usage_error "usage: git-nest remove <path> [--force] [--dry-run] [--json|--json-pretty]"
                 path_arg=$1
                 shift
                 ;;
         esac
     done
-    [ -n "$path_arg" ] || usage_error "usage: git-nest remove <path> [--force] [--keep-files]"
+    [ -n "$path_arg" ] || usage_error "usage: git-nest remove <path> [--force] [--dry-run] [--json|--json-pretty]"
     reject_backslash_path "$path_arg"
     path=$(normalize_path "$path_arg")
     acquire_manifest_lock
@@ -2647,21 +2874,94 @@ cmd_remove() {
     repo=$(subproject_repo "$path" || true)
     [ -n "$repo" ] || precondition_error "$path is not a tracked subproject in $MANIFEST_FILE"
     target=$(subproject_key "$path" target_branch || true)
+    # Guard against discarding local-only work unless the caller forces it.
     if [ "$force" -eq 0 ]; then
         reason=$(current_branch_safety_reason "$path" "$target")
         [ -z "$reason" ] || precondition_error "$reason; rerun with --force to remove anyway"
     fi
-    manifest_remove_section "$(subproject_section "$path")"
-    if [ "$keep_files" -eq 1 ]; then
-        printf 'Removed subproject %s from %s; kept files and kept %s/ ignored.\n' "$path" "$MANIFEST_FILE" "$path"
-    else
-        remove_gitignore_entry "$path"
-        if [ -e "$path" ]; then
-            rm -rf -- "$path" || git_error "failed to remove subproject directory $path"
+    # Snapshot output values before mutating helpers reuse the global variables.
+    emit_path=$path
+    emit_repo=$repo
+    emit_target=${target:--}
+    # Dry-run reports the plan without mutating the manifest or the filesystem.
+    if [ "$dry_run" -eq 1 ]; then
+        [ "$json" -eq 0 ] || GIT_NEST_JSON_DRY_RUN=1
+        if [ "$json" -eq 1 ]; then
+            json_single_row_result "$pretty" remove 1 R "$emit_path" removed "$emit_target" - "$emit_repo" "would remove subproject and delete files"
+        else
+            printf 'Would remove subproject %s and delete %s/.\n' "$emit_path" "$emit_path"
         fi
-        printf 'Removed subproject %s.\n' "$path"
+        return 0
+    fi
+    manifest_remove_section "$(subproject_section "$path")"
+    remove_gitignore_entry "$path"
+    if [ -e "$path" ]; then
+        rm -rf -- "$path" || git_error "failed to remove subproject directory $path"
     fi
     write_materialized_state
+    if [ "$json" -eq 1 ]; then
+        json_single_row_result "$pretty" remove 1 R "$emit_path" removed "$emit_target" - "$emit_repo" "removed subproject and deleted files"
+    else
+        printf 'Removed subproject %s and deleted its files.\n' "$emit_path"
+    fi
+}
+
+# detach drops a subproject from the nest but keeps its checkout on disk as a
+# standalone, still-ignored Git repository. It is the non-destructive inverse of
+# absorbing an existing repository: no files are deleted and the remote is left
+# untouched. Reversing to a specific submodule/subtree/subrepo shape is out of
+# scope; detach only guarantees a standalone repository remains.
+cmd_detach() {
+    dry_run=0
+    json=0
+    pretty=0
+    path_arg=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dry-run) dry_run=1; shift ;;
+            --json) json=1; shift ;;
+            --json-pretty) json=1; pretty=1; shift ;;
+            --*) usage_error "unknown detach option: $1" ;;
+            *)
+                [ -z "$path_arg" ] || usage_error "usage: git-nest detach <path> [--dry-run] [--json|--json-pretty]"
+                path_arg=$1
+                shift
+                ;;
+        esac
+    done
+    [ -n "$path_arg" ] || usage_error "usage: git-nest detach <path> [--dry-run] [--json|--json-pretty]"
+    reject_backslash_path "$path_arg"
+    path=$(normalize_path "$path_arg")
+    acquire_manifest_lock
+    ensure_manifest
+    validate_manifest_schema
+    assert_path_not_inside_nested_project "$path"
+    repo=$(subproject_repo "$path" || true)
+    [ -n "$repo" ] || precondition_error "$path is not a tracked subproject in $MANIFEST_FILE"
+    target=$(subproject_key "$path" target_branch || true)
+    # Snapshot output values before mutating helpers reuse the global variables.
+    emit_path=$path
+    emit_repo=$repo
+    emit_target=${target:--}
+    # detach keeps files and the ignore entry, so there is no dirty/ahead safety
+    # gate: nothing on disk is lost by dropping the manifest entry.
+    if [ "$dry_run" -eq 1 ]; then
+        [ "$json" -eq 0 ] || GIT_NEST_JSON_DRY_RUN=1
+        if [ "$json" -eq 1 ]; then
+            json_single_row_result "$pretty" detach 1 T "$emit_path" detached "$emit_target" - "$emit_repo" "would detach and keep files ignored"
+        else
+            printf 'Would detach %s from the nest; keep files and keep %s/ ignored.\n' "$emit_path" "$emit_path"
+        fi
+        return 0
+    fi
+    manifest_remove_section "$(subproject_section "$path")"
+    write_materialized_state
+    if [ "$json" -eq 1 ]; then
+        json_single_row_result "$pretty" detach 1 T "$emit_path" detached "$emit_target" - "$emit_repo" "detached and kept files ignored"
+    else
+        printf 'Detached %s from %s; kept files and kept %s/ ignored.\n' "$emit_path" "$MANIFEST_FILE" "$emit_path"
+        printf 'After you move or delete %s, run git-nest repair to prune its ignore entry.\n' "$emit_path"
+    fi
 }
 
 cmd_mv() {
@@ -3380,18 +3680,23 @@ cmd_outdated() {
 }
 
 # Validate that the current checkout still matches the manifest and config.
+# Populate the caller-provided errors and warnings files with verification
+# findings for the current nest, one message line each. Returns 0 when there are
+# no errors. It does not print; callers decide how to present the results (human
+# stderr, or JSON arrays), which keeps errors and warnings cleanly separated and
+# avoids clobbering the caller's own temp-file variables.
 verify_current() {
+    vc_errors=$1
+    vc_warnings=$2
     ensure_manifest
     configured_clone_mode >/dev/null
-    errors=$(tmp_for "$MANIFEST_FILE.verify_errors")
-    warnings=$(tmp_for "$MANIFEST_FILE.verify_warnings")
-    : >"$errors"
-    : >"$warnings"
+    : >"$vc_errors"
+    : >"$vc_warnings"
 
     duplicates=$(manifest_subprojects | sort | uniq -d)
     if [ -n "$duplicates" ]; then
         printf '%s\n' "$duplicates" | while IFS= read -r path; do
-            [ -n "$path" ] && printf 'Error: %s: duplicate subproject path in %s\n' "$path" "$MANIFEST_FILE" >>"$errors"
+            [ -n "$path" ] && printf 'Error: %s: duplicate subproject path in %s\n' "$path" "$MANIFEST_FILE" >>"$vc_errors"
         done
     fi
 
@@ -3399,27 +3704,27 @@ verify_current() {
         [ -n "$path" ] || continue
         repo=$(subproject_repo "$path" || true)
         if [ -z "$repo" ]; then
-            printf 'Error: %s: missing repo in %s\n' "$path" "$MANIFEST_FILE" >>"$errors"
+            printf 'Error: %s: missing repo in %s\n' "$path" "$MANIFEST_FILE" >>"$vc_errors"
             continue
         fi
         mode=$(effective_clone_mode "$path")
         if [ ! -d "$path/.git" ]; then
-            printf 'Error: %s: subproject checkout is missing; run git-nest restore\n' "$path" >>"$errors"
+            printf 'Error: %s: subproject checkout is missing; run git-nest restore\n' "$path" >>"$vc_errors"
             continue
         fi
 
         actual_repo=$(git -C "$path" remote get-url origin 2>/dev/null || true)
         if [ "$actual_repo" != "$repo" ]; then
-            printf 'Error: %s: origin remote differs from manifest\n' "$path" >>"$errors"
-            printf '  expected: %s\n  actual:   %s\n' "$repo" "$actual_repo" >>"$errors"
+            printf 'Error: %s: origin remote differs from manifest\n' "$path" >>"$vc_errors"
+            printf '  expected: %s\n  actual:   %s\n' "$repo" "$actual_repo" >>"$vc_errors"
         fi
 
         if [ "$mode" = partial ]; then
             repo_is_partial_clone "$path" ||
-                printf 'Error: %s: manifest/config requests clone=partial, but existing checkout is full; remove the subproject and run git-nest restore or use clone=full\n' "$path" >>"$errors"
+                printf 'Error: %s: manifest/config requests clone=partial, but existing checkout is full; remove the subproject and run git-nest restore or use clone=full\n' "$path" >>"$vc_errors"
         else
             if repo_is_partial_clone "$path"; then
-                printf 'Error: %s: manifest/config requests clone=full, but existing checkout is partial; remove the subproject and run git-nest restore or use clone=full\n' "$path" >>"$errors"
+                printf 'Error: %s: manifest/config requests clone=full, but existing checkout is partial; remove the subproject and run git-nest restore or use clone=full\n' "$path" >>"$vc_errors"
             fi
         fi
 
@@ -3432,51 +3737,56 @@ verify_current() {
         if [ -n "$pending" ]; then
             git -C "$path" rev-parse --verify "$pending^{commit}" >/dev/null 2>&1 ||
             git -C "$path" rev-parse --verify "origin/$pending^{commit}" >/dev/null 2>&1 ||
-                printf 'Error: %s: pending branch %s is not resolvable\n' "$path" "$pending" >>"$errors"
+                printf 'Error: %s: pending branch %s is not resolvable\n' "$path" "$pending" >>"$vc_errors"
         elif [ -n "$tag" ]; then
             expected=$(git -C "$path" rev-parse --verify "$tag^{commit}" 2>/dev/null || true)
             if [ -z "$expected" ]; then
-                printf 'Error: %s: tag %s is not resolvable\n' "$path" "$tag" >>"$errors"
+                printf 'Error: %s: tag %s is not resolvable\n' "$path" "$tag" >>"$vc_errors"
             else
                 head=$(git -C "$path" rev-parse --verify HEAD 2>/dev/null || true)
                 [ "$head" = "$expected" ] ||
-                    printf 'Error: %s: checked-out commit does not match tag %s\n' "$path" "$tag" >>"$errors"
+                    printf 'Error: %s: checked-out commit does not match tag %s\n' "$path" "$tag" >>"$vc_errors"
             fi
         elif [ -n "$revision" ]; then
             expected=$(git -C "$path" rev-parse --verify "$revision^{commit}" 2>/dev/null || true)
             if [ -z "$expected" ]; then
-                printf 'Error: %s: revision %s is not resolvable\n' "$path" "$revision" >>"$errors"
+                printf 'Error: %s: revision %s is not resolvable\n' "$path" "$revision" >>"$vc_errors"
             else
                 head=$(git -C "$path" rev-parse --verify HEAD 2>/dev/null || true)
                 [ "$head" = "$expected" ] ||
-                    printf 'Error: %s: checked-out commit does not match revision %.12s\n' "$path" "$revision" >>"$errors"
+                    printf 'Error: %s: checked-out commit does not match revision %.12s\n' "$path" "$revision" >>"$vc_errors"
             fi
         else
             git -C "$path" rev-parse --verify "$target^{commit}" >/dev/null 2>&1 ||
             git -C "$path" rev-parse --verify "origin/$target^{commit}" >/dev/null 2>&1 ||
-                printf 'Error: %s: target branch %s is not resolvable\n' "$path" "$target" >>"$errors"
+                printf 'Error: %s: target branch %s is not resolvable\n' "$path" "$target" >>"$vc_errors"
         fi
 
         if repo_dirty "$path"; then
-            printf 'Warning: %s: subproject has uncommitted changes\n' "$path" >>"$warnings"
+            printf 'Warning: %s: subproject has uncommitted changes\n' "$path" >>"$vc_warnings"
         fi
     done
 
     unmanaged_subprojects | while IFS= read -r path; do
         [ -n "$path" ] || continue
-        printf 'Warning: %s: unmanaged nested Git repository\n' "$path" >>"$warnings"
+        printf 'Warning: %s: unmanaged nested Git repository\n' "$path" >>"$vc_warnings"
     done
 
-    if [ -s "$warnings" ]; then
-        cat "$warnings" >&2
-    fi
-    if [ -s "$errors" ]; then
-        cat "$errors" >&2
-        rm -f "$errors" "$warnings"
-        return 1
-    fi
-    rm -f "$errors" "$warnings"
-    printf 'Project verified.\n'
+    [ ! -s "$vc_errors" ]
+}
+
+# Present current-nest verification for humans: warnings and errors to stderr, a
+# success line to stdout, returning nonzero when errors were found.
+verify_report_human() {
+    vrh_errors=$(tmp_for "$MANIFEST_FILE.verify_errors")
+    vrh_warnings=$(tmp_for "$MANIFEST_FILE.verify_warnings")
+    vrh_rc=0
+    verify_current "$vrh_errors" "$vrh_warnings" || vrh_rc=$?
+    [ ! -s "$vrh_warnings" ] || cat "$vrh_warnings" >&2
+    [ ! -s "$vrh_errors" ] || cat "$vrh_errors" >&2
+    [ "$vrh_rc" -ne 0 ] || printf 'Project verified.\n'
+    rm -f "$vrh_errors" "$vrh_warnings"
+    return "$vrh_rc"
 }
 
 # Recursively verify the current project and nested project roots.
@@ -3490,7 +3800,7 @@ verify_recursive() {
     printf '%s\n' "$root_abs" >>"$visited"
     printf 'Verifying project: %s\n' "$label"
     rc=0
-    verify_current || rc=1
+    verify_report_human || rc=1
 
     subprojects_tmp=$(tmp_for "$MANIFEST_FILE.verify_recursive")
     manifest_subprojects >"$subprojects_tmp"
@@ -3516,26 +3826,30 @@ cmd_verify() {
     json_pretty=$PARSED_JSON_PRETTY
     [ "$PARSED_PORCELAIN" -eq 0 ] || usage_error "verify does not support --porcelain"
     if [ "$json" -eq 1 ]; then
-        rows=$(mktemp)
-        errors=$(mktemp)
-        warnings=$(mktemp)
-        out=$(mktemp)
-        : >"$rows"
-        : >"$warnings"
+        # Use uniquely named variables so verify_current cannot clobber them, and
+        # feed errors/warnings straight from verify_current for clean separation.
+        v_rows=$(mktemp)
+        v_errors=$(mktemp)
+        v_warnings=$(mktemp)
+        : >"$v_rows"
+        : >"$v_errors"
+        : >"$v_warnings"
+        v_rc=0
         if [ "$recursive" -eq 1 ]; then
-            visited=$(mktemp)
-            : >"$visited"
-            rc=0
-            verify_recursive "." "$visited" >"$out" 2>"$errors" || rc=$?
-            rm -f "$visited"
+            # Recursive verification aggregates human findings across nests; capture
+            # them as diagnostic lines (warnings and errors are not separated here).
+            v_out=$(mktemp)
+            v_visited=$(mktemp)
+            : >"$v_visited"
+            verify_recursive "." "$v_visited" >"$v_out" 2>"$v_errors" || v_rc=$?
+            rm -f "$v_visited" "$v_out"
         else
-            rc=0
-            verify_current >"$out" 2>"$errors" || rc=$?
+            verify_current "$v_errors" "$v_warnings" || v_rc=$?
         fi
-        [ "$rc" -eq 0 ] && ok=1 || ok=0
-        emit_json_result verify "$recursive" "$ok" "$rows" "$errors" "$warnings" "$json_pretty"
-        rm -f "$rows" "$errors" "$warnings" "$out"
-        [ "$rc" -eq 0 ] || return "$EXIT_ISSUES"
+        [ "$v_rc" -eq 0 ] && ok=1 || ok=0
+        emit_json_result verify "$recursive" "$ok" "$v_rows" "$v_errors" "$v_warnings" "$json_pretty"
+        rm -f "$v_rows" "$v_errors" "$v_warnings"
+        [ "$v_rc" -eq 0 ] || return "$EXIT_ISSUES"
         return 0
     fi
     if [ "$recursive" -eq 1 ]; then
@@ -3546,8 +3860,12 @@ cmd_verify() {
         rm -f "$visited"
         return "$rc"
     fi
-    verify_current
+    # Capture and return the verification result explicitly so the trailing
+    # notice cannot mask a failure (same class of bug fixed in cmd_snapshot).
+    verify_rc=0
+    verify_report_human || verify_rc=$?
     notice_nested_projects
+    return "$verify_rc"
 }
 
 # Validate positive integer options such as log --max-count.
@@ -3975,8 +4293,14 @@ cmd_snapshot() {
         rm -f "$visited"
         return "$rc"
     fi
+    # Capture the snapshot result and return it explicitly. Without this, the
+    # trailing notice command would become the function's exit status and mask a
+    # nonzero result, which breaks callers that inspect it (for example the root
+    # pre-push hook's `if ! cmd_snapshot --check --strict --quiet`).
     snapshot_current "$quiet" "$dry_run" "$selected" "$strict" "$check_only"
+    snapshot_rc=$?
     [ "$quiet" -eq 1 ] || notice_nested_snapshot_candidates
+    return "$snapshot_rc"
 }
 
 # Find the base commit used to compare subproject work against its target branch.
@@ -5583,14 +5907,27 @@ cmd_doctor() {
     fi
 
     if [ -f .gitignore ]; then
-        grep -F '.gitnest-extract-backup/' .gitignore >/dev/null 2>&1 &&
-            doctor_add_check "$checks" I extract-backup-ignore ".gitnest-extract-backup/ ignored" ||
-            doctor_add_check "$checks" I extract-backup-ignore ".gitnest-extract-backup/ ignore entry absent"
-        grep -F '.gitnest-absorb-backup/' .gitignore >/dev/null 2>&1 &&
-            doctor_add_check "$checks" I absorb-backup-ignore ".gitnest-absorb-backup/ ignored" ||
-            doctor_add_check "$checks" I absorb-backup-ignore ".gitnest-absorb-backup/ ignore entry absent"
+        # Warn about nest-owned ignore entries whose path is gone and unmanaged;
+        # these are left behind after a detached repo is physically removed.
+        stale_orphans=$(stale_gitignore_orphans)
+        if [ -n "$stale_orphans" ]; then
+            stale_count=$(printf '%s\n' "$stale_orphans" | sed '/^$/d' | wc -l | tr -d ' ')
+            doctor_add_check "$checks" W gitignore-stale "$stale_count stale nest-owned ignore entry(s); run git-nest repair to prune them"
+        else
+            doctor_add_check "$checks" I gitignore-stale "no stale nest-owned ignore entries"
+        fi
     else
         doctor_add_check "$checks" W gitignore ".gitignore is missing"
+    fi
+
+    # Surface leftover transient recovery backups from an interrupted conversion
+    # so a stuck workspace is easy to discover even though the backups are ignored.
+    leftover_recovery=$(find . -maxdepth 1 -type d -name "$RECOVERY_BACKUP_PREFIX-*" 2>/dev/null | sed 's#^\./##' | sort)
+    if [ -n "$leftover_recovery" ]; then
+        recovery_count=$(printf '%s\n' "$leftover_recovery" | sed '/^$/d' | wc -l | tr -d ' ')
+        doctor_add_check "$checks" W recovery-backup "$recovery_count interrupted conversion backup(s) present; open the directory's RECOVERY.txt, then remove it"
+    else
+        doctor_add_check "$checks" I recovery-backup "no interrupted conversion backups"
     fi
 
     for repo in . $(manifest_subprojects 2>/dev/null); do
@@ -5627,7 +5964,7 @@ cmd_doctor() {
     if command -v git-filter-repo >/dev/null 2>&1; then
         doctor_add_check "$checks" I git-filter-repo "available"
     else
-        doctor_add_check "$checks" I git-filter-repo "not found; required only for extract --preserve-history"
+            doctor_add_check "$checks" I git-filter-repo "not found; required only for absorb --preserve-history"
     fi
 
     if command -v tar >/dev/null 2>&1; then
@@ -5663,8 +6000,262 @@ cmd_doctor() {
     return 0
 }
 
+# Default directory names discover prunes so scans stay bounded and quiet. These
+# are dependency, build, cache, and git-nest backup directories that never hold
+# subprojects worth managing.
+DISCOVER_DEFAULT_EXCLUDES="node_modules vendor build dist target out bin obj .cache .gradle .venv venv __pycache__ .gitnest-recovery-*"
+
+# Reject exclude names that could inject shell syntax, since discover_scan builds
+# a find expression with eval. Only simple directory-name tokens are allowed.
+validate_discover_exclude() {
+    case "$1" in
+        ""|*[!A-Za-z0-9._*-]*) usage_error "invalid --exclude value: $1 (use simple directory names)" ;;
+    esac
+}
+
+# Print every .git entry (repository or submodule gitlink) under the current nest
+# root, bounded by a maximum path depth and pruning excluded directory names. It
+# does not follow symlinks because plain find never descends symlinked dirs.
+discover_scan() {
+    ds_depth=$1
+    ds_excludes=$2
+    # The .git component sits one level below its repository path.
+    ds_find_depth=$((ds_depth + 1))
+    # Build an alternation of directory names to prune from the scan. Each name is
+    # single-quoted so a glob such as .gitnest-recovery-* reaches find literally
+    # instead of being expanded by the shell during eval.
+    ds_group=""
+    for ds_name in $ds_excludes; do
+        if [ -z "$ds_group" ]; then
+            ds_group="-name '$ds_name'"
+        else
+            ds_group="$ds_group -o -name '$ds_name'"
+        fi
+    done
+    # eval expands the prune group into separate find operands. Inputs are
+    # validated (defaults are constant, user excludes pass validate_discover_exclude).
+    if [ -n "$ds_group" ]; then
+        eval "find . -maxdepth $ds_find_depth \\( $ds_group \\) -prune -o -name .git -print" 2>/dev/null
+    else
+        find . -maxdepth "$ds_find_depth" -name .git -print 2>/dev/null
+    fi
+}
+
+# Classify one discovered repository and append a porcelain row describing it.
+# Rows reuse the shared 7-column layout: code, path, state, target, current,
+# expected, detail. code is S(ubmodule)/R(epo)/N(est root); target carries the
+# managing subproject when the repo sits inside one; detail is a next-step hint.
+discover_classify_row() {
+    dcr_path=$1
+    dcr_rows=$2
+    # Determine whether the repo lives inside a managed subproject and find that
+    # parent so the suggestion can point at the right nest.
+    dcr_parent=-
+    dcr_inside=0
+    paths=$(mktemp)
+    manifest_subprojects >"$paths"
+    while IFS= read -r managed; do
+        [ -n "$managed" ] || continue
+        # A repo exactly at a managed path is the subproject's own checkout; skip.
+        [ "$dcr_path" = "$managed" ] && { rm -f "$paths"; return 0; }
+        case "$dcr_path" in
+            "$managed"/*) dcr_parent=$managed; dcr_inside=1 ;;
+        esac
+    done <"$paths"
+    rm -f "$paths"
+
+    # Classify the kind of repository so callers know how to handle it. A plain
+    # nested repo whose path still carries a nest-owned ignore entry is a former
+    # subproject left behind by detach, so it is labeled detached.
+    if outer_submodule_name_for_path "$dcr_path" >/dev/null 2>&1; then
+        dcr_code=S
+        dcr_state=submodule
+    elif [ -f "$dcr_path/$MANIFEST_FILE" ]; then
+        dcr_code=N
+        dcr_state=nest-root
+    elif gitignore_block_paths | grep -Fxq "$dcr_path"; then
+        dcr_code=D
+        dcr_state=detached
+    else
+        dcr_code=R
+        dcr_state=nested-repo
+    fi
+
+    # Build a next-step suggestion appropriate to the situation.
+    if [ "$dcr_inside" -eq 1 ]; then
+        dcr_detail="inside managed subproject $dcr_parent; run git-nest from there"
+    elif [ "$dcr_state" = nest-root ]; then
+        dcr_detail="nested nest; run git-nest inside it or use --recursive commands"
+    elif [ "$dcr_state" = submodule ]; then
+        dcr_detail="run git-nest absorb $dcr_path to convert the submodule"
+    elif [ "$dcr_state" = detached ]; then
+        dcr_detail="detached former subproject; git-nest absorb $dcr_path to re-manage, or move/remove it and run git-nest repair"
+    else
+        dcr_detail="run git-nest absorb $dcr_path to manage it"
+    fi
+    printf '%s\t%s\t%s\t%s\t-\t-\t%s\n' "$dcr_code" "$dcr_path" "$dcr_state" "$dcr_parent" "$dcr_detail" >>"$dcr_rows"
+}
+
+# discover scans the current nest for nested Git repositories and submodules that
+# are not managed by .gitnest, and reports them with a suggested next step. It is
+# discovery only: it never adds, syncs, or registers anything.
+cmd_discover() {
+    max_depth=4
+    porcelain=0
+    json=0
+    pretty=0
+    excludes=$DISCOVER_DEFAULT_EXCLUDES
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --max-depth)
+                [ $# -ge 2 ] || usage_error "--max-depth requires a positive integer"
+                validate_positive_integer "$2" "--max-depth"
+                max_depth=$2
+                shift 2
+                ;;
+            --exclude)
+                [ $# -ge 2 ] || usage_error "--exclude requires a directory name"
+                validate_discover_exclude "$2"
+                excludes="$excludes $2"
+                shift 2
+                ;;
+            --porcelain) porcelain=1; shift ;;
+            --json) json=1; shift ;;
+            --json-pretty) json=1; pretty=1; shift ;;
+            --*) usage_error "unknown discover option: $1" ;;
+            *) usage_error "discover takes no positional arguments" ;;
+        esac
+    done
+    [ "$porcelain" -eq 0 ] || [ "$json" -eq 0 ] || usage_error "discover cannot combine --porcelain with --json/--json-pretty"
+    ensure_manifest
+    validate_manifest_schema
+
+    # Collect and classify discovered repositories into a stable, sorted rows file.
+    raw=$(mktemp)
+    rows=$(mktemp)
+    empty=$(mktemp)
+    discover_scan "$max_depth" "$excludes" | while IFS= read -r gitpath; do
+        repo=$(dirname -- "$gitpath")
+        repo=$(normalize_path "$repo")
+        repo=${repo#./}
+        # The nest root's own .git is expected and never reported.
+        [ "$repo" = "." ] && continue
+        [ -n "$repo" ] && printf '%s\n' "$repo"
+    done | sort -u >"$raw"
+    while IFS= read -r repo; do
+        [ -n "$repo" ] || continue
+        discover_classify_row "$repo" "$rows"
+    done <"$raw"
+
+    if [ "$json" -eq 1 ]; then
+        emit_json_result discover 0 1 "$rows" "$empty" "$empty" "$pretty"
+    elif [ "$porcelain" -eq 1 ]; then
+        # Stable fixed-column records for scripts; empty output means nothing found.
+        cat "$rows"
+    else
+        if [ -s "$rows" ]; then
+            printf 'Unmanaged repositories discovered under the current nest:\n'
+            while IFS='	' read -r code path state target current expected detail; do
+                printf '  %s  %-28s %-12s %s\n' "$code" "$path" "$state" "$detail"
+            done <"$rows"
+        else
+            printf 'No unmanaged repositories found under the current nest (max depth %s).\n' "$max_depth"
+        fi
+    fi
+    rm -f "$raw" "$rows" "$empty"
+}
+
+# Report the reproducibility state of one managed subproject as a single letter:
+# R reproducible (HEAD matches the recorded revision), D drift (HEAD differs),
+# M missing checkout, U unpinned (no recorded revision).
+list_reproducibility_code() {
+    lrc_path=$1
+    lrc_revision=$2
+    if [ ! -d "$lrc_path/.git" ]; then
+        printf 'M\n'
+        return 0
+    fi
+    if [ -z "$lrc_revision" ]; then
+        printf 'U\n'
+        return 0
+    fi
+    lrc_head=$(git -C "$lrc_path" rev-parse --verify HEAD 2>/dev/null || true)
+    lrc_expected=$(git -C "$lrc_path" rev-parse --verify "$lrc_revision^{commit}" 2>/dev/null || true)
+    if [ -n "$lrc_head" ] && [ -n "$lrc_expected" ] && [ "$lrc_head" = "$lrc_expected" ]; then
+        printf 'R\n'
+    else
+        printf 'D\n'
+    fi
+}
+
+# Build one list porcelain row per managed subproject. Columns reuse the shared
+# layout: code=reproducibility, path, state=checkout state, target=target branch,
+# current=revision, expected=tag, detail=repository URL.
+list_rows() {
+    lr_rows=$1
+    manifest_subprojects | sort -u | while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        lr_repo=$(subproject_repo "$path" || true)
+        lr_target=$(subproject_key "$path" target_branch || true)
+        lr_revision=$(subproject_key "$path" revision || true)
+        lr_tag=$(subproject_key "$path" tag || true)
+        # Determine the on-disk checkout state without contacting any remote.
+        if [ ! -d "$path/.git" ]; then
+            lr_state=missing
+        elif repo_has_dirty "$path"; then
+            lr_state=dirty
+        else
+            lr_state=clean
+        fi
+        lr_code=$(list_reproducibility_code "$path" "$lr_revision")
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$lr_code" "$path" "$lr_state" "${lr_target:--}" "${lr_revision:--}" "${lr_tag:--}" "${lr_repo:--}" >>"$lr_rows"
+    done
+}
+
+# list prints the managed subprojects in a stable order with their URL, target
+# branch, revision, tag, checkout state, and reproducibility. It is a script-first
+# inventory command; status stays focused on workspace health.
+cmd_list() {
+    porcelain=0
+    json=0
+    pretty=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --porcelain) porcelain=1; shift ;;
+            --json) json=1; shift ;;
+            --json-pretty) json=1; pretty=1; shift ;;
+            --*) usage_error "unknown list option: $1" ;;
+            *) usage_error "list takes no positional arguments" ;;
+        esac
+    done
+    [ "$porcelain" -eq 0 ] || [ "$json" -eq 0 ] || usage_error "list cannot combine --porcelain with --json/--json-pretty"
+    ensure_manifest
+    validate_manifest_schema
+
+    rows=$(mktemp)
+    empty=$(mktemp)
+    list_rows "$rows"
+    if [ "$json" -eq 1 ]; then
+        emit_json_result list 0 1 "$rows" "$empty" "$empty" "$pretty"
+    elif [ "$porcelain" -eq 1 ]; then
+        cat "$rows"
+    else
+        if [ -s "$rows" ]; then
+            # Human table; the leading code column is the reproducibility state.
+            printf '%-2s %-28s %-8s %-14s %-14s %s\n' '' 'PATH' 'STATE' 'TARGET' 'REVISION' 'REPO'
+            while IFS='	' read -r code path state target current expected detail; do
+                printf '%-2s %-28s %-8s %-14s %-14.12s %s\n' "$code" "$path" "$state" "$target" "$current" "$detail"
+            done <"$rows"
+        else
+            printf 'No subprojects are recorded in %s.\n' "$MANIFEST_FILE"
+        fi
+    fi
+    rm -f "$rows" "$empty"
+}
+
 GIT_NEST_command_names() {
-    printf '%s\n' "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help"
+    printf '%s\n' "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help"
 }
 
 # Internal completion data endpoint used by generated shell completion scripts.
@@ -5690,7 +6281,7 @@ _git_nest_complete()
     local cur cmd commands subprojects
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
-    commands="init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help"
+    commands="init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -5708,12 +6299,13 @@ _git_nest_complete()
         export)
             COMPREPLY=( $(compgen -W "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir" -- "$cur") )
             ;;
-        extract)
-            COMPREPLY=( $(compgen -W "--branch --clone-mode --preserve-history --push --message --force --dry-run full partial" -- "$cur") )
-            ;;
         absorb)
             subprojects="$(git-nest __complete subprojects 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "$subprojects --commit --message --dry-run" -- "$cur") )
+            COMPREPLY=( $(compgen -W "$subprojects --branch --clone-mode --preserve-history --push --message --force --dry-run --json --json-pretty full partial" -- "$cur") )
+            ;;
+        inline)
+            subprojects="$(git-nest __complete subprojects 2>/dev/null)"
+            COMPREPLY=( $(compgen -W "$subprojects --commit --message --dry-run --json --json-pretty" -- "$cur") )
             ;;
         status)
             COMPREPLY=( $(compgen -W "--recursive --porcelain --json --json-pretty --exit-code" -- "$cur") )
@@ -5729,6 +6321,12 @@ _git_nest_complete()
             ;;
         doctor)
             COMPREPLY=( $(compgen -W "--json --json-pretty --offline --timeout --exit-code" -- "$cur") )
+            ;;
+        discover)
+            COMPREPLY=( $(compgen -W "--max-depth --exclude --porcelain --json --json-pretty" -- "$cur") )
+            ;;
+        list)
+            COMPREPLY=( $(compgen -W "--porcelain --json --json-pretty" -- "$cur") )
             ;;
         diff)
             COMPREPLY=( $(compgen -W "--since --stat --json --json-pretty" -- "$cur") )
@@ -5759,9 +6357,9 @@ _git_nest_complete()
                 COMPREPLY=( $(compgen -W "clone-mode full partial" -- "$cur") )
             fi
             ;;
-        remove|rm|move|mv|update)
+        remove|rm|detach|move|mv|update)
             subprojects="$(git-nest __complete subprojects 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "$subprojects --force --keep-files --url --remote --target-head --revision --tag --branch --no-fetch --dry-run" -- "$cur") )
+            COMPREPLY=( $(compgen -W "$subprojects --force --url --remote --target-head --revision --tag --branch --no-fetch --dry-run --json --json-pretty" -- "$cur") )
             ;;
     esac
 }
@@ -5777,7 +6375,7 @@ completion_zsh() {
 _git_nest()
 {
     local -a commands subprojects
-    commands=(init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help)
+    commands=(init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help)
 
     if (( CURRENT == 2 )); then
         _describe 'git-nest command' commands
@@ -5790,16 +6388,19 @@ _git_nest()
             _arguments '1:shell:(bash zsh fish)'
             ;;
         help)
-            _arguments '1:command:(init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help)'
+            _arguments '1:command:(init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help)'
             ;;
         export)
             _arguments '--output[write archive or directory]:path:_files' '--format[archive format]:format:(tar.gz zip dir)' '--include-git[keep .git directories]' '--deterministic[normalize archive metadata]' '--allow-dirty[allow dirty subprojects]'
             ;;
-        extract)
-            _arguments '1:path:_files -/' '2:remote-url:' '--branch[initial branch]:branch:' '--clone-mode[clone mode]:mode:(full partial)' '--preserve-history[preserve path history with git-filter-repo]' '--push[push extracted repository]' '--message[commit message]:message:' '--force[bypass metadata conflicts only]' '--dry-run[show planned changes]'
-            ;;
         absorb)
-            _arguments '1:subproject:__git_nest_subprojects' '--commit[commit staged outer changes]' '--message[commit message]:message:' '--dry-run[show planned changes]'
+            _arguments '1:path:_files -/' '2:remote-url:' '--branch[initial branch for the files source]:branch:' '--clone-mode[clone mode]:mode:(full partial)' '--preserve-history[preserve path history with git-filter-repo]' '--push[push absorbed repository]' '--message[commit message]:message:' '--force[bypass metadata conflicts only]' '--dry-run[show planned changes]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
+            ;;
+        inline)
+            _arguments '1:subproject:__git_nest_subprojects' '--commit[commit staged outer changes]' '--message[commit message]:message:' '--dry-run[show planned changes]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
+            ;;
+        detach)
+            _arguments '1:subproject:__git_nest_subprojects' '--dry-run[show planned changes]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
             ;;
         status)
             _arguments '--recursive[include nested projects]' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]' '--exit-code[return nonzero for dirty or missing rows]'
@@ -5815,6 +6416,12 @@ _git_nest()
             ;;
         doctor)
             _arguments '--json[print JSON]' '--json-pretty[print formatted JSON]' '--offline[skip remote checks]' '--timeout[remote timeout seconds]:seconds:' '--exit-code[return nonzero for warnings or errors]'
+            ;;
+        discover)
+            _arguments '--max-depth[maximum scan depth]:depth:' '--exclude[exclude directory name]:name:' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
+            ;;
+        list)
+            _arguments '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
             ;;
         diff)
             _arguments '--since[read manifest from ref]:ref:' '--stat[include file statistics]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
@@ -5841,7 +6448,7 @@ _git_nest()
                 _describe 'subproject' subprojects
             fi
             ;;
-        remove|rm|move|mv|update)
+        remove|rm|detach|move|mv|update)
             subprojects=("${(@f)$(_call_program subprojects git-nest __complete subprojects 2>/dev/null)}")
             _describe 'subproject' subprojects
             ;;
@@ -5858,17 +6465,20 @@ function __git_nest_subprojects
     git-nest __complete subprojects 2>/dev/null
 end
 
-complete -c git-nest -f -n "__fish_use_subcommand" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help"
-complete -c git-nest -f -n "__fish_seen_subcommand_from help" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor completion export extract absorb version help"
+complete -c git-nest -f -n "__fish_use_subcommand" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help"
+complete -c git-nest -f -n "__fish_seen_subcommand_from help" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help"
 complete -c git-nest -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
 complete -c git-nest -f -n "__fish_seen_subcommand_from export" -a "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir"
-complete -c git-nest -f -n "__fish_seen_subcommand_from extract" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run full partial"
-complete -c git-nest -f -n "__fish_seen_subcommand_from absorb" -a "--commit --message --dry-run"
+complete -c git-nest -f -n "__fish_seen_subcommand_from absorb" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run --json --json-pretty full partial (__git_nest_subprojects)"
+complete -c git-nest -f -n "__fish_seen_subcommand_from inline" -a "--commit --message --dry-run --json --json-pretty (__git_nest_subprojects)"
+complete -c git-nest -f -n "__fish_seen_subcommand_from detach" -a "--dry-run --json --json-pretty (__git_nest_subprojects)"
 complete -c git-nest -f -n "__fish_seen_subcommand_from status" -a "--recursive --porcelain --json --json-pretty --exit-code"
 complete -c git-nest -f -n "__fish_seen_subcommand_from outdated" -a "--recursive --porcelain --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from verify" -a "--recursive --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from restore" -a "--recursive --prune --force --dry-run"
 complete -c git-nest -f -n "__fish_seen_subcommand_from doctor" -a "--json --json-pretty --offline --timeout --exit-code"
+complete -c git-nest -f -n "__fish_seen_subcommand_from discover" -a "--max-depth --exclude --porcelain --json --json-pretty"
+complete -c git-nest -f -n "__fish_seen_subcommand_from list" -a "--porcelain --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from diff" -a "--since --stat --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from log" -a "--max-count --since --until --subproject --oneline --recursive"
 complete -c git-nest -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --dry-run --check --strict --no-fetch (__git_nest_subprojects)"
@@ -5877,7 +6487,7 @@ complete -c git-nest -f -n "__fish_seen_subcommand_from freeze" -a "--force --on
 complete -c git-nest -f -n "__fish_seen_subcommand_from foreach-modified" -a "--continue-on-error --porcelain --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from foreach-clean" -a "--continue-on-error --porcelain --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from config" -a "get set list unset clone-mode full partial"
-complete -c git-nest -f -n "__fish_seen_subcommand_from remove rm move mv update config" -a "(__git_nest_subprojects)"
+complete -c git-nest -f -n "__fish_seen_subcommand_from remove rm detach move mv update config" -a "(__git_nest_subprojects)"
 EOF
 }
 
@@ -6152,10 +6762,110 @@ backup_timestamp() {
     date -u '+%Y%m%dT%H%M%SZ'
 }
 
-ensure_backup_ignored() {
-    ensure_gitignore_line ".gitnest-absorb-backup/"
+# Compute a self-documenting, timestamped recovery-backup directory name for an
+# interrupted-safe conversion. The name alone signals that it is a transient
+# git-nest artifact tied to one operation on one path.
+recovery_backup_dir() {
+    printf '%s-%s-%s-%s\n' "$RECOVERY_BACKUP_PREFIX" "$1" "$(basename -- "$2")" "$(backup_timestamp)"
 }
 
+# Resolve the repo-local exclude file (.git/info/exclude). It is never committed,
+# so it is the right place for the transient recovery-dir ignore rule: git status
+# stays clean during the conversion without polluting the tracked .gitignore.
+git_local_exclude_file() {
+    gle_dir=$(git rev-parse --git-path info 2>/dev/null) || return 1
+    [ -n "$gle_dir" ] || return 1
+    mkdir -p "$gle_dir" 2>/dev/null || true
+    printf '%s/exclude\n' "$gle_dir"
+}
+
+# Add an on-demand, self-explanatory ignore rule for a recovery dir to the
+# repo-local exclude file. Added before the backup exists and removed on success.
+recovery_exclude_add() {
+    re_dir=$1
+    re_file=$(git_local_exclude_file) || return 0
+    grep -Fxq "$re_dir/" "$re_file" 2>/dev/null && return 0
+    {
+        printf '# git-nest transient conversion backup (auto-removed on success); if left, see %s/RECOVERY.txt\n' "$re_dir"
+        printf '%s/\n' "$re_dir"
+    } >>"$re_file"
+}
+
+# Remove the on-demand recovery-dir ignore rule (and its comment) after success.
+recovery_exclude_remove() {
+    rr_dir=$1
+    rr_file=$(git_local_exclude_file) || return 0
+    [ -f "$rr_file" ] || return 0
+    rr_tmp=$(tmp_for "$rr_file")
+    awk -v d="$rr_dir/" -v c="# git-nest transient conversion backup" '
+        # Drop the comment line that names this dir and the ignore entry itself.
+        index($0, c) && index($0, d) { next }
+        {
+            t = $0
+            sub(/^[[:space:]]+/, "", t)
+            sub(/[[:space:]]+$/, "", t)
+            if (t == d) next
+            print
+        }
+    ' "$rr_file" >"$rr_tmp"
+    mv "$rr_tmp" "$rr_file"
+}
+
+# Write a plain-language recovery guide inside a backup dir so a human who finds
+# a leftover after an interrupted conversion knows exactly what it is and how to
+# restore or remove it. This is the same "make hidden state visible" goal that
+# motivates git-nest over bare submodules.
+write_recovery_note() {
+    wr_dir=$1
+    wr_op=$2
+    wr_path=$3
+    wr_steps=$4
+    # Substitute the real backup directory for the <this-dir> placeholder so the
+    # printed steps are copy-pasteable.
+    wr_steps=$(printf '%s' "$wr_steps" | sed "s#<this-dir>#$wr_dir#g")
+    cat >"$wr_dir/RECOVERY.txt" <<EOF
+git-nest transient conversion backup
+====================================
+Operation : $wr_op
+Subproject: $wr_path
+Created   : $(utc_now)
+
+git-nest creates this directory only while it performs the conversion, and
+removes it automatically when the conversion succeeds. If git-nest is not
+running and this directory is still here, the conversion was interrupted.
+
+To recover:
+
+$wr_steps
+
+Once you have recovered, or if you are sure you no longer need it, delete it:
+
+    rm -rf "$wr_dir"
+EOF
+}
+
+# Begin a recovery backup: create the directory, ignore it locally, and drop a
+# recovery note. Echoes the directory path for the caller to fill and finish.
+begin_recovery_backup() {
+    br_op=$1
+    br_path=$2
+    br_steps=$3
+    br_dir=$(recovery_backup_dir "$br_op" "$br_path")
+    recovery_exclude_add "$br_dir"
+    mkdir -p "$br_dir" || git_error "failed to create recovery backup $br_dir"
+    write_recovery_note "$br_dir" "$br_op" "$br_path" "$br_steps"
+    printf '%s\n' "$br_dir"
+}
+
+# Finish a recovery backup on success: remove the directory and its local ignore.
+end_recovery_backup() {
+    er_dir=$1
+    [ -n "$er_dir" ] || return 0
+    rm -rf -- "$er_dir"
+    recovery_exclude_remove "$er_dir"
+}
+
+# Copy a path into a recovery backup under a fixed "original" subdirectory.
 copy_path_backup() {
     src=$1
     dst=$2
@@ -6163,30 +6873,34 @@ copy_path_backup() {
     cp -R "$src" "$dst" || git_error "failed to back up $src to $dst"
 }
 
-extract_preserve_history_repo() {
+# Build a history-preserving subproject repo from tracked outer files using
+# git-filter-repo. Used by the files source of absorb with --preserve-history.
+absorb_files_preserve_history_repo() {
     path=$1
     branch=$2
     remote_url=$3
     tmp_parent=$4
     if ! command -v git-filter-repo >/dev/null 2>&1; then
-        precondition_error "extract --preserve-history requires git-filter-repo; install it from https://github.com/newren/git-filter-repo and rerun"
+        precondition_error "absorb --preserve-history requires git-filter-repo; install it from https://github.com/newren/git-filter-repo and rerun"
     fi
     filtered=$tmp_parent/filtered
     git clone --no-hardlinks . "$filtered" >/dev/null 2>&1 ||
-        git_error "failed to clone outer repository for history-preserving extract"
+        git_error "failed to clone outer repository for history-preserving absorb"
     (
         cd "$filtered" || exit 1
         git-filter-repo --path "$path/" --path-rename "$path/": --force >/dev/null 2>&1 ||
-            git_error "git-filter-repo failed while extracting $path"
-        git branch -M "$branch" || git_error "failed to rename extracted branch to $branch"
+            git_error "git-filter-repo failed while absorbing $path"
+        git branch -M "$branch" || git_error "failed to rename absorbed branch to $branch"
         git remote remove origin >/dev/null 2>&1 || true
-        git remote add origin "$remote_url" || git_error "failed to set extracted origin"
+        git remote add origin "$remote_url" || git_error "failed to set absorbed origin"
     )
-    rm -rf -- "$path" || git_error "failed to replace $path with extracted repository"
-    cp -R "$filtered" "$path" || git_error "failed to install extracted repository at $path"
+    rm -rf -- "$path" || git_error "failed to replace $path with absorbed repository"
+    cp -R "$filtered" "$path" || git_error "failed to install absorbed repository at $path"
 }
 
-extract_snapshot_repo() {
+# Build a fresh single-commit subproject repo from tracked outer files. Used by
+# the files source of absorb without --preserve-history.
+absorb_files_snapshot_repo() {
     path=$1
     branch=$2
     remote_url=$3
@@ -6202,20 +6916,287 @@ extract_snapshot_repo() {
         [ -z "$outer_user_name" ] || git config user.name "$outer_user_name"
         [ -z "$outer_user_email" ] || git config user.email "$outer_user_email"
         git remote add origin "$remote_url" || git_error "failed to set origin for $path"
-        git add -A || git_error "failed to stage extracted files in $path"
+        git add -A || git_error "failed to stage absorbed files in $path"
         git commit --allow-empty -m "$message" >/dev/null ||
-            git_error "failed to create initial extract commit in $path"
+            git_error "failed to create initial absorb commit in $path"
     )
 }
 
-cmd_extract() {
+# Print the .gitmodules submodule name whose recorded path equals <path>, or
+# return nonzero when the outer repo has no submodule registered at that path.
+outer_submodule_name_for_path() {
+    osp_path=$1
+    [ -f .gitmodules ] || return 1
+    osp_name=$(git config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null | awk -v p="$osp_path" '
+        { key=$1; $1=""; sub(/^ /, ""); if ($0 == p) { n=key; sub(/^submodule\./, "", n); sub(/\.path$/, "", n); print n; exit } }')
+    [ -n "$osp_name" ] || return 1
+    printf '%s\n' "$osp_name"
+}
+
+# Classify what lives at <path> so absorb can auto-route to the right handler.
+# Prints exactly one of: subproject | submodule | nested-repo | files.
+absorb_detect_source() {
+    ads_path=$1
+    # An existing manifest entry means it is already managed by the nest.
+    if [ -n "$(subproject_repo "$ads_path" || true)" ]; then
+        printf 'subproject\n'
+        return 0
+    fi
+    # A matching .gitmodules entry means the outer repo tracks it as a submodule,
+    # even when the submodule is not yet checked out.
+    if outer_submodule_name_for_path "$ads_path" >/dev/null 2>&1; then
+        printf 'submodule\n'
+        return 0
+    fi
+    # A .git dir or gitlink file that is not a registered submodule is a
+    # standalone nested repository already sitting in the workspace.
+    if [ -e "$ads_path/.git" ]; then
+        printf 'nested-repo\n'
+        return 0
+    fi
+    # Anything else is ordinary outer-repository content (the former extract).
+    printf 'files\n'
+}
+
+# Refuse when a directory hides deeper nested repositories or submodules that
+# absorb would silently swallow. Preserving repository boundaries is a hard rule.
+assert_no_deeper_repos() {
+    andr_path=$1
+    # Any .git below the immediate level is a deeper repo or submodule checkout.
+    deeper=$(find "$andr_path" -mindepth 2 -name .git 2>/dev/null | sed -n '1p')
+    [ -z "$deeper" ] || precondition_error "$andr_path contains a deeper nested repository at $(dirname -- "$deeper"); absorb or remove it explicitly first"
+    # A .gitmodules inside the directory declares embedded submodules.
+    [ ! -f "$andr_path/.gitmodules" ] || precondition_error "$andr_path declares Git submodules in $andr_path/.gitmodules; handle them explicitly before absorb"
+}
+
+# Stage the given outer-repository paths only when an outer Git work tree exists,
+# so absorb still works inside copied-manifest folders that have no outer .git.
+stage_outer_paths_if_repo() {
+    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    stage_outer_paths "$@"
+}
+
+# Absorb ordinary outer-repository tracked files into a new managed subproject.
+# This is the former extract behavior: it requires a remote URL so the resulting
+# subproject is restorable on a fresh clone. Reads parsed globals from cmd_absorb.
+absorb_files() {
+    [ -n "$repo_arg" ] || usage_error "absorbing outer-repository files needs a remote URL: git-nest absorb <path> <remote-url> [options]"
+    [ -n "$message" ] || message="Absorb $path"
+    assert_path_not_containing_nested_project "$path"
+    [ -d "$path" ] || precondition_error "$path is not a directory"
+    if ! git ls-files -- "$path" | sed -n '1p' | grep . >/dev/null 2>&1; then
+        precondition_error "$path has no tracked outer-repository files to absorb; commit these files in the outer repo first, then rerun absorb"
+    fi
+    # Refuse to clobber staged edits under the path unless the caller forces it.
+    staged_under_path=$(git diff --cached --name-only -- "$path" 2>/dev/null | sed -n '1p')
+    if [ -n "$staged_under_path" ] && [ "$force" -eq 0 ]; then
+        precondition_error "$path has staged outer-repository changes; review them or rerun absorb with --force to replace that staged state"
+    fi
+
+    if [ "$dry_run" -eq 1 ]; then
+        [ "$json" -eq 0 ] || GIT_NEST_JSON_DRY_RUN=1
+        if [ "$json" -eq 1 ]; then
+            json_single_row_result "$pretty" absorb 1 A "$path" files "$branch" - "$repo_arg" "would absorb outer-repo files as a subproject"
+        else
+            printf 'Would absorb outer-repo files %s into subproject %s on branch %s.\n' "$path" "$repo_arg" "$branch"
+            [ "$push_after" -eq 1 ] && printf 'Would push %s to origin/%s.\n' "$path" "$branch"
+        fi
+        return 0
+    fi
+    unstaged_under_path=$(git diff --name-only -- "$path" 2>/dev/null | sed -n '1p')
+    [ -z "$unstaged_under_path" ] || precondition_error "$path has unstaged content changes; commit these files in the outer repo first, then rerun absorb"
+    untracked_under_path=$(git ls-files --others --exclude-standard -- "$path" 2>/dev/null | sed -n '1p')
+    [ -z "$untracked_under_path" ] || precondition_error "$path has untracked files; commit these files in the outer repo first, then rerun absorb"
+    if [ "$preserve_history" -eq 1 ] && ! command -v git-filter-repo >/dev/null 2>&1; then
+        precondition_error "absorb --preserve-history requires git-filter-repo; install it from https://github.com/newren/git-filter-repo and rerun"
+    fi
+    # A push target must exist and be empty; overriding non-empty remotes is out.
+    if [ "$push_after" -eq 1 ]; then
+        remote_refs=$(mktemp)
+        if ! git ls-remote "$repo_arg" >"$remote_refs" 2>/dev/null; then
+            rm -f "$remote_refs"
+            precondition_error "cannot reach absorb remote $repo_arg"
+        fi
+        if [ -s "$remote_refs" ]; then
+            rm -f "$remote_refs"
+            precondition_error "absorb remote $repo_arg is not empty; overriding non-empty remotes is deliberately not implemented"
+        fi
+        rm -f "$remote_refs"
+    fi
+
+    ensure_gitignore_hygiene
+    tmp_parent=$(mktemp -d "${TMPDIR:-/tmp}/git-nest-absorb.XXXXXX") ||
+        die "cannot create absorb temporary directory"
+    # Optionally keep the path's history with git-filter-repo, or snapshot it as a
+    # fresh single commit. The history rewrite is destructive, so first make an
+    # on-demand, self-documenting recovery backup that is cleaned up on success.
+    if [ "$preserve_history" -eq 1 ]; then
+        backup=$(begin_recovery_backup "absorb --preserve-history" "$path" \
+"    rm -rf \"$path\"
+    mv \"<this-dir>/original\" \"$path\"
+
+This restores the original files that were at $path before the history rewrite.")
+        copy_path_backup "$path" "$backup/original"
+        absorb_files_preserve_history_repo "$path" "$branch" "$repo_arg" "$tmp_parent"
+    else
+        backup=
+        absorb_files_snapshot_repo "$path" "$branch" "$repo_arg" "$message"
+    fi
+    rm -rf "$tmp_parent"
+    if [ "$push_after" -eq 1 ]; then
+        git -C "$path" push -u origin "$branch" || git_error "failed to push absorbed subproject $path"
+        pushed_remote=$(git ls-remote "$repo_arg" "refs/heads/$branch" 2>/dev/null | awk 'NR == 1 { print $1 }')
+        local_head=$(resolve_head_commit "$path" "cannot resolve absorbed subproject $path")
+        [ "$pushed_remote" = "$local_head" ] ||
+            git_error "pushed branch $branch on $repo_arg did not resolve to expected commit"
+    fi
+    revision=$(resolve_head_commit "$path" "cannot resolve absorbed subproject $path")
+    # Snapshot output values before mutating helpers reuse the global path/branch.
+    emit_path=$path
+    emit_branch=$branch
+    emit_url=$repo_arg
+    emit_revision=$revision
+    git rm -r --cached -- "$path" >/dev/null 2>&1 ||
+        git_error "failed to untrack absorbed files from outer repository"
+    ensure_gitignore_entry "$path"
+    manifest_write_subproject "$path" "$repo_arg" tracked "$branch" "$revision" "$clone_mode"
+    write_materialized_state
+    stage_outer_paths "$MANIFEST_FILE" .gitignore
+    # Success: drop the recovery backup and its local ignore rule.
+    end_recovery_backup "$backup"
+    if [ "$json" -eq 1 ]; then
+        json_single_row_result "$pretty" absorb 1 A "$emit_path" files "$emit_branch" "$emit_revision" "$emit_url" "absorbed outer-repo files as a subproject"
+    else
+        printf 'Absorbed %s as a git-nest subproject at %.12s.\n' "$emit_path" "$emit_revision"
+        [ "$push_after" -eq 1 ] || printf 'Push when ready with: git -C %s push -u origin %s\n' "$emit_path" "$emit_branch"
+    fi
+}
+
+# Absorb an existing on-disk Git repository (a standalone nested repo, or a
+# submodule) into the nest as a managed subproject, keeping its own history.
+# Reads parsed globals from cmd_absorb; $source selects the exact behavior.
+absorb_existing_repo() {
+    # File-only options do not apply to existing repositories; reject them so the
+    # user is not misled into thinking history is being rewritten.
+    if [ "$branch_set" -eq 1 ] || [ "$preserve_history" -eq 1 ] || [ "$push_after" -eq 1 ] || [ -n "$message" ]; then
+        usage_error "--branch, --preserve-history, --push, and --message only apply when absorbing outer-repository files"
+    fi
+
+    if [ "$source" = submodule ]; then
+        # Read the submodule wiring from the outer repo before changing anything.
+        sub_name=$(outer_submodule_name_for_path "$path") ||
+            precondition_error "$path is not a registered submodule"
+        [ -e "$path/.git" ] || precondition_error "submodule $path is not checked out; run git submodule update --init -- $path first, then rerun absorb"
+        sub_url=$(git config -f .gitmodules --get "submodule.$sub_name.url" 2>/dev/null || true)
+        url=${repo_arg:-$sub_url}
+        [ -n "$url" ] || precondition_error "submodule $path has no URL to record; pass a remote URL to absorb it"
+        sub_branch=$(git config -f .gitmodules --get "submodule.$sub_name.branch" 2>/dev/null || true)
+    else
+        # Standalone nested repository: take its origin URL unless overridden.
+        [ -e "$path/.git" ] || precondition_error "$path is not a Git repository"
+        origin_url=$(git -C "$path" remote get-url origin 2>/dev/null || true)
+        url=${repo_arg:-$origin_url}
+        [ -n "$url" ] || precondition_error "$path has no origin remote; pass a remote URL so restore can reach it: git-nest absorb $path <remote-url>"
+        sub_branch=
+    fi
+    assert_no_deeper_repos "$path"
+
+    # Resolve the commit to pin. Prefer the checked-out HEAD; fall back to the
+    # recorded gitlink for a submodule that is only present as an index entry.
+    if [ -e "$path/.git" ]; then
+        revision=$(git -C "$path" rev-parse --verify HEAD 2>/dev/null || true)
+    else
+        revision=$(git ls-files -s -- "$path" 2>/dev/null | awk 'NR == 1 { print $2 }')
+    fi
+    [ -n "$revision" ] || precondition_error "cannot resolve a commit for $path; check the repository state"
+    # Choose the target branch: an explicit submodule branch, else the current
+    # branch, else the origin default.
+    target=$sub_branch
+    if [ -z "$target" ] && [ -e "$path/.git" ]; then
+        target=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+        [ -n "$target" ] || target=$(default_target_branch "$path")
+    fi
+    [ -n "$target" ] || target=main
+
+    # Snapshot output values before any mutating helper runs. Helpers such as
+    # write_materialized_state and hook installation reuse the global variables
+    # path/repo/target, so reporting must read from these stable copies instead.
+    emit_path=$path
+    emit_source=$source
+    emit_target=$target
+    emit_revision=$revision
+    emit_url=$url
+
+    if [ "$dry_run" -eq 1 ]; then
+        [ "$json" -eq 0 ] || GIT_NEST_JSON_DRY_RUN=1
+        if [ "$json" -eq 1 ]; then
+            json_single_row_result "$pretty" absorb 1 A "$emit_path" "$emit_source" "$emit_target" "$emit_revision" "$emit_url" "would absorb existing $emit_source into the nest"
+        else
+            printf 'Would absorb %s %s into the nest as a subproject at %.12s (remote %s).\n' "$emit_source" "$emit_path" "$emit_revision" "$emit_url"
+        fi
+        return 0
+    fi
+
+    ensure_gitignore_hygiene
+    if [ "$source" = submodule ]; then
+        # Convert the submodule into a standalone repository while keeping files:
+        # drop the gitlink, relocate the module git dir into the checkout, and
+        # remove submodule registration from .gitmodules and .git/config.
+        git rm --cached -- "$path" >/dev/null 2>&1 ||
+            git_error "failed to unregister submodule gitlink for $path"
+        module_dir=$(git -C "$path" rev-parse --absolute-git-dir 2>/dev/null || true)
+        if [ -f "$path/.git" ] && [ -n "$module_dir" ] && [ -d "$module_dir" ]; then
+            rm -f "$path/.git" || git_error "failed to remove submodule gitlink file in $path"
+            mv "$module_dir" "$path/.git" || git_error "failed to relocate submodule git dir into $path"
+            # Operate on the config file directly: the stale core.worktree points
+            # at the old module location, so `git -C "$path"` cannot run until it
+            # is unset. Removing it lets Git default the work tree to the checkout.
+            git config --file "$path/.git/config" --unset core.worktree 2>/dev/null || true
+        fi
+        git config -f .gitmodules --remove-section "submodule.$sub_name" >/dev/null 2>&1 || true
+        # Drop an emptied .gitmodules so the outer tree stays tidy.
+        if [ -f .gitmodules ] && [ ! -s .gitmodules ]; then
+            rm -f .gitmodules
+        elif [ -f .gitmodules ] && ! git config -f .gitmodules --get-regexp '^submodule\.' >/dev/null 2>&1; then
+            rm -f .gitmodules
+        fi
+        git config --remove-section "submodule.$sub_name" >/dev/null 2>&1 || true
+    else
+        # A standalone nested repo may still be tracked by the outer repo as plain
+        # files or an embedded gitlink; untrack it so only the manifest owns it.
+        if git ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+            git rm -r --cached -- "$path" >/dev/null 2>&1 ||
+                git_error "failed to untrack $path from the outer repository"
+        fi
+    fi
+    ensure_gitignore_entry "$path"
+    manifest_write_subproject "$path" "$url" tracked "$target" "$revision" "$clone_mode"
+    install_hooks_in_repo_if_project_managed "$path"
+    write_materialized_state
+    stage_outer_paths_if_repo "$MANIFEST_FILE" .gitignore
+    [ -f .gitmodules ] && stage_outer_paths_if_repo .gitmodules || true
+    if [ "$json" -eq 1 ]; then
+        json_single_row_result "$pretty" absorb 1 A "$emit_path" "$emit_source" "$emit_target" "$emit_revision" "$emit_url" "absorbed existing $emit_source into the nest"
+    else
+        printf 'Absorbed %s %s as a git-nest subproject at %.12s (remote %s).\n' "$emit_source" "$emit_path" "$emit_revision" "$emit_url"
+    fi
+}
+
+# absorb brings something already on disk into the nest as a managed subproject,
+# auto-detecting the source: outer-repository files, a standalone nested repo, or
+# a submodule. It is the single into-the-nest conversion verb; add clones a new
+# remote, while inline, detach, and remove take subprojects back out of the nest.
+cmd_absorb() {
     branch=main
+    branch_set=0
     clone_mode=
     preserve_history=0
     push_after=0
     message=
     force=0
     dry_run=0
+    json=0
+    pretty=0
     path_arg=
     repo_arg=
     while [ $# -gt 0 ]; do
@@ -6223,6 +7204,7 @@ cmd_extract() {
             --branch)
                 [ $# -ge 2 ] || usage_error "--branch requires a name"
                 branch=$2
+                branch_set=1
                 shift 2
                 ;;
             --clone-mode)
@@ -6240,106 +7222,51 @@ cmd_extract() {
                 ;;
             --force) force=1; shift ;;
             --dry-run) dry_run=1; shift ;;
-            --*) usage_error "unknown extract option: $1" ;;
+            --json) json=1; shift ;;
+            --json-pretty) json=1; pretty=1; shift ;;
+            --*) usage_error "unknown absorb option: $1" ;;
             *)
                 if [ -z "$path_arg" ]; then
                     path_arg=$1
                 elif [ -z "$repo_arg" ]; then
                     repo_arg=$1
                 else
-                    usage_error "usage: git-nest extract <path> <remote-url> [options]"
+                    usage_error "usage: git-nest absorb <path> [<remote-url>] [options]"
                 fi
                 shift
                 ;;
         esac
     done
-    [ -n "$path_arg" ] && [ -n "$repo_arg" ] || usage_error "usage: git-nest extract <path> <remote-url> [options]"
+    [ -n "$path_arg" ] || usage_error "usage: git-nest absorb <path> [<remote-url>] [options]"
     reject_backslash_path "$path_arg"
     path=$(normalize_path "$path_arg")
-    [ -n "$message" ] || message="Extract $path"
 
     acquire_manifest_lock
     ensure_manifest
     validate_manifest_schema
     assert_path_not_inside_nested_project "$path"
-    assert_path_not_containing_nested_project "$path"
-    [ -d "$path" ] || precondition_error "$path is not a directory"
-    [ ! -d "$path/.git" ] || precondition_error "$path is already a Git repository"
-    [ -z "$(subproject_repo "$path" || true)" ] || precondition_error "$path is already a tracked subproject"
-    if ! git ls-files -- "$path" | sed -n '1p' | grep . >/dev/null 2>&1; then
-        precondition_error "$path has no tracked outer-repository files to extract; commit these files in the outer repo first, then rerun extract"
-    fi
-    staged_under_path=$(git diff --cached --name-only -- "$path" 2>/dev/null | sed -n '1p')
-    if [ -n "$staged_under_path" ] && [ "$force" -eq 0 ]; then
-        precondition_error "$path has staged outer-repository changes; review them or rerun extract with --force to replace that staged state"
-    fi
-
-    if [ "$dry_run" -eq 1 ]; then
-        printf 'Would extract %s to %s on branch %s.\n' "$path" "$repo_arg" "$branch"
-        [ "$push_after" -eq 1 ] && printf 'Would push %s to origin/%s.\n' "$path" "$branch"
-        return 0
-    fi
-    unstaged_under_path=$(git diff --name-only -- "$path" 2>/dev/null | sed -n '1p')
-    [ -z "$unstaged_under_path" ] || precondition_error "$path has unstaged content changes; commit these files in the outer repo first, then rerun extract"
-    untracked_under_path=$(git ls-files --others --exclude-standard -- "$path" 2>/dev/null | sed -n '1p')
-    [ -z "$untracked_under_path" ] || precondition_error "$path has untracked files; commit these files in the outer repo first, then rerun extract"
-    if [ "$preserve_history" -eq 1 ] && ! command -v git-filter-repo >/dev/null 2>&1; then
-        precondition_error "extract --preserve-history requires git-filter-repo; install it from https://github.com/newren/git-filter-repo and rerun"
-    fi
-    if [ "$push_after" -eq 1 ]; then
-        remote_refs=$(mktemp)
-        if ! git ls-remote "$repo_arg" >"$remote_refs" 2>/dev/null; then
-            rm -f "$remote_refs"
-            precondition_error "cannot reach extract remote $repo_arg"
-        fi
-        if [ -s "$remote_refs" ]; then
-            rm -f "$remote_refs"
-            precondition_error "extract remote $repo_arg is not empty; overriding non-empty remotes is deliberately not implemented"
-        fi
-        rm -f "$remote_refs"
-    fi
-
-    ensure_gitignore_hygiene
-    tmp_parent=$(mktemp -d "${TMPDIR:-/tmp}/git-nest-extract.XXXXXX") ||
-        die "cannot create extract temporary directory"
-    if [ "$preserve_history" -eq 1 ]; then
-        ensure_gitignore_line ".gitnest-extract-backup/"
-        backup=".gitnest-extract-backup/$(basename -- "$path")-$(backup_timestamp)"
-        copy_path_backup "$path" "$backup"
-        extract_preserve_history_repo "$path" "$branch" "$repo_arg" "$tmp_parent"
-    else
-        backup=
-        extract_snapshot_repo "$path" "$branch" "$repo_arg" "$message"
-    fi
-    rm -rf "$tmp_parent"
-    if [ "$push_after" -eq 1 ]; then
-        git -C "$path" push -u origin "$branch" || git_error "failed to push extracted subproject $path"
-        pushed_remote=$(git ls-remote "$repo_arg" "refs/heads/$branch" 2>/dev/null | awk 'NR == 1 { print $1 }')
-        local_head=$(resolve_head_commit "$path" "cannot resolve extracted subproject $path")
-        [ "$pushed_remote" = "$local_head" ] ||
-            git_error "pushed branch $branch on $repo_arg did not resolve to expected commit"
-    fi
-    revision=$(resolve_head_commit "$path" "cannot resolve extracted subproject $path")
-    git rm -r --cached -- "$path" >/dev/null 2>&1 ||
-        git_error "failed to untrack extracted files from outer repository"
-    ensure_gitignore_entry "$path"
-    manifest_write_subproject "$path" "$repo_arg" tracked "$branch" "$revision" "$clone_mode"
-    write_materialized_state
-    stage_outer_paths "$MANIFEST_FILE" .gitignore
-    if [ -n "$backup" ]; then
-        rm -rf -- "$backup"
-        rmdir .gitnest-extract-backup 2>/dev/null || true
-    fi
-    printf 'Extracted %s as a git-nest subproject at %.12s.\n' "$path" "$revision"
-    if [ "$push_after" -eq 0 ]; then
-        printf 'Push when ready with: git -C %s push -u origin %s\n' "$path" "$branch"
-    fi
+    # Route by source type; refuse when the path is already managed so the old
+    # reversed meaning of absorb can never run by accident.
+    source=$(absorb_detect_source "$path")
+    case "$source" in
+        subproject)
+            precondition_error "$path is already a nest subproject; use git-nest inline, git-nest detach, or git-nest remove to take it out of the nest"
+            ;;
+        files) absorb_files ;;
+        nested-repo|submodule) absorb_existing_repo ;;
+        *) die "internal error: unknown absorb source $source" ;;
+    esac
 }
 
-cmd_absorb() {
+# inline dissolves a managed subproject back into the outer repository as ordinary
+# tracked files, discarding the subproject's separate Git identity. It is the
+# opposite of absorbing outer-repository files. The remote is left untouched.
+cmd_inline() {
     commit_after=0
     message=
     dry_run=0
+    json=0
+    pretty=0
     path_arg=
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -6351,39 +7278,57 @@ cmd_absorb() {
                 shift 2
                 ;;
             --dry-run) dry_run=1; shift ;;
-            --*) usage_error "unknown absorb option: $1" ;;
+            --json) json=1; shift ;;
+            --json-pretty) json=1; pretty=1; shift ;;
+            --*) usage_error "unknown inline option: $1" ;;
             *)
-                [ -z "$path_arg" ] || usage_error "usage: git-nest absorb <path> [options]"
+                [ -z "$path_arg" ] || usage_error "usage: git-nest inline <path> [--commit] [--message <msg>] [--dry-run] [--json|--json-pretty]"
                 path_arg=$1
                 shift
                 ;;
         esac
     done
-    [ -n "$path_arg" ] || usage_error "usage: git-nest absorb <path> [options]"
+    [ -n "$path_arg" ] || usage_error "usage: git-nest inline <path> [--commit] [--message <msg>] [--dry-run] [--json|--json-pretty]"
     reject_backslash_path "$path_arg"
     path=$(normalize_path "$path_arg")
-    [ -n "$message" ] || message="Absorb subproject $path"
+    [ -n "$message" ] || message="Inline subproject $path"
 
     acquire_manifest_lock
     ensure_manifest
     validate_manifest_schema
     assert_path_not_inside_nested_project "$path"
     [ -d "$path/.git" ] || precondition_error "$path is not a checked-out subproject"
-    [ ! -f "$path/$MANIFEST_FILE" ] || precondition_error "$path is a nested git-nest project; recursive absorb is not supported yet"
+    [ ! -f "$path/$MANIFEST_FILE" ] || precondition_error "$path is a nested git-nest project; recursive inline is not supported yet"
     repo=$(subproject_repo "$path" || true)
     [ -n "$repo" ] || precondition_error "$path is not a tracked subproject in $MANIFEST_FILE"
+    # Refuse to dissolve local-only work, which would be unrecoverable once the
+    # subproject's own history is discarded.
     reason=$(stale_subproject_safety_reason "$path")
-    [ -z "$reason" ] || precondition_error "$path $reason; push or remove local-only work before absorb"
+    [ -z "$reason" ] || precondition_error "$path $reason; push or remove local-only work before inline"
 
+    # Snapshot output values before mutating helpers reuse the global variables.
+    emit_path=$path
+    emit_repo=$repo
     if [ "$dry_run" -eq 1 ]; then
-        printf 'Would absorb %s into the outer repository and leave remote %s untouched.\n' "$path" "$repo"
-        [ "$commit_after" -eq 1 ] && printf 'Would commit outer changes with message: %s\n' "$message"
+        [ "$json" -eq 0 ] || GIT_NEST_JSON_DRY_RUN=1
+        if [ "$json" -eq 1 ]; then
+            json_single_row_result "$pretty" inline 1 I "$emit_path" inlined - - "$emit_repo" "would inline into outer files"
+        else
+            printf 'Would inline %s into the outer repository and leave remote %s untouched.\n' "$emit_path" "$emit_repo"
+            [ "$commit_after" -eq 1 ] && printf 'Would commit outer changes with message: %s\n' "$message"
+        fi
         return 0
     fi
 
-    ensure_backup_ignored
-    backup=".gitnest-absorb-backup/$(basename -- "$path")-$(backup_timestamp)"
-    mkdir -p "$backup" || git_error "failed to create absorb backup $backup"
+    # Deleting the subproject's .git is destructive, so first make an on-demand,
+    # self-documenting recovery backup that is cleaned up on success.
+    backup=$(begin_recovery_backup "inline" "$path" \
+"    mv \"<this-dir>/.git\" \"$path/.git\"
+    git -C \"$path\" status
+
+Then unstage the outer-repo changes that inline staged:
+
+    git restore --staged \"$path\" .gitnest .gitignore")
     cp -R "$path/.git" "$backup/.git" || git_error "failed to back up $path/.git"
     rm -rf -- "$path/.git" || git_error "failed to remove nested Git metadata from $path"
     manifest_remove_section "$(subproject_section "$path")"
@@ -6392,9 +7337,13 @@ cmd_absorb() {
     stage_outer_paths "$MANIFEST_FILE" .gitignore "$path"
     if [ "$commit_after" -eq 1 ]; then
         git commit -m "$message" ||
-            git_error "failed to commit absorbed subproject $path; staged files remain and backup is in $backup. Fix the commit problem and run git commit, or restore $backup/.git to $path/.git and revert the staged manifest changes"
+            git_error "failed to commit inlined subproject $path; staged files remain and a recovery backup is in $backup (see $backup/RECOVERY.txt). Restore with: mv $backup/.git $path/.git; then git restore --staged $path .gitnest .gitignore"
     fi
-    rm -rf -- "$backup"
-    rmdir .gitnest-absorb-backup 2>/dev/null || true
-    printf 'Absorbed %s into the outer repository; remote %s was not changed.\n' "$path" "$repo"
+    # Success: drop the recovery backup and its local ignore rule.
+    end_recovery_backup "$backup"
+    if [ "$json" -eq 1 ]; then
+        json_single_row_result "$pretty" inline 1 I "$emit_path" inlined - - "$emit_repo" "inlined into outer files"
+    else
+        printf 'Inlined %s into the outer repository; remote %s was not changed.\n' "$emit_path" "$emit_repo"
+    fi
 }

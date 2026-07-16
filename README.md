@@ -3,7 +3,7 @@
 `git-nest` records and restores a reproducible workspace made from independent Git repositories.
 
 ```
-git-nest 0.8.1 \\_oOO_//
+git-nest 0.8.2 \\_oOO_//
 ```
 
 A nest is a home for related repositories. Each subproject remains a normal Git repository with its own history, branches, remotes, and workflow. The outer repository records how those repositories belong together in `.gitnest`.
@@ -19,11 +19,13 @@ It can:
 - clone an outer repository and restore its recorded subprojects;
 - restore the filesystem from `.gitnest` with `restore`;
 - snapshot clean, reproducible subproject commits back into `.gitnest`;
-- inspect state with `status`, `verify`, `outdated`, `diff`, `log`, and `doctor`;
+- inspect state with `status`, `verify`, `outdated`, `diff`, `log`, `list`, and `doctor`;
+- discover unmanaged nested repositories and submodules with `discover`;
 - update one subproject to a branch head, explicit revision, or tag;
 - remember reusable branch names with local `branch-*` commands;
 - install opt-in local hooks that help keep `.gitnest` current;
-- export a source snapshot and convert directories with `extract` and `absorb`.
+- bring files, repositories, and submodules into the nest with `absorb`, and take subprojects back out with `inline`, `detach`, and `remove`;
+- export a source snapshot.
 
 The tool does not replace normal Git commit, branch, review, or push workflows. Work in a subproject with Git, push that subproject when it is ready, then run `git-nest snapshot` so the outer manifest points at a reproducible commit.
 
@@ -188,6 +190,41 @@ git-nest branch-cleanup
 
 Branch marks are stored in `.gitnest-branches`, which is ignored by Git. Multiple branches may be marked for the same repository. `branch-cleanup` removes stale marks only; it does not delete Git branches.
 
+## Working Across Dirty Subprojects
+
+git-nest does not add bulk "branch all" or "commit all" commands. Use `foreach-modified`, which selects the currently dirty checked-out subprojects and runs a command inside each one. This keeps the behavior explicit and lets you use ordinary Git.
+
+Preview which subprojects are dirty:
+
+```sh
+git-nest foreach-modified --porcelain
+```
+
+Move every dirty subproject onto its own new branch (one branch each):
+
+```sh
+git-nest foreach-modified --continue-on-error -- git switch -c feature/shared-fix
+```
+
+Use `git switch -C feature/shared-fix` instead if the branch may already exist and you want to reset it to the current commit. `--continue-on-error` keeps going when one subproject fails instead of stopping at the first.
+
+Commit every dirty subproject (one commit each). Use `sh -c` so untracked files are staged too; `git commit -am` only stages already-tracked changes:
+
+```sh
+git-nest foreach-modified --continue-on-error -- sh -c 'git add -A && git commit -m "WIP in $GIT_NEST_SUBPROJECT_PATH"'
+```
+
+The command runs with its working directory set to each subproject, and git-nest exports context such as `GIT_NEST_SUBPROJECT_PATH`, `GIT_NEST_BRANCH`, and `GIT_NEST_TARGET_BRANCH`.
+
+Because a commit makes the working tree clean, a later `foreach-modified` will no longer select that subproject. Do branch, commit, and push in a single pass, then record the reproducible revisions:
+
+```sh
+git-nest foreach-modified --continue-on-error -- \
+  sh -c 'git switch -c feature/shared-fix && git add -A && git commit -m "WIP" && git push -u origin HEAD'
+git-nest snapshot
+git add .gitnest && git commit -m "Update subproject revisions"
+```
+
 ## Commands
 
 | Command | Brief use |
@@ -195,7 +232,8 @@ Branch marks are stored in `.gitnest-branches`, which is ignored by Git. Multipl
 | `init [--rc] [--sure]` | Create a new `.gitnest`; `--sure` confirms an intentional nested nest inside an existing nest. |
 | `repair [--rc]` | Refresh managed support files such as `.gitattributes`, `.gitignore`, and optional `.gitnest-rc`. |
 | `add [--clone <full\|partial>] <repo> <path>` | Add and clone a subproject at a path relative to the current nest root; `.` is not valid. `--clone` records future `restore` clone mode and is unrelated to the `clone` command. |
-| `remove` / `rm <path>` | Remove a managed subproject path from the current nest, optionally keeping files. |
+| `remove` / `rm <path>` | Remove a managed subproject from the current nest and delete its checkout on disk; the remote is untouched. |
+| `detach <path>` | Remove a managed subproject from the nest but keep its checkout as a standalone, ignored repository. |
 | `move` / `mv <old-path> <new-path>` | Move a managed subproject path inside the current nest; `.` is not valid. |
 | `move` / `mv --url <new-url> <path>` | Change a recorded subproject URL without moving files. |
 | `clone <nest-repo-url> [target-dir]` | Run `git clone` for a nest repository, then automatically `restore` when `.gitnest` exists; it does not copy an existing local checkout. |
@@ -204,6 +242,8 @@ Branch marks are stored in `.gitnest-branches`, which is ignored by Git. Multipl
 | `verify` | Validate manifest entries, remotes, refs, clone mode, and checkout drift. |
 | `diff` | Show subproject commits between recorded revisions and current checkouts. |
 | `log` | Show combined nest and subproject history. |
+| `list [--porcelain\|--json\|--json-pretty]` | List managed subprojects in a stable order with URL, target branch, revision, tag, checkout state, and reproducibility. |
+| `discover [--max-depth <n>] [--exclude <name>]...` | Scan the current nest for unmanaged nested repositories and submodules and suggest a next step; discovery only. |
 | `snapshot [<path>]` | Record clean, reproducible checked-out subproject commits. No path means all subprojects; `.` means all subprojects at the nest root and only the owning subproject inside one. |
 | `restore` | Clone, fetch, and check out all subprojects in the current nest from `.gitnest`; it does not accept a path. |
 | `freeze` | Pin tracked subprojects in the current nest to their current checkout commits. |
@@ -221,8 +261,8 @@ Branch marks are stored in `.gitnest-branches`, which is ignored by Git. Multipl
 | `doctor` | Report environment and workspace health. |
 | `completion` | Print shell completion scripts. |
 | `export` | Export a source snapshot with `.gitnest` and `MANIFEST.lock`; `dir` uses shell copy, `tar.gz` requires system `tar`, and `zip` requires `python` or `python3`. |
-| `extract` | Convert an outer-repo tracked directory into a managed subproject in the current nest. |
-| `absorb` | Convert a managed subproject back into ordinary outer-repo tracked files. |
+| `absorb <path> [<url>]` | Bring something already on disk into the nest as a managed subproject, auto-detecting outer-repo files, a standalone nested repo, or a submodule. |
+| `inline <path>` | Dissolve a managed subproject into the outer repo as ordinary tracked files. |
 | `version` | Print the tool name, version, and logo. |
 
 Run `git-nest help` for the grouped command overview, or `git-nest help <command>` for command-specific explanation and examples, such as `git-nest help snapshot` or `git-nest help branch-mark`.
@@ -290,11 +330,26 @@ From Windows `cmd.exe`:
 tests\run-all-tests.bat
 ```
 
-The runner clears `${TMPDIR:-/tmp}/git-nest-test-workspaces`, runs each `tests/test_*.sh`, streams output, writes `test-result.md`, and leaves numbered workspaces for inspection. The full suite can take more than 10 minutes on Windows.
+The runner clears `${TMPDIR:-/tmp}/git-nest-test-workspaces`, runs each `tests/test_*.sh`, writes the Markdown summary `run-all-tests-results.md`, captures the full run to `run-all-tests.log`, and leaves numbered workspaces for inspection. The full suite can take more than 10 minutes on Windows.
+
+By default the console shows a curated per-test narrative: a brief description of each step and each `git-nest` command with the output it produced. The full raw output of every command is saved per test and printed automatically when a test fails. The summary table sizes its columns to the longest test name.
+
+Each test has a globally unique four-digit ID (the filename prefix). The runner accepts commands as well as options:
+
+```sh
+sh tests/run-all-tests.sh list                 # ID  description for every test
+sh tests/run-all-tests.sh only 0130,0140,5010  # run only these IDs
+sh tests/run-all-tests.sh except 5000,5010,5020 # run all but these IDs
+sh tests/run-all-tests.sh help                 # commands and examples
+```
+
+Options: `--verbose` (`-v`) streams everything (full raw output with a shell trace) instead of the curated narrative; `--stop-on-fail` stops at the first failure; `--no-log` skips the full-run log and `--log FILE` writes it elsewhere. An unknown command, option, or test ID prints the help and stops. All commands and options work through `tests\run-all-tests.bat` too.
 
 ## AI User Skill
 
-The repository includes `.agents/git-nest/SKILL.md` for AI agents working in projects that use `git-nest`. It teaches agents how to inspect, restore, verify, edit, and prepare work in a project workspace without modifying the `git-nest` tool itself.
+The repository includes `skills/git-nest/SKILL.md` for AI agents working in projects that use `git-nest`. It teaches agents how to inspect, restore, verify, edit, and prepare work in a project workspace without modifying the `git-nest` tool itself. Copy this skill into a consuming project's skill tree (for example `.agents/skills/git-nest/`, `.opencode/skills/git-nest/`, or `.claude/skills/git-nest/`) so its AI agents can load it.
+
+Agents working on `git-nest` itself discover the same skill through `.agents/skills/git-nest/SKILL.md`, a thin pointer back to `skills/git-nest/SKILL.md`; the product copy under `skills/` stays the single source of truth.
 
 ## License
 

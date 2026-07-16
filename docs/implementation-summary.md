@@ -45,9 +45,9 @@ Manifest lock acquisition waits up to `GIT_NEST_LOCK_TIMEOUT_SECONDS`, defaultin
 ## Command Guarantees
 
 - `init [--rc] [--sure]`: creates a new nest. Existing nest roots are reported as already initialized and are not repaired. Inside a managed subproject, plain `init` refuses and requires `--sure`.
-- `repair [--rc]`: refreshes managed support files for an existing nest.
+- `repair [--rc]`: refreshes managed support files for an existing nest, reconciles the managed `.gitignore` block, and prunes stale nest-owned ignore entries (reporting each pruned entry).
 - `add`: clones a subproject, records its URL, target branch, revision, and clone mode, and updates ignore hygiene.
-- `remove`, `move`/`mv`, `config`, `update`, `extract`, and `absorb`: refuse unsafe nested-boundary path operations and reject backslash-separated paths.
+- `remove`, `detach`, `move`/`mv`, `config`, `update`, `absorb`, and `inline`: refuse unsafe nested-boundary path operations and reject backslash-separated paths.
 - `config`: exposes only allowlisted settings. Currently only `clone-mode` is public, mapping to manifest `clone=full|partial`; unknown keys such as `repo` and unknown values are rejected.
 - `snapshot [<path>]`: records clean, reproducible checked-out subproject commits. No argument means all subprojects from anywhere in the nest. `snapshot .` at the root means all subprojects; `snapshot .` inside a managed subproject means that subproject only.
 - `restore`: clones missing subprojects, fetches existing subprojects, validates tag/revision drift, restores recorded revisions, and reconciles stale local materialization state.
@@ -57,11 +57,15 @@ Manifest lock acquisition waits up to `GIT_NEST_LOCK_TIMEOUT_SECONDS`, defaultin
 - `clone`: runs `git clone` for a nest repository and automatically runs `restore` unless `--no-restore` is used. It is not a file-copy operation for an existing local checkout.
 - `help [command]`: prints the grouped overview without an argument, or command-specific explanation and examples with one command topic. It does not require an existing nest.
 - `export`: writes `dir` output with shell file copy, `tar.gz` output with system `tar`, and `zip` output with `python` or `python3` using the standard `zipfile` module.
-- `extract`: converts an outer-repository tracked directory into a managed subproject in the current nest.
-- `absorb`: converts a managed subproject back into ordinary outer-repository tracked files.
+- `absorb`: brings something already on disk into the nest as a managed subproject, auto-detecting the source. Outer-repository tracked files require a remote URL and support `--branch`, `--clone-mode`, `--preserve-history`, `--push`, `--message`, and `--force`; a standalone nested repository records its own remote and current commit; a Git submodule is converted into a standalone managed subproject by relocating its git directory and removing submodule wiring. It refuses a path that is already a subproject and refuses deeper nested repositories/submodules.
+- `inline`: dissolves a managed subproject into the outer repository as ordinary tracked files, discarding the subproject's own Git identity. It is the former `absorb` behavior. Before deleting the subproject's `.git`, and likewise for `absorb --preserve-history` before rewriting history, git-nest makes a transient, self-documenting recovery backup directory (`.gitnest-recovery-<op>-<name>-<timestamp>/` with a `RECOVERY.txt`), ignored on demand via `.git/info/exclude`, removed on success, and left with restore instructions if the conversion is interrupted.
+- `detach`: removes a subproject from the manifest but keeps its checkout on disk as a standalone, still-ignored Git repository. It is the former `remove --keep-files` behavior, and it keeps the ignore entry in the managed block so `repair` can prune it after the directory is moved or removed.
+- `remove`/`rm`: removes a subproject from the manifest and deletes its checkout on disk. The retired `--keep-files` flag is rejected with guidance to use `detach`.
+- `list`: lists managed subprojects in a stable order with path, repository URL, target branch, revision, tag, checkout state, and reproducibility, in human, `--porcelain`, or `--json`/`--json-pretty` form.
+- `discover`: scans the current nest for nested Git repositories and submodules not listed in `.gitnest`, bounded by `--max-depth` (default 4) and pruned by a default set plus `--exclude` names. It reports a kind (submodule, nested repo, nest root, or a detached former subproject whose path still carries a nest-owned ignore entry) and a suggested next step, and never modifies state or follows symlinks.
 - `doctor`: remote reachability checks use `--timeout <seconds>`, defaulting to `GIT_NEST_DOCTOR_TIMEOUT_SECONDS` or 5 seconds. If the external `timeout` utility is unavailable, git-nest uses a shell watchdog fallback around `git ls-remote`.
 
-Removed public workflow commands are rejected with usage errors: `start`, `upload`, `finalize`, `no-pending`, `foreach-pending`, `cleanup-branches`, `install-hooks`, `remove-hooks`, and `sync`.
+Removed public workflow commands are rejected with usage errors: `start`, `upload`, `finalize`, `no-pending`, `foreach-pending`, `cleanup-branches`, `install-hooks`, `remove-hooks`, and `sync`. The renamed `extract` command is rejected with guidance to use `absorb`.
 
 ## Hooks
 
@@ -92,8 +96,8 @@ Successful `restore` records materialization state under the outer repository's 
 
 ## JSON And Porcelain
 
-`status`, `verify`, `outdated`, `diff`, `foreach-modified`, `foreach-clean`, and `doctor` support machine-readable output where implemented. JSON output is versioned separately through `schemas/git-nest-output-v1.schema.json`.
+`status`, `verify`, `outdated`, `diff`, `foreach-modified`, `foreach-clean`, `doctor`, `list`, `discover`, `absorb`, `inline`, `detach`, and `remove` support machine-readable output where implemented. The mutating commands (`absorb`, `inline`, `detach`, `remove`) report a single subproject row describing the action, and honor `--dry-run` with a `dry_run` flag. JSON output is versioned separately through `schemas/git-nest-output-v1.schema.json`.
 
 ## Tests
 
-The integration suite creates local bare remotes under `TEST_ROOT`, defaults outside the repository, streams output, writes `test-result.md`, and leaves numbered workspaces for inspection. Current tests cover init/repair, nested init confirmation, add/remove/move, clone/restore modes, stale restore reconciliation, tag drift, snapshot path semantics, branch marks, hooks, status/verify/outdated/diff/log, update modes, export/extract/absorb, completion generation, Git-style invocation, BusyBox compatibility, manifest schema validation, path safety, dry-run behavior, and version output.
+The integration suite creates local bare remotes under `TEST_ROOT`, defaults outside the repository, streams output, writes `run-all-tests-results.md`, captures the full run to `run-all-tests.log` by default, and leaves numbered workspaces for inspection. Current tests cover init/repair, nested init confirmation, add/remove/move, clone/restore modes, stale restore reconciliation, tag drift, snapshot path semantics, branch marks, hooks, status/verify/outdated/diff/log, update modes, export/extract/absorb, completion generation, Git-style invocation, BusyBox compatibility, manifest schema validation, path safety, dry-run behavior, and version output.

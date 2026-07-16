@@ -1,5 +1,4 @@
 test_workspaces/
-test-result.md
-manual_test_run.txt
-.gitnest-extract-backup/
-.gitnest-absorb-backup/
+run-all-tests-results.md
+run-all-tests.log
+.gitnest-recovery-*/
