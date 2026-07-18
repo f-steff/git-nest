@@ -43,6 +43,11 @@ cp .gitnest project.before
 assert_file_contains outdated_second.out "libs/foo: outdated main $initial_short -> $second_short"
 "$GIT_NEST" outdated --porcelain >outdated_second_porcelain.out || test "$?" = "1"
 assert_file_contains outdated_second_porcelain.out "O${tab}libs/foo${tab}outdated${tab}main${tab}$initial${tab}$second${tab}remote-target"
+"$GIT_NEST" outdated --json >outdated_second.json || test "$?" = "1"
+assert_file_contains outdated_second.json '"command":"outdated"'
+assert_file_contains outdated_second.json '"path":"libs/foo"'
+assert_file_contains outdated_second.json '"state":"outdated"'
+python -m json.tool outdated_second.json >/dev/null 2>&1 || python3 -m json.tool outdated_second.json >/dev/null 2>&1 || true
 "$GIT_NEST" outdated --porcelain --recursive >outdated_order_one.out || test "$?" = "1"
 "$GIT_NEST" outdated --recursive --porcelain >outdated_order_two.out || test "$?" = "1"
 cmp -s outdated_order_one.out outdated_order_two.out

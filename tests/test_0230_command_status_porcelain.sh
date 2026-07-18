@@ -63,4 +63,34 @@ assert_file_contains "$root/missing.out" "M${tab}libs/foo${tab}missing${tab}-${t
 "$GIT_NEST" status --recursive --porcelain >"$root/order_two.out"
 cmp -s "$root/order_one.out" "$root/order_two.out"
 
-describe_result "The command status porcelain behavior matched the expected command output and repository state."
+# Restore a clean checkout for the remaining human/JSON/composite checks.
+"$GIT_NEST" restore >/dev/null 2>&1
+test -d libs/foo/.git
+
+test_step "Human status output" "Plain status shows the outer branch and each subproject's pinned state."
+"$GIT_NEST" status >"$root/human.out"
+assert_file_contains "$root/human.out" "outer branch:"
+assert_file_contains "$root/human.out" "libs/foo: pinned"
+
+test_step "JSON status on a clean nest" "status --json reports ok:true and no subproject rows for a clean nest."
+"$GIT_NEST" status --json >"$root/clean.json"
+assert_file_contains "$root/clean.json" '"command":"status"'
+assert_file_contains "$root/clean.json" '"ok":true'
+python -m json.tool "$root/clean.json" >/dev/null 2>&1 || python3 -m json.tool "$root/clean.json" >/dev/null 2>&1 || true
+
+test_step "Composite state when HEAD differs from the recorded revision" "Advancing a subproject past its recorded revision is reported as a composite (C) row and ok:false in JSON."
+git -C libs/foo commit --allow-empty -m "advance past recorded revision" >/dev/null
+"$GIT_NEST" status --porcelain >"$root/composite.out"
+assert_file_contains "$root/composite.out" "C${tab}libs/foo${tab}composite${tab}-${tab}-${tab}-${tab}head-differs-from-manifest"
+"$GIT_NEST" status --json >"$root/composite.json"
+assert_file_contains "$root/composite.json" '"ok":false'
+assert_file_contains "$root/composite.json" '"state":"composite"'
+
+test_step "Reject combining --porcelain with --json" "The two machine-output modes are mutually exclusive."
+if "$GIT_NEST" status --porcelain --json >"$root/conflict.out" 2>"$root/conflict.err"; then
+    printf 'UNEXPECTED RESULT: status should reject --porcelain with --json\n' >&2
+    exit 1
+fi
+assert_file_contains "$root/conflict.err" "cannot combine --porcelain with --json"
+
+describe_result "The command status porcelain behavior matched the expected command output and repository state, including human, JSON, composite, and conflicting-flag cases."

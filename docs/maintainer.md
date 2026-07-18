@@ -1,6 +1,6 @@
 # Maintainer Guide
 
-This guide is for changing `git-nest` itself. For user-facing behavior, treat `docs/implementation-summary.md` as the behavior contract and `README.md` as the manual.
+This guide is for changing `git-nest` itself. For user-facing behavior, treat `docs/command-behavior-contract.md` as the behavior contract and `README.md` as the manual.
 
 ## Maintenance Rules
 
@@ -19,10 +19,10 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
 
 For behavior changes:
 
-1. Read `docs/implementation-summary.md`.
+1. Read `docs/command-behavior-contract.md`.
 2. Inspect the relevant command implementation in `bin/git_nest.sh`.
 3. Add or update focused integration tests under `tests/`.
-4. Update `README.md`, `docs/implementation-summary.md`, `docs/technical_docs.md`, and `skills/git-nest/SKILL.md` when user-facing behavior changes. `skills/git-nest/SKILL.md` is the single source of truth for the usage skill; `.agents/skills/git-nest/SKILL.md` is only a pointer to it, so never edit workflow guidance there.
+4. Update `README.md`, `docs/command-behavior-contract.md`, `docs/technical_docs.md`, and `skills/git-nest/SKILL.md` when user-facing behavior changes. `skills/git-nest/SKILL.md` is the single source of truth for the usage skill; `.agents/skills/git-nest/SKILL.md` is only a pointer to it, so never edit workflow guidance there.
 5. Every minor and patch release must include a README pass and a version-string audit. Any command name, flag, or example in the docs that does not match the code is a release blocker.
 5. Run the full suite:
 
@@ -49,6 +49,27 @@ Tests should narrate important behavior with `test_step`, `run_ok`, `run_fail`, 
 The full suite is long-running and may exceed 10 minutes on Windows. That is acceptable while stdio output continues. By default the runner streams a curated per-test narrative (step descriptions and each git-nest command with its output, produced via a logging shim on `$GIT_NEST` and fd 9); the full raw output is captured per test and printed when a test fails. Use `--verbose`/`-v` to stream the full raw output with a shell trace instead. The runner records total suite time in `run-all-tests-results.md`, captures the entire run to `run-all-tests.log` by default (disable with `--no-log`, redirect with `--log FILE`), and fails any active test that produces no output for more than `TEST_WATCHDOG_SECONDS` seconds. The default watchdog is 180 seconds, and the suite stops after the first hung test. Keep individual tests chatty enough that a healthy long operation emits progress before the watchdog threshold.
 
 Cover both successful behavior and negative paths. New parser branches, missing refs, dirty or unreproducible protections, manifest state transitions, Git-style invocation, portability paths, and recursive nested-project behavior should have tests when touched.
+
+## Verbose Toggle
+
+The runner supports `--verbose`/`-v` to stream full raw output with a `set -x` shell trace instead of the default curated narrative. Tests must tolerate this: assertions using `run_ok`, `run_fail`, and `run_capture` from `tests/helper.sh` work correctly under `-x` because the shim's stdout/stderr delivery is unaffected by the trace on stderr. A test that reads its own output from fd 9 or assumes a clean stderr may break under `--verbose`. Keep all assertions on captured files or exit codes, never on stderr content.
+
+## Multi-Step Test Structure
+
+A test may contain multiple `test_step` calls to partition its work into visible, independently-described phases. Each step should have a clear Why statement explaining the purpose. The runner shows every step in the output automatically.
+
+When calling a function that returns non-zero for expected conditions (e.g., a tool-check function that returns 2 for "tool not available"), wrap the call with `set +e` / `set -e` to prevent the shell from exiting due to `-e`:
+
+```sh
+set +e; check_shellcheck; sc_rc=$?; set -e
+case $sc_rc in
+    0) describe_result "passed" ;;
+    2) describe_result "skipped (tool not available)" ;;
+    *) exit 1 ;;
+esac
+```
+
+Test 0000 (`test_0000_static_code_analysis.sh`) is the reference for this pattern. It runs four tool checks as separate steps, tracks skipped tools, and reports a summary. When adding new static checks, add them as additional steps in that file rather than creating separate test files, so the suite's quality gate stays in one place.
 
 ## Scope Guardrails
 

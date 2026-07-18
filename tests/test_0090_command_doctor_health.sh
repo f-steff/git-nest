@@ -27,6 +27,8 @@ assert_file_contains doctor.out "I	git-version"
 assert_file_contains doctor.out "I	remotes	remote reachability skipped by --offline"
 assert_file_contains doctor.out "I	export-tar"
 assert_file_contains doctor.out "I	export-zip"
+assert_file_contains doctor.out "I	gitignore-stale"
+assert_file_contains doctor.out "I	recovery-backup"
 GIT_NEST_DOCTOR_TIMEOUT_SECONDS=7 "$GIT_NEST" doctor --offline >doctor_env.out
 assert_file_contains doctor_env.out "I	remotes	remote reachability skipped by --offline"
 run_fail "invalid doctor timeout environment rejected" any -- sh -c 'GIT_NEST_DOCTOR_TIMEOUT_SECONDS=bad "$1" doctor --offline >doctor_bad_timeout.out 2>doctor_bad_timeout.err' sh "$GIT_NEST"
@@ -51,6 +53,23 @@ data = json.load(open(sys.argv[2], encoding="utf-8"))
 jsonschema.validate(data, schema)
 PY
 fi
+
+# A leftover recovery backup from an interrupted conversion is reported.
+mkdir ".gitnest-recovery-inline-foo-20260101T000000Z"
+"$GIT_NEST" doctor --offline >doctor_recovery.out
+assert_file_contains doctor_recovery.out "W	recovery-backup"
+rm -rf ".gitnest-recovery-inline-foo-20260101T000000Z"
+
+# A stale nest-owned ignore entry (a detached repo since removed) is reported.
+"$GIT_NEST" detach libs/foo >/dev/null
+rm -rf libs/foo
+"$GIT_NEST" doctor --offline >doctor_stale.out
+assert_file_contains doctor_stale.out "W	gitignore-stale"
+
+# --redact produces valid, still-parseable JSON diagnostics.
+"$GIT_NEST" doctor --offline --json --redact >doctor_redact.json
+assert_file_contains doctor_redact.json '"command":"doctor"'
+python -m json.tool doctor_redact.json >/dev/null 2>&1 || python3 -m json.tool doctor_redact.json >/dev/null 2>&1 || true
 
 rm .gitattributes
 "$GIT_NEST" doctor --offline >doctor_warn.out

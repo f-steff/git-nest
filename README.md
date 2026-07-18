@@ -1,12 +1,10 @@
-# git-nest
+# git-nest   `\\_oOO_//`
 
 `git-nest` records and restores a reproducible workspace made from independent Git repositories.
 
-```
-git-nest 0.8.2 \\_oOO_//
-```
+git-nest is a thoughtful tool that solves a real problem: coordinating multiple independent Git repositories without submodules, monorepo pain, or heavy dependencies.
 
-A nest is a home for related repositories. Each subproject remains a normal Git repository with its own history, branches, remotes, and workflow. The outer repository records how those repositories belong together in `.gitnest`.
+The nest is a home for related repositories. Each subproject remains a normal Git repository with its own history, branches, remotes, and workflow. The outer repository records how those repositories belong together in the `.gitnest` manifest.
 
 ## Current 0.8 Capabilities
 
@@ -36,6 +34,10 @@ The tool does not replace normal Git commit, branch, review, or push workflows. 
 - `tar` for `git-nest export --format tar.gz`.
 - `python` or `python3` for `git-nest export --format zip`; the implementation uses Python's standard `zipfile` module.
 - Network and credentials only for commands that contact remotes, such as `add`, `restore`, `outdated`, `update`, and `snapshot` when it fetches.
+
+## Backend Requirements
+
+The are no special backend requirements. git-nest does only require a standard git server.
 
 ## Installation And Invocation
 
@@ -225,6 +227,24 @@ git-nest snapshot
 git add .gitnest && git commit -m "Update subproject revisions"
 ```
 
+`foreach` and `foreach-modified` run only inside subprojects, never the nest root. When a feature also changes the nest root itself, drive the root with ordinary Git (`git switch -c feature/shared-fix`, commit, push) as a separate step, and use `git-nest branch-mark` in each participating repository if you want a local record of which branch belongs to the feature. Branch memory is only a notepad; it does not switch, push, or delete branches.
+
+## Updating Subprojects On Their Current Branch
+
+To pull upstream changes into the subprojects that are already checked out on a branch, without rewriting their state from `.gitnest`, fan out an ordinary fast-forward-only pull over the clean subprojects:
+
+```sh
+git-nest foreach-clean -- git pull --ff-only
+```
+
+`foreach-clean` selects only subprojects with a clean working tree, so dirty subprojects are skipped rather than disturbed. `--ff-only` refuses to create a merge commit: any subproject whose branch has diverged from its upstream is reported and left untouched for you to rebase or merge by hand. Add `--continue-on-error` to attempt every clean subproject and still report the ones that could not fast-forward:
+
+```sh
+git-nest foreach-clean --continue-on-error -- git pull --ff-only
+```
+
+This is a working-tree convenience, not a manifest authority. It does not replace `restore` (which reconciles checkouts to `.gitnest`) or `snapshot` (which records revisions back into `.gitnest`). After pulling, run `git-nest snapshot` if you want the manifest to point at the new commits. As with the other recipes, the nest root is not included; pull it separately with ordinary Git.
+
 ## Commands
 
 | Command | Brief use |
@@ -242,7 +262,7 @@ git add .gitnest && git commit -m "Update subproject revisions"
 | `verify` | Validate manifest entries, remotes, refs, clone mode, and checkout drift. |
 | `diff` | Show subproject commits between recorded revisions and current checkouts. |
 | `log` | Show combined nest and subproject history. |
-| `list [--porcelain\|--json\|--json-pretty]` | List managed subprojects in a stable order with URL, target branch, revision, tag, checkout state, and reproducibility. |
+| `list [--porcelain\|--json\|--json-pretty] [--redact]` | List managed subprojects in a stable order with URL, target branch, revision, tag, checkout state, and reproducibility; `--redact` strips URL credentials and home paths. |
 | `discover [--max-depth <n>] [--exclude <name>]...` | Scan the current nest for unmanaged nested repositories and submodules and suggest a next step; discovery only. |
 | `snapshot [<path>]` | Record clean, reproducible checked-out subproject commits. No path means all subprojects; `.` means all subprojects at the nest root and only the owning subproject inside one. |
 | `restore` | Clone, fetch, and check out all subprojects in the current nest from `.gitnest`; it does not accept a path. |
@@ -258,7 +278,7 @@ git add .gitnest && git commit -m "Update subproject revisions"
 | `foreach-clean` | Run a command in clean checked-out subprojects in the current nest or list them. |
 | `config` | Read or update allowlisted manifest settings such as `clone-mode`, which controls future `restore` clones rather than the `clone` command. |
 | `update <subproject>` | Move one clean managed subproject path to a target branch head, explicit revision, or tag; `.` is not valid. |
-| `doctor` | Report environment and workspace health. |
+| `doctor [--redact]` | Report environment and workspace health; `--redact` strips URL credentials and home paths from the output. |
 | `completion` | Print shell completion scripts. |
 | `export` | Export a source snapshot with `.gitnest` and `MANIFEST.lock`; `dir` uses shell copy, `tar.gz` requires system `tar`, and `zip` requires `python` or `python3`. |
 | `absorb <path> [<url>]` | Bring something already on disk into the nest as a managed subproject, auto-detecting outer-repo files, a standalone nested repo, or a submodule. |

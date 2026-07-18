@@ -38,6 +38,8 @@ Allowed subproject keys are:
 
 Obsolete pending workflow keys are rejected: `pending_branch`, `base_revision`, `pushed_commit`, and `finalized_from_branch`.
 
+Subproject paths in the manifest must be safe relative paths inside the nest. Schema validation rejects a manifest whose subproject path is absolute, escapes the nest with `..`, uses a backslash, or names Git-internal files, so no command clones, checks out, or removes outside the nest root.
+
 Manifest rewrites preserve unknown extension keys except for keys owned by the current command. Rewrites are deterministic and protected by `.gitnest.lock`.
 
 Manifest lock acquisition waits up to `GIT_NEST_LOCK_TIMEOUT_SECONDS`, defaulting to 10 seconds, before reporting the lock owner metadata and recovery command.
@@ -47,7 +49,7 @@ Manifest lock acquisition waits up to `GIT_NEST_LOCK_TIMEOUT_SECONDS`, defaultin
 - `init [--rc] [--sure]`: creates a new nest. Existing nest roots are reported as already initialized and are not repaired. Inside a managed subproject, plain `init` refuses and requires `--sure`.
 - `repair [--rc]`: refreshes managed support files for an existing nest, reconciles the managed `.gitignore` block, and prunes stale nest-owned ignore entries (reporting each pruned entry).
 - `add`: clones a subproject, records its URL, target branch, revision, and clone mode, and updates ignore hygiene.
-- `remove`, `detach`, `move`/`mv`, `config`, `update`, `absorb`, and `inline`: refuse unsafe nested-boundary path operations and reject backslash-separated paths.
+- `remove`, `detach`, `move`/`mv`, `config`, `update`, `absorb`, and `inline`: refuse unsafe nested-boundary path operations and reject backslash-separated paths. `add`, `move`, and `absorb` also refuse a path that differs from an existing subproject only by letter case, since that collides on case-insensitive filesystems.
 - `config`: exposes only allowlisted settings. Currently only `clone-mode` is public, mapping to manifest `clone=full|partial`; unknown keys such as `repo` and unknown values are rejected.
 - `snapshot [<path>]`: records clean, reproducible checked-out subproject commits. No argument means all subprojects from anywhere in the nest. `snapshot .` at the root means all subprojects; `snapshot .` inside a managed subproject means that subproject only.
 - `restore`: clones missing subprojects, fetches existing subprojects, validates tag/revision drift, restores recorded revisions, and reconciles stale local materialization state.
@@ -96,7 +98,7 @@ Successful `restore` records materialization state under the outer repository's 
 
 ## JSON And Porcelain
 
-`status`, `verify`, `outdated`, `diff`, `foreach-modified`, `foreach-clean`, `doctor`, `list`, `discover`, `absorb`, `inline`, `detach`, and `remove` support machine-readable output where implemented. The mutating commands (`absorb`, `inline`, `detach`, `remove`) report a single subproject row describing the action, and honor `--dry-run` with a `dry_run` flag. JSON output is versioned separately through `schemas/git-nest-output-v1.schema.json`.
+`status`, `verify`, `outdated`, `diff`, `foreach-modified`, `foreach-clean`, `doctor`, `list`, `discover`, `absorb`, `inline`, `detach`, and `remove` support machine-readable output where implemented. The mutating commands (`absorb`, `inline`, `detach`, `remove`) report a single subproject row describing the action, and honor `--dry-run` with a `dry_run` flag. `list` and `doctor` accept `--redact`, which strips credentials embedded in URLs (`scheme://user:token@host` becomes `scheme://***@host`) and replaces the home directory with `~`, so machine output can be shared without leaking secrets or user-specific paths. JSON output is versioned separately through `schemas/git-nest-output-v1.schema.json`.
 
 ## Tests
 

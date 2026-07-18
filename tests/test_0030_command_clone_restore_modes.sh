@@ -40,4 +40,14 @@ test ! -d "$clone_target/moved/two/.git"
 test_step "Clone with automatic restore" "plain clone should run restore when the outer repository contains .gitnest."
 run_ok "outer repository cloned and subprojects restored" -- "$GIT_NEST" clone "$outer_remote" "$root/cloned-restore"
 test -d "$root/cloned-restore/moved/two/.git"
-describe_result "clone respected --no-restore and performed automatic restore by default."
+
+test_step "Clone passes outer-clone options to git" "--branch selects the outer branch and --depth makes a shallow clone."
+git -C "$outer" branch dev
+git -C "$outer" push origin dev >/dev/null
+run_ok "clone a specific outer branch" -- "$GIT_NEST" clone --no-restore --branch dev "$outer_remote" "$root/cloned-branch"
+test "$(git -C "$root/cloned-branch" rev-parse --abbrev-ref HEAD)" = "dev"
+# --depth is honored only for file:// (not bare local path) clones.
+run_ok "shallow clone the outer repository" -- "$GIT_NEST" clone --no-restore --depth 1 --single-branch --branch main "file://$outer_remote" "$root/cloned-depth"
+test "$(git -C "$root/cloned-depth" rev-parse --is-shallow-repository)" = "true"
+
+describe_result "clone respected --no-restore, restored by default, and passed outer-clone options (--branch/--depth/--single-branch) through to git."

@@ -54,3 +54,10 @@ run_fail "foreach-clean continued through all clean subprojects and returned the
 assert_file_contains clean_continue.out "libs/one"
 assert_file_contains clean_continue.out "libs/three"
 describe_result "foreach-modified and foreach-clean selected the expected repositories and propagated command status."
+
+test_step "Foreach -- separator is optional" "Both with and without -- should produce the same result."
+run_ok "foreach without -- runs command" -- "$GIT_NEST" foreach sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH"'
+run_ok "foreach with -- runs command" -- "$GIT_NEST" foreach -- sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH"'
+run_ok "foreach-modified without -- runs command in dirty subproject" -- "$GIT_NEST" foreach-modified sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH"'
+run_ok "foreach-clean without -- runs command in clean subprojects" -- "$GIT_NEST" foreach-clean sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH"'
+describe_result "All foreach variants accepted commands without -- separator."

@@ -77,4 +77,21 @@ rm -rf libs/bar
 run_capture "missing checkout reported" missing.out missing.err -- "$GIT_NEST" list --porcelain
 assert_file_contains missing.out 'M	libs/bar	missing'
 
-describe_result "list reported managed subprojects with reproducibility, drift, and missing states across human, porcelain, and JSON output."
+# --- Redaction: credentials in URLs are stripped with --redact ---
+test_step "List --redact strips URL credentials" "A subproject URL containing credentials must appear verbatim without --redact and be redacted with it."
+cat >>.gitnest <<EOF
+
+[subproject "libs/cred"]
+repo=https://alice:s3cr3t@example.invalid/cred.git
+target_branch=main
+revision=0123456789012345678901234567890123456789
+EOF
+run_capture "plain list keeps the URL verbatim" cred_plain.out cred_plain.err -- "$GIT_NEST" list --porcelain
+assert_file_contains cred_plain.out 's3cr3t'
+run_capture "redacted list hides the credentials" cred_redacted.out cred_redacted.err -- "$GIT_NEST" list --porcelain --redact
+assert_file_not_contains cred_redacted.out 's3cr3t'
+assert_file_contains cred_redacted.out 'https://***@example.invalid/cred.git'
+run_capture "redacted JSON hides the credentials" cred_redacted.json cred_redacted_json.err -- "$GIT_NEST" list --json --redact
+assert_file_not_contains cred_redacted.json 's3cr3t'
+
+describe_result "list reported managed subprojects with reproducibility, drift, and missing states across human, porcelain, and JSON output, and redacted URL credentials with --redact."

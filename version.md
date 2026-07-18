@@ -1,5 +1,28 @@
 # Version History
 
+## 0.8.3 - 2026-07-18
+
+### Quality and maintainability
+
+- Split monolithic `bin/git_nest.sh` (7414 lines) into 6 focused files under `bin/lib/` and `bin/git_nest.sh` (small entrypoint).
+- Added manifest cache: single awk pass populates shell variables, replacing N-per-key subprocess reads with O(1).
+- Added ShellCheck configuration (`bin/.shellcheckrc`) with documented suppressions; all warnings fixed.
+- Added `tests/check.sh` — unified quality script running `sh -n`, ShellCheck, `shfmt`, `checkbashisms` with auto-install of missing tools to `~/bin/`.
+- Added `test_0000_static_code_analysis.sh` — runs quality checks as part of the test suite.
+- Added command trace log (`$TEST_ROOT/.git-nest-commands.log`) for full-suite auditability.
+- Removed ~350 lines of dead code (old `start`/`upload`/`finalize` workflow).
+- Fixed `sleep_ms` lookup table → POSIX awk-based fractional sleep.
+- Fixed CRLF line endings in all shell files.
+- Added POSIX formatting via `shfmt -w -ln posix` across all shell files.
+- Added `-v` short flag for version.
+- Added `--help`/`-h` on subcommands (parses before `--` separator).
+- Added `--online` flag on `doctor` as explicit documentation pair for `--offline`.
+- Added `docs/exit-codes.md`.
+- Added `debug` and `release` to `DISCOVER_DEFAULT_EXCLUDES`.
+- Added Go port analysis to `todo.md`.
+- Renamed `docs/implementation-summary.md` → `docs/command-behavior-contract.md`.
+- Fixed `.bashrc` guard for optional `git-subrepo` sourcing.
+
 ## 0.8.2 - 2026-07-16
 
 ### Nest membership commands
@@ -15,6 +38,12 @@
 - Managed nest-owned `.gitignore` entries in a self-healing `# BEGIN git-nest ignores` block: entries a user moves outside the block are pulled back in and deduped, `repair` prunes stale entries whose path is gone, and `doctor` warns when stale entries exist.
 - Reworked conversion backups into transient, self-documenting `.gitnest-recovery-<op>-<name>-<timestamp>/` directories with a `RECOVERY.txt`, ignored on demand through the repo-local `.git/info/exclude` (never the committed `.gitignore`) and removed on success. `doctor` reports leftover recovery backups from an interrupted conversion.
 
+### Hardening and diagnostics
+
+- Rejected unsafe subproject paths in the manifest content itself (absolute, `..` escape, backslash, Git-internal names) during schema validation, so no command clones, checks out, or removes outside the nest root.
+- Refused case-only-different subproject paths in `add`, `move`, and `absorb` to prevent collisions on case-insensitive filesystems.
+- Added `--redact` to `list` and `doctor` to strip credentials from URLs and the home directory from paths in their output.
+
 ### Bug fixes
 
 - `cmd_snapshot` returned the trailing notice's status instead of the snapshot result, so the root pre-push hook's reproducibility warning never fired; it now returns the real result.
@@ -28,11 +57,12 @@
 - The console shows a curated per-test narrative (each git-nest command with its output) by default; `--verbose` streams the full raw output with a shell trace, and a failing test dumps its full raw output. Summary columns size to the longest test name.
 - Added a full-run log (`run-all-tests.log` by default, `--no-log`/`--log FILE`) and renamed the Markdown summary to `run-all-tests-results.md`.
 - Added and deepened tests for absorb sources, detach, discover, list, verify health, and hooks (install, uninstall, and real trigger-through-Git), and made the invocation smoke check a real test.
+- Completed a coverage-deepening pass across the command surface: added restore materialization/re-clone/partial-failure coverage and extended status (JSON, composite state, flag conflicts), outdated/diff (JSON), log (--until), freeze (clean no-force), clone (--branch/--depth/--single-branch), and doctor (stale-ignore and recovery-backup checks).
 
 ### Skills and documentation
 
 - Made `skills/git-nest/SKILL.md` the single source of truth for the usage skill, with a discoverable pointer at `.agents/skills/git-nest/SKILL.md`, and documented the two skill trees and development-agent bootstrap in `AGENTS.md`.
-- Updated `README.md`, `docs/implementation-summary.md`, `docs/technical_docs.md`, `docs/maintainer.md`, and the usage skill throughout for the new commands and workflows.
+- Updated `README.md`, `docs/command-behavior-contract.md` (formerly `docs/implementation-summary.md`), `docs/technical_docs.md`, `docs/maintainer.md`, and the usage skill throughout for the new commands and workflows.
 
 ## 0.8.1 - 2026-07-08
 

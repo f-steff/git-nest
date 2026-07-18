@@ -1,30 +1,15 @@
 # todo
 
-- Deepen test coverage incrementally, one or a few commands per pass, auditing each command against its help/contract and adding the missing cases. Report and fix any bugs the new tests expose.
-  - Done so far: hooks (install/uninstall/triggered) and verify.
-  - Remaining audit candidates (roughly shallow or scenario-thin): restore (recovery paths, --prune/--force, partial-clone), status (--exit-code, recursive, composite/mismatch states), outdated, diff --since edge cases, log filters, freeze, config, update modes, clone modes, export formats, doctor checks, and the workflow scenarios.
-- Design a conservative current-branch update workflow:
-  - Consider `git-nest pull`, `git-nest update-current`, or a documented `foreach-clean -- git pull --ff-only` recipe.
-  - The command should update checked-out modules on their current branches without first rewriting module state from `.gitnest`.
-  - Refuse dirty worktrees, staged changes, unresolved conflicts, and ambiguous detached-HEAD states unless an explicit option says otherwise.
-  - Prefer fast-forward-only behavior by default and clearly report modules that require manual merge/rebase work.
-  - Do not make this a replacement for `restore` or `snapshot`. It is a working-tree convenience, not a manifest authority.
-- Harden filesystem and concurrency behavior:
-  - Audit path handling on case-insensitive filesystems so modules whose names differ only by case cannot corrupt each other.
-  - Use canonical path checks for any operation that writes outside the root, removes files, or resolves user-provided module paths.
-  - Ensure interrupted commands release locks and leave clear recovery instructions.
-  - If parallel operations are introduced, serialize manifest writes and per-module metadata writes.
-  - Do not use prefix string matching as a path safety check. Do not share predictable temporary filenames between simultaneous operations.
-- Design machine-readable diagnostics:
-  - Add JSON output where it helps automation, especially for `doctor`, `list`, and future release/install diagnostics.
-  - Redact user-specific paths, usernames, remote credentials, and tokens when requested.
-  - Keep text output readable for humans, but make JSON the contract for tools.
-  - Do not require scripts to parse prose, tables, icons, or logo text.
 - Capture release and installation hardening for later:
   - Keep install instructions shell-agnostic and avoid silently editing shell startup files.
   - If binary releases are added later, test native Windows artifacts on Windows and decide whether Windows ARM64 is supported.
   - If installer output uses color, provide a no-color path for CI, logs, and terminals without color support.
   - Do not let the installer hide required PATH or shell-profile steps behind decorative output.
+- Consider a Go port if the shell implementation becomes too large to maintain:
+  - **Pros**: native cross-compilation for Windows/Linux/macOS without Git Bash dependency; typed data structures and proper JSON encoding; `flag` or `cobra` for robust CLI parsing; `testing` package with real `t.Parallel()` and no subshell overhead; proper error wrapping; no awk/INI fragility; `go-git` for git operations without forking `git` (though forking is often simpler to keep accurate); static binary distribution; goroutines for concurrent subproject operations (huge win for `restore`/`foreach` with 100+ subprojects).
+  - **Cons**: adds a build step and Go toolchain requirement for contributors; loses the "edit and run" shell iteration loop; `go-git` credential/transport handling may differ from system `git` (especially on Windows with Git Credential Manager); the current shell code already handles edge cases that a Go port would need to re-discover through testing; the tool's simplicity is a feature — a Go binary feels "heavier" than a shell script; maintaining two implementations during a rewrite is expensive.
+  - **Decision port**: wait until the shell codebase routinely exceeds 10k lines, or contributors report that shell-based development is a significant barrier. For the 0.x lifetime, keep shell and invest in module splits (`lib/`) and ShellCheck.
+  - **Decision stay**: the shell approach has proven maintainable on a single-file 7k-line script and is the right choice for a lightweight, dependency-free tool that lives in a `bin/` directory in a Git checkout.
 - Keep subtree and git-subrepo support as deferred, explicit `absorb` source types:
   - Add them only as explicit modes such as `absorb --subtree <path> <url>` and `absorb --subrepo <path>`, never auto-detected. A Git subtree leaves no reliable on-disk marker, so it cannot be detected; a git-subrepo can be detected by `<path>/.gitrepo` but is still deferred.
   - Treat subtree absorb as equivalent to the plain-folder path plus a remembered upstream URL: forward-only, with no earlier history carried across.
@@ -35,6 +20,16 @@
 
 # suggestions
 
+- Promote the current-branch update recipe to a first-class command only if the documented recipe proves insufficient. The recipe (`git-nest foreach-clean -- git pull --ff-only`) already covers the common case: it updates only clean subprojects on their current branches, never rewrites state from `.gitnest`, is fast-forward-only by default, and reports diverged subprojects. A future `git-nest pull`/`update-current` would only add value if it needs to also handle the nest root in one pass, refuse ambiguous detached-HEAD states explicitly, or aggregate results as JSON. If built, keep it a working-tree convenience, not a `restore`/`snapshot` replacement, and keep fast-forward-only the default.
+- Promote the cross-repository feature-branch workflow to first-class commands only if the documented recipes prove insufficient. The recipes (single-pass `foreach-modified -- sh -c 'git switch -c <name> && git add -A && git commit -m "..." && git push -u origin HEAD'`, then `git-nest snapshot`) already cover starting, committing, and pushing a feature across the dirty subprojects. First-class `git-nest branch`/`commit`/`push` commands would only add value for participant tracking and the post-merge return step, both of which the recipes cannot express cleanly. If ever built, they must obey these constraints:
+  - This overlaps a workflow that was deliberately removed. The old `start`, `upload`, `finalize`, `no-pending`, `foreach-pending`, and `cleanup-branches` commands, and the manifest keys `pending_branch`, `base_revision`, `pushed_commit`, and `finalized_from_branch`, were cut because the tool became a branch/merge authority and stored transient workflow state in `.gitnest`. Do not reintroduce either mistake, and do not resurrect those names or semantics.
+  - Alignment rule: every subcommand must be a literal fan-out of a plain-Git command the user could type by hand, and `--dry-run` must print exactly those per-repository commands. Suggested mapping: `branch <name>` -> `git switch -c <name>` (or `git switch <name>` when it already exists) per participant; `commit` -> `git commit` per participant that has changes; `push` -> `git push -u origin <name>` per participant; then rely on `git-nest snapshot` to pin subproject revisions into `.gitnest` on the nest-root branch.
+  - Participant tracking: reuse the existing branch-memory (`.gitnest-branches`) as the record of which repositories joined a given feature branch, so `commit`, `push`, and the return step act on the same set. This is a real shift: branch-memory is currently a passive notepad that never switches or pushes, so acting on it needs an explicit, documented design decision, not a silent behavior change. Do not move participant/workflow state into `.gitnest`.
+  - Participant selection must be explicit and predictable. Decide and document whether the default set is "all dirty repositories", "all repositories", or an explicit list, and let the user override it. Always include or clearly handle the nest root itself, since `foreach` never touches the root. Carrying uncommitted changes across `branch` is just Git's normal `switch` behavior; refuse exactly where plain Git refuses rather than forcing.
+  - Returning to base after a remote PR merge is the genuinely hard part, because the merge happens on the remote and squash/rebase/merge rewrite commit SHAs, so git-nest cannot know or reconstruct the merged commit. Keep it dumb and safe: for each participant `git fetch`, `git switch <base>`, then `git pull --ff-only`; delete the local feature branch with Git's own merged-check (`git branch -d`, never `-D`); then clear the branch-memory for that feature. If any base is not fast-forwardable, or a branch is not yet merged, stop with a clear report and hand the repository back to plain Git.
+  - After the base branches are updated, the nest root's `.gitnest` on base should already point at the merged subproject revisions (the snapshot commit rode in through the PR). Where a squash or rebase merge changed that, document that `git-nest restore` reconciles working trees to the manifest and `git-nest snapshot` re-pins; do not try to auto-repair the manifest inside the return step.
+  - Report per-repository results with partial-failure aggregation like `restore`, and make `branch`, `commit`, `push`, and the return step all support `--dry-run`. Keep `snapshot` and `restore` as the sole manifest authority; this workflow always sits on top of them.
+  - Do not: store workflow state in `.gitnest`, reimplement merge, guess the remote merge result, or force past Git's safety refusals.
 - Use nest-related vocabulary in documentation examples to make command explanations more memorable, while keeping the actual command names literal and script-friendly.
   - Example: describe `restore` as bringing the nest back into shape, or as hatching missing checkouts, without adding `hatch` as a code alias.
   - Do not add metaphor aliases to the CLI unless there is a later explicit product decision.
@@ -44,8 +39,57 @@
   - How to do it: keep it explicit, reversible, and visibly installed by git-nest. The global hook should only detect `.gitnest` and delegate to local `hooks-install` or guidance; it must not store hook-installed state in `.gitnest`.
   - How not to do it: do not silently edit global Git config, do not auto-run destructive `restore`, and do not make ordinary repositories depend on git-nest being installed.
 
+- Add `git-nest survey` to help migrate existing projects (submodules, nested repos, subtrees) into a git-nest workspace:
+  - Scans from CWD without requiring an existing nest.
+  - Detects submodules and nested repos.
+  - Prints the exact `git-nest absorb` commands to bring each one in.
+  - `survey --apply` runs those commands automatically.
+
+  **Open questions**:
+  1. **Command name (chosen: `survey`)?**
+     - `survey` — suggests a broad, non-invasive overview. Chosen.
+     - `analyze` — suggests read-only inspection, familiar from static analysis tools. Mild risk of implying "deep code analysis" rather than "repo structure scan".
+     - `scan` — suggests active search, matches `discover`'s sibling. Shorter and more active. Could conflict with security scanners in the user's mental model.
+     - `audit` — carries compliance/conformance overtones. May imply more authority than the command has.
+     - `onboard` — describes the purpose (onboarding an existing project into git-nest). Unusual for a CLI verb, but self-explanatory once seen.
+
+  2. **Execute flag name?**
+     - `--execute` — clear and explicit, but long. Matches `--dry-run` as its opposite.
+     - `--apply` — shorter, suggests applying a plan. Common in Terraform/Puppet ecosystems.
+     - `--do-it` — informal, unambiguous, hard to forget. Unconventional for a CLI.
+     - `--commit` — would be confused with `git commit` and the existing `--commit` on `inline`.
+     - `--yes` / `--confirm` — suggests confirming a prompt, not executing actions.
+     - Recommendation: `--apply` is the clearest short form; `--execute` is the safest long form.
+
+  3. **New command vs dry-run mode?**
+     - Pro standalone: clear entry point, discoverable via help, no confusion about which command does what.
+     - Pro dry-run: reuses existing `absorb --dry-run` machinery, less surface area.
+     - Con dry-run: user has to know about `absorb` first to discover `absorb --analyze` or similar; also `absorb` currently operates on one path at a time, so a bulk mode would be a different semantic.
+     - Special: if standalone, the command name matters — `analyze` suggests read-only, `scan` suggests active search, `survey` or `audit` are alternatives.
+
+  4. **Ordering — two-phase or one-pass?**
+     - Pro two-phase: user reviews the plan, reorders absorbs, skips unwanted items, then runs `--execute`. Matches `absorb --dry-run` precedent.
+     - Pro one-pass: `--execute` mode is simpler and faster for confident users.
+     - Special: even in one-pass, execution order matters — deeper paths must be absorbed before their parents (e.g., absorb a nested repo inside a submodule after converting the submodule). The user may need to rearrange.
+
+  5. **Automatic init?**
+     - Pro auto: completes the migration in one command — the user runs `analyze --execute` and walks away.
+     - Pro explicit: `init` is a separate deliberate step; mixing it into analyze conflates two concerns (analysis vs. workspace creation).
+     - Special: what if the CWD is already inside a nest? Should analyze refuse, extend the existing nest, or require `--sure`? This parallels `init --sure` for nested nests.
+
+  6. **Replace or coexist with discover?**
+     - Pro replace: one command does everything, less to learn, `discover` becomes an alias pointing to `analyze`.
+     - Pro coexist: `discover` is nest-scoped, read-only, and deliberately narrow; `analyze` is a broader onboarding tool. Two different audiences (daily inspection vs. initial migration).
+     - Special: if both exist, their output format should match (same JSON schema, same --porcelain flags) so scripts can consume either.
+
 # done
 
+- 0.8.3: Quality and maintainability release. See `version.md` and `outstanding.md`.
+
+- Shipped the current-branch update and cross-repository feature-branch workflows as documented `foreach` recipes instead of new commands. Added a "Updating Subprojects On Their Current Branch" README section for `foreach-clean -- git pull --ff-only` (clean-only, fast-forward-only, `--continue-on-error` to report diverged subprojects, explicitly not a `restore`/`snapshot` replacement), and clarified the existing "Working Across Dirty Subprojects" recipe to note that `foreach` never touches the nest root and that `branch-mark` is only a local notepad. The remaining first-class-command ambitions (participant tracking and the post-PR-merge return step) moved to `# suggestions` to be built only if the recipes prove insufficient. Verified by `test_5030_workflow_foreach_pull_current_branch.sh` (fast-forward, dirty-skip, and non-fast-forward reporting) and `test_5040_workflow_foreach_feature_branch.sh` (single-pass branch/commit/push across dirty subprojects, then `snapshot` pins the new revisions).
+- Hardened filesystem and concurrency behavior. Manifest schema validation now rejects unsafe subproject paths in the manifest content itself (absolute, `..` escape, backslash, Git-internal names), so no command clones, checks out, or removes outside the nest root. `add`, `move`, and `absorb` refuse a path that differs from an existing subproject only by letter case (case-insensitive-filesystem collision). Confirmed the existing lock (bounded wait, PID/recovery message, EXIT/INT/TERM release) and unique `mktemp` temp files satisfy the rest. Covered by `test_2080_contract_lock_release.sh` and additions to `test_2060_contract_path_safety.sh`.
+- Added machine-readable diagnostic redaction. `list` and `doctor` accept `--redact`, which strips credentials from URLs (`scheme://user:token@host` -> `scheme://***@host`) and replaces the home directory with `~` in their output (human, porcelain, and JSON), so results can be shared or logged safely. Wired into help and shell completions and covered by additions to `test_0160_command_list_inventory.sh` and `test_0090_command_doctor_health.sh`.
+- Completed the incremental test-coverage campaign across every audited command. Added `test_0205_command_restore_materialize.sh` (copied-manifest materialization, re-cloning a deleted checkout, partial-failure aggregation) and deepened existing tests: status (JSON, composite/mismatch state, --porcelain/--json conflict, human output), outdated (--json), diff (clean --json), log (--until), freeze (clean no-force case), clone (--branch/--depth/--single-branch passthrough), and doctor (gitignore-stale and recovery-backup checks). Confirmed config, update, and export were already exhaustive, and the workflow scenarios adequate. Full suite 43/43.
 - Gave every test a globally unique four-digit ID (filename prefix `test_<NNNN>_<category>_<behavior>.sh`) in category blocks stepping by 10 (command 0010+, contract 2000+, platform 3000+, symmetry 4000+, workflow 5000+), and added a `# Test:` description header to each. The runner (`.sh` and, by forwarding, `.bat`) gained commands `list` (ID + description), `only <ids>`, `except <ids>`, and `help`, plus a `--stop-on-fail` option; unknown commands, options, or IDs print help and stop. The former inline invocation-smoke check is now the real test `test_3030_platform_invocation_smoke.sh`. Docs and naming conventions updated in AGENTS.md, README.md, and docs/maintainer.md.
 - Added a dedicated `verify` test (`test_command_verify_health.sh`) covering a clean pass, dirty and unmanaged-repo warnings, and missing-checkout, wrong-remote, revision-drift, and unresolvable-revision errors plus exit codes and JSON. It exposed a bug: `verify --json` always returned empty `errors`/`warnings` arrays because `verify_current` reused the global temp-file variable names `errors`/`warnings`, clobbering (and deleting) the caller's files. Refactored `verify_current` to write to caller-provided files and not print, added a `verify_report_human` wrapper, and gave `cmd_verify` uniquely named JSON variables so errors and warnings are now reported.
 - Deepened hooks coverage into three tests and fixed a bug they exposed. `test_command_hooks_install.sh` covers hook-set placement, all-or-nothing unmanaged-hook refusal, recursion rejection, and auto-install on `add`; `test_command_hooks_uninstall.sh` covers managed removal, unmanaged preservation with a warning, and that removed hooks stop firing; `test_workflow_hooks_triggered.sh` drives every managed hook through real Git checkout/commit/push and asserts each effect. The utilization test uncovered that `cmd_snapshot` returned the trailing notice's status instead of the snapshot result, so the root pre-push reproducibility warning never fired inside the hook's `if ! cmd_snapshot ...`; `cmd_snapshot` now captures and returns the real result.

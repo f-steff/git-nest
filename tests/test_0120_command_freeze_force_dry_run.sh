@@ -39,4 +39,13 @@ assert_file_contains freeze_force.out 'Frozen freeze/one'
 assert_file_contains freeze_force.err 'freezing current HEAD'
 assert_file_contains .gitnest '[subproject "freeze/one"]'
 assert_file_contains .gitnest 'revision='
-describe_result "freeze dry-run, refusal, and forced pinning all report clear outcomes."
+
+test_step "Freeze a clean subproject without force" "A clean checkout at a reproducible commit must not be refused; freeze needs no --force and reports a summary."
+"$GIT_NEST" add "$url" freeze/two >/dev/null
+git add .gitnest .gitignore
+git commit -m "add second subproject" >/dev/null
+run_capture "clean subproject freeze needs no force" freeze_clean.out freeze_clean.err -- "$GIT_NEST" freeze --only freeze/two
+assert_file_contains freeze_clean.out 'Freeze summary'
+assert_file_not_contains freeze_clean.err 'rerun with --force'
+
+describe_result "freeze dry-run, refusal, forced pinning, and clean no-force handling all report clear outcomes."

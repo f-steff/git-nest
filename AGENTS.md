@@ -2,7 +2,7 @@
 
 ## Project Structure & Subproject Organization
 
-This repository contains the behavior contract in `docs/implementation-summary.md`, the user manual in `README.md`, maintainer guidance in `docs/maintainer.md`, and a user-facing AI skill in `skills/git-nest/SKILL.md`.
+This repository contains the behavior contract in `docs/command-behavior-contract.md`, the user manual in `README.md`, maintainer guidance in `docs/maintainer.md`, and a user-facing AI skill in `skills/git-nest/SKILL.md`.
 
 Keep implementation files organized by responsibility:
 
@@ -14,7 +14,7 @@ Keep implementation files organized by responsibility:
 - `skills/git-nest/SKILL.md`: portable AI usage skill shipped to projects that consume git-nest. This is the single source of truth for that skill.
 - `.agents/skills/<name>/SKILL.md`: skill tree discovered by development agents (opencode, Codex, Claude Code) working on git-nest itself.
 
-The source of truth for behavior is `docs/implementation-summary.md`; the earlier submodule script was only a style and portability reference.
+The source of truth for behavior is `docs/command-behavior-contract.md`; the earlier submodule script was only a style and portability reference.
 
 ## AI Skills And Agent Bootstrap
 

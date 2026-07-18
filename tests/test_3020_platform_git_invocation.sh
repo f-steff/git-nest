@@ -70,7 +70,7 @@ assert_file_contains help.txt "freeze [--force] [--only <path>[,<path>...]] [--d
 assert_file_contains help.txt "hooks-install"
 assert_file_contains help.txt "Install managed local Git hooks in all checked-out repositories in the current nest."
 assert_file_contains help.txt "branch-mark [name]"
-assert_file_contains help.txt "doctor [--json | --json-pretty] [--offline] [--timeout <seconds>] [--exit-code]"
+assert_file_contains help.txt "doctor [--json | --json-pretty] [--online | --offline] [--timeout <seconds>] [--exit-code]"
 assert_file_contains help.txt "Report environment and workspace health without modifying files."
 assert_file_contains help.txt "foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty]"
 assert_file_contains help.txt "foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty]"

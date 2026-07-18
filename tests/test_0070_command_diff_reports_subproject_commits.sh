@@ -41,6 +41,9 @@ git add .gitnest
 git commit -m "freeze one" >/dev/null
 run_capture "current manifest has no subproject differences" diff_clean.out diff_clean.err -- "$GIT_NEST" diff
 assert_file_contains diff_clean.out "No subproject commit differences"
+run_capture "clean diff --json emits the diff envelope" diff_clean.json dcj.err -- "$GIT_NEST" diff --json
+assert_file_contains diff_clean.json '"command":"diff"'
+python -m json.tool diff_clean.json >/dev/null 2>&1 || python3 -m json.tool diff_clean.json >/dev/null 2>&1 || true
 run_fail "diff --since reports the earlier manifest difference" 1 -- sh -c '"$1" diff --since HEAD~1 >diff_since.out 2>diff_since.err' sh "$GIT_NEST"
 assert_file_contains diff_since.out "local feature for diff"
 run_fail "diff --since rejects missing refs" any -- sh -c '"$1" diff --since does-not-exist >diff_missing.out 2>diff_missing.err' sh "$GIT_NEST"

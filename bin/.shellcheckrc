@@ -1,0 +1,35 @@
+# git-nest ShellCheck configuration
+# https://www.shellcheck.net/wiki/
+#
+# Run with: shellcheck -s sh bin/git_nest.sh bin/lib/*.sh
+# The .shellcheckrc in this directory is picked up automatically.
+# On Windows where shellcheck.exe is not in Git Bash PATH:
+#   PATH="$PATH:/c/Users/DKfls/AppData/Local/UniGetUI/Chocolatey/bin" shellcheck -s sh bin/git_nest.sh bin/lib/*.sh
+
+# Project-wide suppressions:
+
+# SC2034: Variables assigned in git_nest.sh are used across sourced lib files.
+#          ShellCheck cannot follow dynamic sourcing via $SCRIPT_DIR.
+disable=SC2034
+
+# SC1091: Sourced files use a dynamic $SCRIPT_DIR path that ShellCheck cannot
+#          resolve statically.
+disable=SC1091
+
+# SC2094: awk temp-file pattern (reading and writing different files in the
+#          same pipeline) is safe — the reader finishes before the writer starts.
+disable=SC2094
+
+# SC2015: A && B || C idiom is used deliberately for error handling.
+disable=SC2015
+
+# SC1003: Single-quote escaping inside tr argument strings is not a bug.
+disable=SC1003
+
+# SC2016: Here-docs and hook scripts contain literal $ signs that must not
+#          expand. The single-quoted here-doc delimiter prevents expansion.
+disable=SC2016
+
+# SC2120: find_owning_manifest is designed to work with or without an
+#          optional path argument. Callers that omit it default to ".".
+disable=SC2120

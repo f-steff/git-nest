@@ -73,6 +73,11 @@ assert_file_contains since.out "LOG-102 subproject two"
 assert_file_not_contains since.out "LOG-101 subproject one"
 assert_file_not_contains since.out "LOG-100 outer baseline"
 
+"$GIT_NEST" log --until "2030-01-02T12:00:00+0000" --max-count 5 >until.out
+assert_file_contains until.out "LOG-100 outer baseline"
+assert_file_contains until.out "LOG-101 subproject one"
+assert_file_not_contains until.out "LOG-102 subproject two"
+
 rm -rf libs/two
 "$GIT_NEST" log --subproject libs/two >missing.out 2>missing.err
 assert_file_contains missing.err "Warning: missing repository for log: libs/two"

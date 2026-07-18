@@ -26,6 +26,16 @@ Hooks are opt-in through `git-nest hooks-install` and removed with `git-nest hoo
 
 `export --format dir` uses shell file copying. `export --format tar.gz` requires a system `tar`. `export --format zip` requires `python` or `python3` and uses the standard `zipfile` module. These helpers are not bundled with git-nest; `doctor` reports them as informational checks.
 
+## Filesystem And Concurrency
+
+Manifest writes are serialized with a `.gitnest.lock` directory acquired with a bounded wait (`GIT_NEST_LOCK_TIMEOUT_SECONDS`, default 10). An EXIT/INT/TERM trap releases the lock, so an interrupted or failed command never leaves the workspace locked, and the timeout message reports the holding PID and a removal command. Temporary files use unique `mktemp` names next to their target, so simultaneous operations never share a predictable temp path.
+
+Path safety does not rely on prefix string matching. User-supplied paths are validated as safe relative paths (no absolute paths, no `..` escape, no backslashes, no Git-internal names), and the same validation runs on subproject paths read from the manifest, so a crafted `.gitnest` cannot make a command clone, check out, or remove outside the nest root. `add`, `move`, and `absorb` additionally refuse a path that differs from an existing subproject only by letter case, preventing collisions on case-insensitive filesystems (Windows, macOS).
+
+## Machine-Readable Diagnostics
+
+Inspection and mutating commands emit JSON on the versioned `schemas/git-nest-output-v1.schema.json` contract so tools never parse prose, tables, icons, or logo text. `list` and `doctor` accept `--redact` to strip credentials from URLs and the home directory from paths in their output when the result may be shared or logged.
+
 ## Error Handling
 
 Manifest writers validate required fields before writing. Dirty subprojects are skipped or rejected depending on command strictness. `restore` attempts every subproject and reports aggregate failures. `verify` and `doctor` are read-only.
