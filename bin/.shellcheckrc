@@ -17,7 +17,7 @@ disable=SC2034
 disable=SC1091
 
 # SC2094: awk temp-file pattern (reading and writing different files in the
-#          same pipeline) is safe — the reader finishes before the writer starts.
+#          same pipeline) is safe -- the reader finishes before the writer starts.
 disable=SC2094
 
 # SC2015: A && B || C idiom is used deliberately for error handling.

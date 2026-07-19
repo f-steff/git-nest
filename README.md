@@ -105,6 +105,37 @@ A recorded `revision` is the reproducibility contract. Another machine can clone
 
 Subprojects are ignored by the outer Git repository so their files do not get accidentally committed into the outer repo. The outer repo commits `.gitnest`; each subproject commits and pushes its own changes normally.
 
+## `.gitnest` File Syntax
+
+`.gitnest` is a plain-text, INI-like format: bracketed section headers, one `key=value` pair per line, blank lines and `#`-prefixed comment lines ignored anywhere. It is meant to be readable and diffable in a normal code review, and to be hand-edited only rarely (prefer the commands below over editing it directly).
+
+**`[project]`** -- exactly one, always first:
+
+| Key | Required | Meaning |
+|-----|----------|---------|
+| `version` | Yes | Manifest schema version. Must match the version this git-nest release expects; a mismatch is a schema error. |
+| `id` | No | An optional project identifier some workflows record. |
+| `branch` | No | An optional project-level branch note. |
+
+**`[subproject "<path>"]`** -- one per managed subproject, `<path>` double-quoted, forward slashes only, relative to the nest root:
+
+| Key | Required | Meaning |
+|-----|----------|---------|
+| `repo` | Yes | The subproject's remote URL, used by `restore`/`clone` to (re-)materialize the checkout. |
+| `target_branch` | Usually | The branch `restore` checks out and `snapshot` records revisions against. |
+| `revision` | Usually | The exact pinned commit SHA; this is the reproducibility contract (see Workspace Model above). |
+| `clone` | No | `full` or `partial`; overrides the configured default clone mode for this one subproject. |
+| `tag` | No | An optional human-readable tag alongside `revision` (requires `revision` to also be set). |
+
+Rules enforced by `validate_manifest_schema` before any command reads or writes the manifest:
+
+- No duplicate `[project]` section, and no duplicate `[subproject "path"]` section for the same path.
+- No duplicate keys within one section.
+- Every subproject path must be a safe relative path: no absolute paths, no `..` segments, no backslashes, and not a reserved name (`.git`, `.gitnest`, `.gitnest.lock`, `.gitnest-rc`, `.gitignore`, `.gitattributes`, or anything under a `.git/` path). A path may contain spaces; git-nest handles those correctly throughout.
+- A handful of keys from the old, removed pending-review workflow (`pending_branch`, `base_revision`, `pushed_commit`, `finalized_from_branch`) are explicitly rejected if present, with a message pointing at `git-nest snapshot` as the replacement.
+
+Unknown keys beyond this set are preserved verbatim across manifest rewrites (see `docs/technical_docs.md` for the exact preservation contract) rather than silently dropped, so hand-added annotations survive normal git-nest operations.
+
 ## Typical Workflows
 
 ### Create A Nest
@@ -335,6 +366,29 @@ For a copied-manifest startup, put `.gitnest` in an empty directory and run `git
 `.gitnest` contains repository URLs that `git-nest restore` will clone from. Review manifest changes with the same care as dependency files such as `package.json`, `go.mod`, or `requirements.txt`.
 
 `git-nest` runs Git subcommands with manifest values and does not `eval` manifest content, but Git transports and credential helpers remain Git behavior. Avoid accepting manifest changes that redirect a subproject to an untrusted remote.
+
+## Repository Layout
+
+git-nest ships as plain POSIX shell, split by responsibility rather than as one large script:
+
+| Path | Role |
+|------|------|
+| `bin/git-nest` | Thin POSIX entrypoint. Locates and sources `git_nest.sh`, then dispatches into it. Keep this file small; put real behavior in the library modules below. |
+| `bin/git-nest.bat` | Polyglot Windows launcher: runs from `cmd.exe` and from sh/bash contexts alike, then forwards to `bin/git-nest` through Git Bash. |
+| `bin/git_nest.sh` | Main shared implementation entrypoint. Defines shared constants, sources every module in `bin/lib/`, and holds `git_nest_main`, the top-level command dispatch table. |
+| `bin/lib/git-nest-manifest.sh` | Core manifest reading/writing, the manifest cache, path-safety and boundary guards, `.gitignore`/`.gitattributes` hygiene, locking, and other helpers shared across every command. |
+| `bin/lib/git-nest-commands.sh` | Command implementations not covered by the other modules: `init`, `add`, `remove`, `move`, `status`, `outdated`, `verify`, `diff`, `log`, `list`, `restore`, `snapshot`, `pull`, `freeze`, `foreach*`, `branch-*`, `config`, `update`, help text, and shell completions. |
+| `bin/lib/git-nest-conversion.sh` | Nest-boundary conversions: `export`, `absorb` (all sources, including `--subrepo`/`--subtree`), and `inline`, plus the shared recovery-backup infrastructure the destructive conversions use. |
+| `bin/lib/git-nest-doctor.sh` | Read-only diagnostics: `doctor` and `discover`, plus the reproducibility-state classification `list` uses. |
+| `bin/lib/git-nest-hooks.sh` | Managed local Git hook installation, removal, and preflight (`hooks-install`/`hooks-uninstall`). |
+| `bin/lib/parse-gitnest.awk` | Single-pass `.gitnest` parser used by the manifest cache: emits shell-assignable variable declarations for `eval`, avoiding a subprocess per key read. |
+| `bin/lib/tree-render.awk` | Renders `tree`'s flat, pre-sorted row list as an ASCII-art tree grouped by shared path prefixes. |
+| `bin/.shellcheckrc` | ShellCheck configuration and the small set of justified, commented suppressions for this codebase. |
+| `docs/` | User-facing and technical documentation: the behavior contract, technical notes, exit codes, and maintainer guidance. |
+| `skills/git-nest/SKILL.md` | The portable AI-agent usage skill shipped to projects that consume git-nest (see "AI User Skill" below). |
+| `tests/` | The shell-based integration test suite and its runner; see "Tests" below. |
+
+The library modules in `bin/lib/` share plain global shell variables rather than function-local state (this is plain POSIX `sh`, which has no reliable cross-shell `local`), so a handful of common names (`path`, `repo`, `old_path`, `new_path`, and similar) are deliberately reused across call chains. When adding a new helper, prefer a short, unique prefix for its own working variables (as most of the existing helpers already do) rather than a generic name that a caller might also be holding onto across the call.
 
 ## Tests
 

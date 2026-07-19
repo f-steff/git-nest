@@ -91,4 +91,44 @@ if "$GIT_NEST" move libs/bar libs/FOO >case_mv.out 2>case_mv.err; then
 fi
 assert_file_contains case_mv.err "collides with existing subproject libs/foo"
 
-describe_result "The contract path safety behavior matched the expected command output and repository state, including manifest-content path escapes and case-insensitive collisions."
+test_step "Refuse a new subproject path inside an existing managed subproject" "A subproject's checkout belongs to its own repository; add/absorb must never create a new manifest entry, clone, or conversion underneath one, even when the existing subproject is an ordinary checkout rather than a nested nest."
+mkdir -p libs/foo/inner
+printf 'inner\n' >libs/foo/inner/file.txt
+(cd libs/foo && git add -A && git commit -m "add inner file" >/dev/null)
+if "$GIT_NEST" add "$remote" libs/foo/newpath >inside.out 2>inside.err; then
+    printf 'UNEXPECTED RESULT: add should refuse a path inside an existing managed subproject\n' >&2
+    exit 1
+fi
+assert_file_contains inside.err "is inside managed subproject libs/foo"
+test ! -e libs/foo/newpath
+
+test_step "Refuse absorbing a directory that contains an existing managed subproject" "Converting a directory that already contains another managed subproject's checkout would merge two unrelated repositories' tracked files together and corrupt both. Exercised here before any nested nest exists under libs, so this is specifically the plain-subproject containment guard, not the separate nested-git-nest-file guard below."
+if "$GIT_NEST" absorb libs "$remote" --dry-run >contains.out 2>contains.err; then
+    printf 'UNEXPECTED RESULT: absorb should refuse a path that contains an existing managed subproject\n' >&2
+    exit 1
+fi
+assert_file_contains contains.err "contains managed subproject libs/foo"
+
+test_step "Refuse a new subproject path inside an existing nested nest" "The same guard must give the nested-project variant of the message when the containing subproject is itself a nested git-nest workspace, and point at running git-nest from there instead."
+"$GIT_NEST" add "$remote" libs/nested >/dev/null
+(
+    cd libs/nested
+    "$GIT_NEST" init --sure >/dev/null
+    git add .gitnest .gitignore .gitattributes
+    git commit -m "nested nest init" >/dev/null
+)
+if "$GIT_NEST" add "$remote" libs/nested/newpath >nestedinside.out 2>nestedinside.err; then
+    printf 'UNEXPECTED RESULT: add should refuse a path inside a nested nest\n' >&2
+    exit 1
+fi
+assert_file_contains nestedinside.err "is inside nested project libs/nested; run git-nest from libs/nested instead"
+test ! -e libs/nested/newpath
+
+test_step "Refuse absorbing a directory that contains a nested git-nest project" "This is the pre-existing, separate guard: a directory containing another nest's own .gitnest file is refused as unsupported recursive absorb, distinct from the plain-subproject containment case above."
+if "$GIT_NEST" absorb libs "$remote" --dry-run >containsnest.out 2>containsnest.err; then
+    printf 'UNEXPECTED RESULT: absorb should refuse a path that contains a nested git-nest project\n' >&2
+    exit 1
+fi
+assert_file_contains containsnest.err "contains a nested git-nest project"
+
+describe_result "The contract path safety behavior matched the expected command output and repository state, including manifest-content path escapes, case-insensitive collisions, and subproject boundary containment in both directions."

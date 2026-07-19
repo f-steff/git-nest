@@ -18,8 +18,12 @@ cd "$outer"
 PATH="$REPO_ROOT/bin:$PATH"
 export PATH
 
-# Exercise version/help/init/status through Git's dispatch path.
-expected_version='git-nest 0.8.2 \\_oOO_//'
+# Exercise version/help/init/status through Git's dispatch path. The expected
+# string is computed from the real entrypoint rather than hardcoded here: a
+# hardcoded literal silently goes stale on every version bump (this test
+# failed for exactly that reason -- it still expected 0.8.2 after the version
+# moved to 0.8.3).
+expected_version=$("$GIT_NEST_REAL" version)
 test "$(git nest version)" = "$expected_version"
 git nest help >help.txt
 git nest help clone >help_clone.txt

@@ -4,7 +4,7 @@
 
 | Code | Constant | Meaning |
 | --- | --- | --- |
-| 0 | — | Success. |
+| 0 | -- | Success. |
 | 1 | `EXIT_ISSUES` | Command completed but found issues: dirty or missing subprojects, drift, or other problems. For example, `status --exit-code` returns 1 when dirty rows exist. |
 | 2 | `EXIT_USAGE` | Invalid command, flag, or argument. The `Error:` message on stderr describes the problem. |
 | 3 | `EXIT_PRECONDITION` | The command cannot run because the workspace is not ready: no `.gitnest` file, missing Git, unsafe path, or a required value is missing. |

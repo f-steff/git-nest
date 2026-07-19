@@ -1,6 +1,9 @@
 #!/bin/sh
 #
-# git-nest commands ? sourced by bin/git_nest.sh
+# git-nest: record and restore reproducible nests of independent Git repositories.
+# https://github.com/f-steff/git-nest
+#
+# git-nest commands -- sourced by bin/git_nest.sh
 #
 # All command implementations not covered by the manifest, hooks, export,
 # or doctor library modules.
@@ -97,6 +100,7 @@ usage() {
 
 	help_usage_group "Workspace state"
 	help_usage "restore" "[--recursive] [--prune] [--force] [--dry-run]"
+	help_usage "pull" "[--recursive] [--sure] [--no-fetch] [--dry-run] [--json | --json-pretty]"
 	help_usage "snapshot" "[<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
 	help_usage "freeze" "[--force] [--only <path>[,<path>...]] [--dry-run]"
 
@@ -107,7 +111,8 @@ usage() {
 	help_usage "diff" "[--since <ref>] [--stat] [--json | --json-pretty]"
 	help_usage "log" "[--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]"
 	help_usage "list" "[--porcelain | --json | --json-pretty] [--redact]"
-	help_usage "discover" "[--max-depth <n>] [--exclude <name>]... [--porcelain | --json | --json-pretty]"
+	help_usage "tree" "[--all] [--recursive] [--json | --json-pretty]"
+	help_usage "survey" "[--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
 	help_usage "doctor" "[--json | --json-pretty] [--online | --offline] [--timeout <seconds>] [--exit-code] [--redact]"
 
 	help_usage_group "Branch bookmarks"
@@ -128,6 +133,9 @@ usage() {
 	help_usage_group "Export and nest membership"
 	help_usage "export" "--output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]"
 	help_usage "absorb" "<path> [<remote-url>] [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run] [--json|--json-pretty]"
+	help_usage "absorb" "--subrepo <path> [<remote-url>] [--force] [--dry-run] [--json|--json-pretty]"
+	help_usage "absorb" "--subtree <path> <remote-url> [--branch <name>] [--message <msg>] [--force] [--dry-run] [--json|--json-pretty]"
+	help_usage "absorb-all" "[--sure] [--force-partial] [--dry-run] [--exclude <name>]... [--include <path>]... [--max-depth <n>] [--json|--json-pretty]"
 	help_usage "inline" "<path> [--commit] [--message <msg>] [--dry-run] [--json|--json-pretty]"
 
 	help_usage_group "Tooling"
@@ -197,6 +205,13 @@ usage() {
 	help_detail "--prune removes stale local-state paths after review when suggested."
 	help_detail "--force proceeds when a tag moved away from the recorded revision."
 	help_detail "--dry-run prints planned clone/fetch/checkout/prune actions without writing."
+	help_command "pull [--recursive] [--sure] [--no-fetch] [--dry-run] [--json|--json-pretty]"
+	help_text "Fast-forward clean subprojects to their upstream branch heads and snapshot."
+	help_detail "Default pull only subprojects; --sure also pulls the nest root."
+	help_detail "--recursive includes nested nests."
+	help_detail "--no-fetch uses local refs only."
+	help_detail "--dry-run prints planned pull actions without writing."
+	help_detail "--json and --json-pretty print machine-readable dry-run output."
 	help_command "snapshot [<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
 	help_text "Record clean, reproducible checked-out subproject commits in .gitnest."
 	help_detail "No path snapshots all subprojects in the current nest."
@@ -247,10 +262,15 @@ usage() {
 	help_command "list [--porcelain | --json | --json-pretty] [--redact]"
 	help_text "List managed subprojects with URL, target branch, revision, tag, state, and reproducibility."
 	help_detail "Stable order for scripts; --porcelain and --json/--json-pretty print machine-readable output."
-	help_command "discover [--max-depth <n>] [--exclude <name>]... [--porcelain | --json | --json-pretty]"
-	help_text "Scan for nested Git repositories and submodules not managed by .gitnest."
+	help_command "tree [--all] [--recursive] [--json | --json-pretty]"
+	help_text "Display an ASCII-art tree of the nest, grouped by shared path prefixes."
+	help_detail "--all also shows survey's own detected-but-unmanaged findings, marked with their code."
+	help_detail "--recursive also descends into nested nests, rendering their subprojects nested under that branch."
+	help_command "survey [--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
+	help_text "Scan for nested Git repositories, submodules, and git-subrepos not managed by .gitnest."
 	help_detail "Bounded by --max-depth (default 4) and pruned by default and extra --exclude directory names."
-	help_detail "Discovery only; it never adds, syncs, or registers anything."
+	help_detail "--include narrows the scan to one or more paths instead of the whole tree."
+	help_detail "Detection only; it never adds, syncs, or registers anything. Use absorb-all to act on it."
 	help_command "doctor [--json | --json-pretty] [--online | --offline] [--timeout <seconds>] [--exit-code] [--redact]"
 	help_text "Report environment and workspace health without modifying files."
 	help_detail "Can be run from anywhere inside the nest."
@@ -293,7 +313,12 @@ usage() {
 	help_detail "Outer-repo files require a remote URL and support --branch, --clone-mode, --preserve-history, --push, --message, and --force."
 	help_detail "An existing repo or submodule keeps its own history and records its own remote."
 	help_detail "Refuses a path that is already a subproject and refuses deeper nested repos/submodules."
+	help_detail "--subrepo and --subtree are explicit, never auto-detected; both are forward-only conversions with no history reconstruction."
 	help_detail "--dry-run reports planned changes without writing; --json/--json-pretty print machine output."
+	help_command "absorb-all [--sure] [--force-partial] [--dry-run] [options]"
+	help_text "Scan like survey, then absorb every detected submodule and nested repo in one step."
+	help_detail "Never absorbs git-subrepos or subtrees; those stay a conscious absorb --subrepo/--subtree action."
+	help_detail "--sure confirms creating or extending a nest here; --force-partial skips rollback on a mid-batch failure."
 	help_command "inline <path> [options]"
 	help_text "Dissolve a managed subproject into the outer repo as ordinary tracked files."
 	help_detail "This removes the subproject from the current nest and stages its files in the nest root."
@@ -487,6 +512,24 @@ command_help() {
 		help_example "git-nest restore --recursive"
 		help_opposite "snapshot records the current reproducible checkout state into .gitnest."
 		;;
+	pull)
+		help_command "pull [--recursive] [--sure] [--no-fetch] [--dry-run] [--json|--json-pretty]"
+		help_text "Fast-forward clean subprojects to their upstream branch heads and snapshot."
+		help_detail "Without options, only clean subprojects that have upstream tracking are pulled."
+		help_detail "Dirty subprojects, detached HEAD, and missing upstream branches are skipped."
+		help_detail "--sure also pulls the nest root itself."
+		help_detail "--recursive enters nested nests and runs pull inside each."
+		help_detail "--no-fetch uses local refs only without contacting remotes."
+		help_detail "--dry-run shows planned actions without changing checkouts."
+		help_detail "--json and --json-pretty print machine-readable dry-run output."
+		help_heading "Examples:"
+		help_example "git-nest pull"
+		help_example "git-nest pull --recursive"
+		help_example "git-nest pull --sure"
+		help_example "git-nest pull --dry-run"
+		help_example "git-nest pull --no-fetch"
+		help_opposite "update moves one subproject to a selected remote/tag/revision."
+		;;
 	snapshot)
 		help_command "snapshot [<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
 		help_text "Record clean, reproducible checked-out subproject commits in .gitnest."
@@ -594,18 +637,50 @@ command_help() {
 		help_example "git-nest list --json-pretty --redact"
 		help_detail "status stays focused on workspace health; use list for a scriptable inventory."
 		;;
-	discover)
-		help_command "discover [--max-depth <n>] [--exclude <name>]... [--porcelain | --json | --json-pretty]"
-		help_text "Scan the current nest for nested Git repositories and submodules not in .gitnest."
+	tree)
+		help_command "tree [--all] [--recursive] [--json | --json-pretty]"
+		help_text "Display an ASCII-art tree of the current nest, grouped by shared path prefixes."
+		help_detail "Plain: every managed subproject, as a branch from the nest root."
+		help_detail "--all also shows survey's own detected-but-unmanaged findings (submodules, nested repos, git-subrepos, nest roots, detached former subprojects), each marked with its code."
+		help_detail "--recursive also descends into nested nests, rendering their own subprojects nested under that branch."
+		help_detail "Uses ASCII connectors only (|--, \`--, |); no Unicode box-drawing characters."
+		help_detail "--json/--json-pretty print the same shared row schema other inspection commands use."
+		help_heading "Examples:"
+		help_example "git-nest tree"
+		help_example "git-nest tree --all"
+		help_example "git-nest tree --all --recursive"
+		help_opposite "list prints the same managed subprojects as a flat, scriptable table."
+		;;
+	survey)
+		help_command "survey [--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
+		help_text "Scan the current nest for nested Git repositories, submodules, and git-subrepos not in .gitnest."
 		help_detail "--max-depth bounds the scan depth (default 4)."
 		help_detail "--exclude adds directory names to the default prune list; it may be repeated."
-		help_detail "The leading code is the kind: S submodule, R nested repo, N nested nest root."
-		help_detail "Discovery only; it never adds, syncs, or registers repositories. Symlinked directories are not followed."
+		help_detail "--include narrows the scan to one or more paths instead of the whole tree; it may be repeated."
+		help_detail "The leading code is the kind: S submodule, R nested repo, N nested nest root, D detached, G git-subrepo."
+		help_detail "A path found inside a boundary this same scan already classified (a submodule, subrepo, nested repo, or nested nest) is never reported again on its own."
+		help_detail "Detection only; it never adds, syncs, or registers repositories. Symlinked directories are not followed."
 		help_heading "Examples:"
-		help_example "git-nest discover"
-		help_example "git-nest discover --max-depth 6 --exclude third_party"
-		help_example "git-nest discover --porcelain"
-		help_opposite "absorb brings a discovered repository into the nest."
+		help_example "git-nest survey"
+		help_example "git-nest survey --max-depth 6 --exclude third_party"
+		help_example "git-nest survey --include vendor --porcelain"
+		help_opposite "absorb brings one discovered repository into the nest; absorb-all brings in every discovered submodule and nested repo at once."
+		;;
+	absorb-all)
+		help_command "absorb-all [--sure] [--force-partial] [--dry-run] [--exclude <name>]... [--include <path>]... [--max-depth <n>] [--json|--json-pretty]"
+		help_text "Scan like survey, then absorb every detected submodule and nested repo into the nest in one step."
+		help_detail "Never absorbs git-subrepos or subtrees; those always require the explicit absorb --subrepo/--subtree action."
+		help_detail "Never absorbs anything found inside a boundary the scan already classified (see survey's boundary rule)."
+		help_detail "--sure confirms running init here if this is not yet a nest, or extending an existing nested nest; without it, either situation is refused."
+		help_detail "Absorbs deepest paths first, so a nested repo is absorbed before any repo containing it."
+		help_detail "On a mid-batch failure, every absorb already done in this run is rolled back by default; --force-partial skips the rollback and keeps what succeeded."
+		help_detail "--exclude, --include, and --max-depth match survey exactly."
+		help_detail "--dry-run reports the planned init/absorb actions without writing; --json/--json-pretty print machine output."
+		help_heading "Examples:"
+		help_example "git-nest absorb-all --dry-run"
+		help_example "git-nest absorb-all --sure"
+		help_example "git-nest absorb-all --include vendor --force-partial"
+		help_opposite "survey reports the same candidates without acting on them."
 		;;
 	branch-mark | branch-unmark | branch-list | branch-cleanup)
 		command_help_branch_bookmarks
@@ -689,6 +764,24 @@ command_help() {
 		help_example "git-nest absorb libs/foo   # existing nested repo, uses its origin remote"
 		help_example "git-nest absorb vendor/bar --dry-run   # a Git submodule"
 		help_opposite "inline dissolves a subproject into outer files; detach keeps it as a standalone repo; remove deletes it."
+		printf '\n'
+		help_command "absorb --subrepo <path> [<remote-url>] [--force] [--dry-run] [--json|--json-pretty]"
+		help_text "Bring a git-subrepo (a directory with a .gitrepo file) into the nest as a managed subproject."
+		help_detail "Never auto-detected; requires the explicit --subrepo flag because it touches actual tracked files."
+		help_detail "Reads the remote URL and branch from .gitrepo; pass <remote-url> to override the recorded remote."
+		help_detail "Forward-only: the resulting subproject is a fresh single commit. The subrepo's own merge/split history in .gitrepo is not reconstructed."
+		help_detail "Removes the .gitrepo file as part of the conversion."
+		help_heading "Examples:"
+		help_example "git-nest absorb --subrepo vendor/thing"
+		help_example "git-nest absorb --subrepo vendor/thing --dry-run"
+		printf '\n'
+		help_command "absorb --subtree <path> <remote-url> [--branch <name>] [--message <msg>] [--force] [--dry-run] [--json|--json-pretty]"
+		help_text "Bring a Git subtree (a plain tracked folder added with git subtree add) into the nest as a managed subproject."
+		help_detail "Never auto-detected: a subtree has no marker file, so <remote-url> must always be supplied explicitly."
+		help_detail "Forward-only: the resulting subproject is a fresh single commit. Prior subtree history is not carried across."
+		help_heading "Examples:"
+		help_example "git-nest absorb --subtree vendor/thing https://example.invalid/thing.git"
+		help_example "git-nest absorb --subtree vendor/thing https://example.invalid/thing.git --dry-run"
 		;;
 	inline)
 		help_command "inline <path> [--commit] [--message <msg>] [--dry-run] [--json|--json-pretty]"
@@ -866,14 +959,28 @@ git_nest_main() {
 		cmd_restore "$@"
 		;;
 	sync) usage_error "unknown command: sync; use restore" ;;
-	doctor) cmd_doctor "$@" ;;
-	discover)
+	pull)
 		enter_project_root_required
-		cmd_discover "$@"
+		cmd_pull "$@"
+		;;
+	doctor) cmd_doctor "$@" ;;
+	discover) usage_error "unknown command: discover; use git-nest survey" ;;
+	survey)
+		enter_project_root_required
+		cmd_survey "$@"
+		;;
+	absorb-all)
+		require_git
+		GIT_NEST_CALLER_PWD=$(pwd -P)
+		cmd_absorb_all "$@"
 		;;
 	list)
 		enter_project_root_required
 		cmd_list "$@"
+		;;
+	tree)
+		enter_project_root_required
+		cmd_tree "$@"
 		;;
 	completion) cmd_completion "$@" ;;
 	export)
@@ -4061,8 +4168,309 @@ cmd_restore() {
 	restore_current "$prune" "$force" "$dry_run"
 	notice_nested_projects
 }
+
+# Pull upstream changes into clean subprojects, then snapshot the result.
+# Operates on the current nest; use --recursive for nested nests.
+pull_current() {
+	sure=$1
+	no_fetch=$2
+	dry_run=$3
+	json=${4:-0}
+	pretty=${5:-0}
+	ensure_manifest
+	[ "$dry_run" -eq 1 ] || acquire_manifest_lock
+
+	pull_subprojects_tmp=$(tmp_for "$MANIFEST_FILE.pull")
+	manifest_subprojects >"$pull_subprojects_tmp"
+
+	pull_pulled_list=$(mktemp)
+	pull_dirty_list=$(mktemp)
+	pull_detached_list=$(mktemp)
+	pull_noupstream_list=$(mktemp)
+	pull_diverged_list=$(mktemp)
+	pull_failed_list=$(mktemp)
+	pull_rows=$(mktemp)
+	: >"$pull_pulled_list"
+	: >"$pull_dirty_list"
+	: >"$pull_detached_list"
+	: >"$pull_noupstream_list"
+	: >"$pull_diverged_list"
+	: >"$pull_failed_list"
+	pulled=0
+	skipped_dirty=0
+	skipped_detached=0
+	skipped_no_upstream=0
+	diverged=0
+	failed=0
+
+	while IFS= read -r pull_path; do
+		[ -n "$pull_path" ] || continue
+		[ -d "$pull_path/.git" ] || continue
+
+		# Skip dirty subprojects
+		if repo_has_dirty "$pull_path"; then
+			printf '%s\n' "$pull_path" >>"$pull_dirty_list"
+			skipped_dirty=$((skipped_dirty + 1))
+			printf 'Y\t%s\tdirty\t-\t-\t-\tcommit or stash changes first\n' "$pull_path" >>"$pull_rows"
+			continue
+		fi
+
+		# Check for detached HEAD
+		pull_branch=$(git -C "$pull_path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+		if [ -z "$pull_branch" ]; then
+			printf '%s\n' "$pull_path" >>"$pull_detached_list"
+			skipped_detached=$((skipped_detached + 1))
+			pull_path_q=$(shell_quote "$pull_path")
+			printf 'H\t%s\tdetached\t-\t-\t-\trun git -C %s checkout <branch>\n' "$pull_path" "$pull_path_q" >>"$pull_rows"
+			continue
+		fi
+
+		# Check for upstream tracking
+		if ! git -C "$pull_path" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+			printf '%s\n' "$pull_path" >>"$pull_noupstream_list"
+			skipped_no_upstream=$((skipped_no_upstream + 1))
+			pull_path_q=$(shell_quote "$pull_path")
+			printf 'N\t%s\tno-upstream\t%s\t-\t-\trun git -C %s branch --set-upstream-to=origin/%s\n' "$pull_path" "$pull_branch" "$pull_path_q" "$pull_branch" >>"$pull_rows"
+			continue
+		fi
+
+		# Dry-run: show planned action
+		if [ "$dry_run" -eq 1 ]; then
+			pull_current_sha=$(git -C "$pull_path" rev-parse HEAD 2>/dev/null || true)
+			pull_repo=$(subproject_repo "$pull_path" || true)
+			pull_target=$(subproject_key "$pull_path" target_branch || true)
+			[ -n "$pull_target" ] || pull_target=$(default_target_branch "$pull_path")
+			pull_ls_remote=$(git ls-remote "$pull_repo" "refs/heads/$pull_target" 2>/dev/null | awk '{print $1}' || true)
+			if [ -n "$pull_ls_remote" ] && [ "$pull_ls_remote" != "$pull_current_sha" ]; then
+				[ "$json" -eq 1 ] || printf '[dry-run] would pull %s: %.12s -> %.12s\n' "$pull_path" "$pull_current_sha" "$pull_ls_remote"
+				printf 'P\t%s\twould-pull\t%s\t%s\t%s\twould pull\n' "$pull_path" "$pull_target" "$pull_current_sha" "$pull_ls_remote" >>"$pull_rows"
+			else
+				[ "$json" -eq 1 ] || printf '[dry-run] %s: already up to date at %.12s\n' "$pull_path" "$pull_current_sha"
+				printf 'A\t%s\tup-to-date\t%s\t%s\t%s\talready up to date\n' "$pull_path" "$pull_target" "$pull_current_sha" "$pull_current_sha" >>"$pull_rows"
+			fi
+			continue
+		fi
+
+		# Fetch unless --no-fetch
+		if [ "$no_fetch" -eq 0 ]; then
+			if ! git -C "$pull_path" fetch origin >/dev/null 2>&1; then
+				printf '%s\n' "$pull_path" >>"$pull_failed_list"
+				failed=$((failed + 1))
+				printf 'F\t%s\tfailed\t-\t-\t-\tfetch failed; check network/remote access, then retry\n' "$pull_path" >>"$pull_rows"
+				continue
+			fi
+		fi
+
+		# Resolve upstream commit; if HEAD is already its ancestor, we are up to date
+		pull_upstream_commit=$(git -C "$pull_path" rev-parse '@{upstream}' 2>/dev/null || true)
+		if [ -z "$pull_upstream_commit" ]; then
+			printf '%s\n' "$pull_path" >>"$pull_failed_list"
+			failed=$((failed + 1))
+			printf 'F\t%s\tfailed\t-\t-\t-\tcould not resolve upstream commit\n' "$pull_path" >>"$pull_rows"
+			continue
+		fi
+
+		pull_head_commit=$(git -C "$pull_path" rev-parse HEAD 2>/dev/null || true)
+		if [ "$pull_head_commit" = "$pull_upstream_commit" ]; then
+			[ "$json" -eq 1 ] || printf '%s: already up to date.\n' "$pull_path"
+			printf 'A\t%s\tup-to-date\t%s\t%s\t%s\talready up to date\n' "$pull_path" "$pull_branch" "$pull_head_commit" "$pull_upstream_commit" >>"$pull_rows"
+		elif git -C "$pull_path" merge-base --is-ancestor "$pull_head_commit" "$pull_upstream_commit" 2>/dev/null; then
+			# Fast-forward possible
+			git -C "$pull_path" merge --ff-only '@{upstream}' >/dev/null 2>&1 || {
+				printf '%s\n' "$pull_path" >>"$pull_failed_list"
+				failed=$((failed + 1))
+				printf 'F\t%s\tfailed\t-\t-\t-\tfast-forward merge failed\n' "$pull_path" >>"$pull_rows"
+				continue
+			}
+			pull_new_head=$(git -C "$pull_path" rev-parse HEAD)
+			[ "$json" -eq 1 ] || printf 'Pulled %s to %.12s.\n' "$pull_path" "$pull_new_head"
+			printf '%s\n' "$pull_path" >>"$pull_pulled_list"
+			pulled=$((pulled + 1))
+			printf 'P\t%s\tpulled\t%s\t%s\t%s\tpulled\n' "$pull_path" "$pull_branch" "$pull_head_commit" "$pull_new_head" >>"$pull_rows"
+		else
+			printf '%s\n' "$pull_path" >>"$pull_diverged_list"
+			diverged=$((diverged + 1))
+			pull_path_q=$(shell_quote "$pull_path")
+			printf 'V\t%s\tdiverged\t%s\t%s\t%s\trun git -C %s merge origin/<branch> or git -C %s rebase origin/<branch>\n' "$pull_path" "$pull_branch" "$pull_head_commit" "$pull_upstream_commit" "$pull_path_q" "$pull_path_q" >>"$pull_rows"
+		fi
+	done <"$pull_subprojects_tmp"
+	rm -f "$pull_subprojects_tmp"
+
+	# Snapshot successfully pulled subprojects
+	while IFS= read -r pull_path; do
+		[ -n "$pull_path" ] || continue
+		snapshot_one_subproject "$pull_path" 1 0 0 0 || true
+	done <"$pull_pulled_list"
+	rm -f "$pull_pulled_list"
+
+	# Pull the nest root if --sure
+	if [ "$sure" -eq 1 ]; then
+		if [ "$dry_run" -eq 1 ]; then
+			if remote_exists .; then
+				[ "$json" -eq 1 ] || printf '[dry-run] would pull nest root\n'
+				printf 'P\t.\twould-pull\t-\t-\t-\twould pull nest root\n' >>"$pull_rows"
+			else
+				[ "$json" -eq 1 ] || printf '[dry-run] nest root has no remote; would skip root pull\n'
+				printf 'F\t.\tfailed\t-\t-\t-\tnest root has no remote\n' >>"$pull_rows"
+			fi
+		else
+			if remote_exists .; then
+				root_ok=1
+				if [ "$no_fetch" -eq 0 ]; then
+					git fetch origin >/dev/null 2>&1 || {
+						warn "pull failed in nest root: network error fetching from origin"
+						root_ok=0
+					}
+				fi
+				if [ "$root_ok" -eq 1 ]; then
+					if git merge --ff-only '@{upstream}' >/dev/null 2>&1; then
+						printf 'P\t.\tpulled\t-\t-\t-\tpulled nest root\n' >>"$pull_rows"
+					else
+						warn "nest root: cannot fast-forward; diverged or no upstream"
+						printf 'V\t.\tdiverged\t-\t-\t-\tnest root cannot fast-forward; diverged or no upstream\n' >>"$pull_rows"
+					fi
+				else
+					printf 'F\t.\tfailed\t-\t-\t-\tnest root fetch failed\n' >>"$pull_rows"
+				fi
+			fi
+		fi
+	fi
+
+	if [ "$json" -eq 1 ]; then
+		pull_empty=$(mktemp)
+		[ "$dry_run" -eq 0 ] || GIT_NEST_JSON_DRY_RUN=1
+		emit_json_result pull 0 1 "$pull_rows" "$pull_empty" "$pull_empty" "$pretty"
+		rm -f "$pull_empty"
+	else
+		printf '\n=== Pull Summary ===\n'
+		printf '  Pulled:        %s\n' "$pulled"
+		if [ "$skipped_dirty" -gt 0 ]; then
+			printf '  Skipped (dirty):\n'
+			while IFS= read -r p; do printf '    %s (commit or stash changes first)\n' "$p"; done <"$pull_dirty_list"
+		fi
+		if [ "$skipped_detached" -gt 0 ]; then
+			printf '  Skipped (detached HEAD):\n'
+			while IFS= read -r p; do
+				pb=$(git -C "$p" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+				pq=$(shell_quote "$p")
+				printf '    %s (run: git -C %s checkout <branch>)\n' "$p" "$pq"
+			done <"$pull_detached_list"
+		fi
+		if [ "$skipped_no_upstream" -gt 0 ]; then
+			printf '  Skipped (no upstream tracking):\n'
+			while IFS= read -r p; do
+				pb=$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "HEAD")
+				pq=$(shell_quote "$p")
+				printf '    %s (run: git -C %s branch --set-upstream-to=origin/%s)\n' "$p" "$pq" "$pb"
+			done <"$pull_noupstream_list"
+		fi
+		if [ "$diverged" -gt 0 ]; then
+			printf '  Diverged (not fast-forward):\n'
+			while IFS= read -r p; do
+				pq=$(shell_quote "$p")
+				printf '    %s (run: git -C %s merge origin/<branch> or git -C %s rebase origin/<branch>)\n' "$p" "$pq" "$pq"
+			done <"$pull_diverged_list"
+		fi
+		if [ "$failed" -gt 0 ]; then
+			printf '  Failed:\n'
+			while IFS= read -r p; do
+				printf '    %s (check network/remote access, then retry)\n' "$p"
+			done <"$pull_failed_list"
+		fi
+	fi
+	rm -f "$pull_dirty_list" "$pull_detached_list" "$pull_noupstream_list" "$pull_diverged_list" "$pull_failed_list" "$pull_rows"
+}
+
+# Recursively pull the current project and nested project roots.
+pull_recursive() {
+	pull_label=$1
+	pull_visited=$2
+	pull_sure=$3
+	pull_no_fetch=$4
+	pull_dry_run=$5
+	pull_json=${6:-0}
+	pull_pretty=${7:-0}
+	pull_root_abs=$(abs_path_for .)
+	if grep -F -x "$pull_root_abs" "$pull_visited" >/dev/null 2>&1; then
+		return 0
+	fi
+	printf '%s\n' "$pull_root_abs" >>"$pull_visited"
+	[ "$pull_json" -eq 1 ] || printf 'Pulling project: %s\n' "$pull_label"
+	pull_current "$pull_sure" "$pull_no_fetch" "$pull_dry_run" "$pull_json" "$pull_pretty" || return 1
+	cleanup_manifest_lock
+
+	pull_sub_tmp=$(tmp_for "$MANIFEST_FILE.pull_recursive")
+	manifest_subprojects >"$pull_sub_tmp"
+	pull_rc=0
+	while IFS= read -r pull_path; do
+		[ -n "$pull_path" ] || continue
+		if [ -d "$pull_path/.git" ] && [ -f "$pull_path/$MANIFEST_FILE" ]; then
+			pull_child=$(join_project_label "$pull_label" "$pull_path")
+			(
+				cd "$pull_path" || exit 1
+				pull_recursive "$pull_child" "$pull_visited" "$pull_sure" "$pull_no_fetch" "$pull_dry_run" "$pull_json" "$pull_pretty"
+			) || pull_rc=1
+		fi
+	done <"$pull_sub_tmp"
+	rm -f "$pull_sub_tmp"
+	return "$pull_rc"
+}
+
+cmd_pull() {
+	recursive=0
+	sure=0
+	no_fetch=0
+	dry_run=0
+	json=0
+	json_pretty=0
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--recursive)
+			recursive=1
+			shift
+			;;
+		--sure)
+			sure=1
+			shift
+			;;
+		--no-fetch)
+			no_fetch=1
+			shift
+			;;
+		--dry-run)
+			dry_run=1
+			GIT_NEST_DRY_RUN=1
+			shift
+			;;
+		--json)
+			json=1
+			shift
+			;;
+		--json-pretty)
+			json=1
+			json_pretty=1
+			shift
+			;;
+		*) usage_error "unknown pull option: $1" ;;
+		esac
+	done
+
+	if [ "$recursive" -eq 1 ]; then
+		pull_visited=$(mktemp)
+		: >"$pull_visited"
+		pull_recursive "." "$pull_visited" "$sure" "$no_fetch" "$dry_run" "$json" "$json_pretty"
+		pull_rc=$?
+		rm -f "$pull_visited"
+		return "$pull_rc"
+	fi
+
+	pull_current "$sure" "$no_fetch" "$dry_run" "$json" "$json_pretty"
+	[ "$json" -eq 1 ] || notice_nested_projects
+}
+
 GIT_NEST_command_names() {
-	printf '%s\n' "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help"
+	printf '%s\n' "init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
 }
 
 # Internal completion data endpoint used by generated shell completion scripts.
@@ -4088,7 +4496,7 @@ _git_nest_complete()
     local cur cmd commands subprojects
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
-    commands="init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help"
+    commands="init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -4108,7 +4516,7 @@ _git_nest_complete()
             ;;
         absorb)
             subprojects="$(git-nest __complete subprojects 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "$subprojects --branch --clone-mode --preserve-history --push --message --force --dry-run --json --json-pretty full partial" -- "$cur") )
+			COMPREPLY=( $(compgen -W "$subprojects --branch --clone-mode --preserve-history --push --message --force --dry-run --json --json-pretty --subrepo --subtree full partial" -- "$cur") )
             ;;
         inline)
             subprojects="$(git-nest __complete subprojects 2>/dev/null)"
@@ -4126,14 +4534,23 @@ _git_nest_complete()
         restore)
             COMPREPLY=( $(compgen -W "--recursive --prune --force --dry-run" -- "$cur") )
             ;;
+        pull)
+            COMPREPLY=( $(compgen -W "--recursive --sure --no-fetch --dry-run --json --json-pretty" -- "$cur") )
+            ;;
         doctor)
             COMPREPLY=( $(compgen -W "--json --json-pretty --online --offline --timeout --exit-code --redact" -- "$cur") )
             ;;
-        discover)
-            COMPREPLY=( $(compgen -W "--max-depth --exclude --porcelain --json --json-pretty" -- "$cur") )
+        survey)
+            COMPREPLY=( $(compgen -W "--max-depth --exclude --include --porcelain --json --json-pretty" -- "$cur") )
+            ;;
+        absorb-all)
+            COMPREPLY=( $(compgen -W "--sure --force-partial --dry-run --max-depth --exclude --include --json --json-pretty" -- "$cur") )
             ;;
         list)
             COMPREPLY=( $(compgen -W "--porcelain --json --json-pretty --redact" -- "$cur") )
+            ;;
+        tree)
+            COMPREPLY=( $(compgen -W "--all --recursive --json --json-pretty" -- "$cur") )
             ;;
         diff)
             COMPREPLY=( $(compgen -W "--since --stat --json --json-pretty" -- "$cur") )
@@ -4182,7 +4599,7 @@ completion_zsh() {
 _git_nest()
 {
     local -a commands subprojects
-    commands=(init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help)
+    commands=(init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help)
 
     if (( CURRENT == 2 )); then
         _describe 'git-nest command' commands
@@ -4195,13 +4612,13 @@ _git_nest()
             _arguments '1:shell:(bash zsh fish)'
             ;;
         help)
-            _arguments '1:command:(init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help)'
+            _arguments '1:command:(init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help)'
             ;;
         export)
             _arguments '--output[write archive or directory]:path:_files' '--format[archive format]:format:(tar.gz zip dir)' '--include-git[keep .git directories]' '--deterministic[normalize archive metadata]' '--allow-dirty[allow dirty subprojects]'
             ;;
         absorb)
-            _arguments '1:path:_files -/' '2:remote-url:' '--branch[initial branch for the files source]:branch:' '--clone-mode[clone mode]:mode:(full partial)' '--preserve-history[preserve path history with git-filter-repo]' '--push[push absorbed repository]' '--message[commit message]:message:' '--force[bypass metadata conflicts only]' '--dry-run[show planned changes]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
+			_arguments '1:path:_files -/' '2:remote-url:' '--branch[initial branch for the files source]:branch:' '--clone-mode[clone mode]:mode:(full partial)' '--preserve-history[preserve path history with git-filter-repo]' '--push[push absorbed repository]' '--message[commit message]:message:' '--force[bypass metadata conflicts only]' '--dry-run[show planned changes]' '--json[print JSON]' '--json-pretty[print formatted JSON]' '--subrepo[absorb a git-subrepo path]' '--subtree[absorb a git-subtree path]'
             ;;
         inline)
             _arguments '1:subproject:__git_nest_subprojects' '--commit[commit staged outer changes]' '--message[commit message]:message:' '--dry-run[show planned changes]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
@@ -4221,14 +4638,23 @@ _git_nest()
         restore)
             _arguments '--recursive[include nested projects]' '--prune[remove reviewed stale paths]' '--force[proceed past tag drift warnings]' '--dry-run[show planned actions without writing]'
             ;;
+        pull)
+            _arguments '--recursive[include nested nests]' '--sure[also pull nest root]' '--no-fetch[use local refs only]' '--dry-run[show planned actions without writing]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
+            ;;
         doctor)
             _arguments '--json[print JSON]' '--json-pretty[print formatted JSON]' '--online[contact subproject remotes]' '--offline[skip remote checks]' '--timeout[remote timeout seconds]:seconds:' '--exit-code[return nonzero for warnings or errors]' '--redact[strip credentials and home paths]'
             ;;
-        discover)
-            _arguments '--max-depth[maximum scan depth]:depth:' '--exclude[exclude directory name]:name:' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
+        survey)
+            _arguments '--max-depth[maximum scan depth]:depth:' '--exclude[exclude directory name]:name:' '--include[narrow scan to path]:path:_files -/' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
+            ;;
+        absorb-all)
+            _arguments '--sure[confirm creating or extending a nest here]' '--force-partial[skip rollback on mid-batch failure]' '--dry-run[show planned actions without writing]' '--max-depth[maximum scan depth]:depth:' '--exclude[exclude directory name]:name:' '--include[narrow scan to path]:path:_files -/' '--json[print JSON]' '--json-pretty[print formatted JSON]'
             ;;
         list)
             _arguments '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]' '--redact[strip credentials and home paths]'
+            ;;
+        tree)
+            _arguments '--all[also show unmanaged findings]' '--recursive[also descend into nested nests]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
             ;;
         diff)
             _arguments '--since[read manifest from ref]:ref:' '--stat[include file statistics]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
@@ -4272,20 +4698,23 @@ function __git_nest_subprojects
     git-nest __complete subprojects 2>/dev/null
 end
 
-complete -c git-nest -f -n "__fish_use_subcommand" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help"
-complete -c git-nest -f -n "__fish_seen_subcommand_from help" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor discover list completion export absorb inline detach version help"
+complete -c git-nest -f -n "__fish_use_subcommand" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
+complete -c git-nest -f -n "__fish_seen_subcommand_from help" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
 complete -c git-nest -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
 complete -c git-nest -f -n "__fish_seen_subcommand_from export" -a "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir"
-complete -c git-nest -f -n "__fish_seen_subcommand_from absorb" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run --json --json-pretty full partial (__git_nest_subprojects)"
+complete -c git-nest -f -n "__fish_seen_subcommand_from absorb" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run --json --json-pretty --subrepo --subtree full partial (__git_nest_subprojects)"
 complete -c git-nest -f -n "__fish_seen_subcommand_from inline" -a "--commit --message --dry-run --json --json-pretty (__git_nest_subprojects)"
 complete -c git-nest -f -n "__fish_seen_subcommand_from detach" -a "--dry-run --json --json-pretty (__git_nest_subprojects)"
 complete -c git-nest -f -n "__fish_seen_subcommand_from status" -a "--recursive --porcelain --json --json-pretty --exit-code"
 complete -c git-nest -f -n "__fish_seen_subcommand_from outdated" -a "--recursive --porcelain --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from verify" -a "--recursive --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from restore" -a "--recursive --prune --force --dry-run"
+complete -c git-nest -f -n "__fish_seen_subcommand_from pull" -a "--recursive --sure --no-fetch --dry-run --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from doctor" -a "--json --json-pretty --online --offline --timeout --exit-code --redact"
-complete -c git-nest -f -n "__fish_seen_subcommand_from discover" -a "--max-depth --exclude --porcelain --json --json-pretty"
+complete -c git-nest -f -n "__fish_seen_subcommand_from survey" -a "--max-depth --exclude --include --porcelain --json --json-pretty"
+complete -c git-nest -f -n "__fish_seen_subcommand_from absorb-all" -a "--sure --force-partial --dry-run --max-depth --exclude --include --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from list" -a "--porcelain --json --json-pretty --redact"
+complete -c git-nest -f -n "__fish_seen_subcommand_from tree" -a "--all --recursive --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from diff" -a "--since --stat --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from log" -a "--max-count --since --until --subproject --oneline --recursive"
 complete -c git-nest -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --dry-run --check --strict --no-fetch (__git_nest_subprojects)"

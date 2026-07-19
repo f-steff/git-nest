@@ -1,6 +1,9 @@
 #!/bin/sh
 #
-# git-nest hooks ? sourced by bin/git_nest.sh
+# git-nest: record and restore reproducible nests of independent Git repositories.
+# https://github.com/f-steff/git-nest
+#
+# git-nest hooks -- sourced by bin/git_nest.sh
 #
 # Managed hook installation, removal, and preflight for git-nest.
 #

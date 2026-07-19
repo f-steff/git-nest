@@ -1,6 +1,9 @@
 #!/bin/sh
 #
-# git-nest doctor ? sourced by bin/git_nest.sh
+# git-nest: record and restore reproducible nests of independent Git repositories.
+# https://github.com/f-steff/git-nest
+#
+# git-nest doctor -- sourced by bin/git_nest.sh
 #
 # Environment and workspace diagnostics, repository discovery, and listing.
 #
@@ -253,31 +256,53 @@ cmd_doctor() {
 	return 0
 }
 
-# Default directory names discover prunes so scans stay bounded and quiet. These
+# Default directory names survey prunes so scans stay bounded and quiet. These
 # are dependency, build, cache, and git-nest backup directories that never hold
 # subprojects worth managing.
-DISCOVER_DEFAULT_EXCLUDES="node_modules vendor build dist target out bin obj .cache .gradle .venv venv __pycache__ .gitnest-recovery-*"
+SURVEY_DEFAULT_EXCLUDES="node_modules vendor build dist target out bin obj .cache .gradle .venv venv __pycache__ .gitnest-recovery-*"
 
 # Reject exclude names that could inject shell syntax. Only simple directory-name
 # tokens are allowed (alphanumeric, dot, underscore, star, hyphen).
-validate_discover_exclude() {
+validate_survey_exclude() {
 	case "$1" in
 	"" | *[!A-Za-z0-9._*-]*) usage_error "invalid --exclude value: $1 (use simple directory names)" ;;
 	esac
 }
 
-# Print every .git entry (repository or submodule gitlink) under the current nest
-# root, bounded by a maximum path depth and pruning excluded directory names. It
-# does not follow symlinks because plain find never descends symlinked dirs.
-# Uses set -- to build the argument list positionally, avoiding eval entirely.
-discover_scan() {
+# Validate and normalize a --include path: unlike --exclude (a bare name matched
+# anywhere), --include takes a relative path and narrows the scan to it, so it
+# gets the same path-safety treatment as other path arguments and must exist.
+validate_survey_include() {
+	vsi_arg=$1
+	reject_backslash_path "$vsi_arg"
+	vsi_path=$(normalize_path "$vsi_arg")
+	[ -d "$vsi_path" ] || usage_error "--include path does not exist: $vsi_path"
+	printf '%s\n' "$vsi_path"
+}
+
+# Print every .git or .gitrepo entry under the given scan roots (the current
+# directory by default, or each --include path), bounded by a maximum path
+# depth and pruning excluded directory names. It does not follow symlinks
+# because plain find never descends symlinked dirs. Uses set -- to build the
+# argument list positionally, avoiding eval entirely, so root and exclude
+# values may contain spaces safely.
+survey_scan() {
 	ds_depth=$1
 	ds_excludes=$2
+	ds_includes_file=$3
 	ds_find_depth=$((ds_depth + 1))
 	ds_have_prune=0
 
-	# Seed the argument list with the base find command.
-	set -- find . -maxdepth "$ds_find_depth"
+	set -- find
+	if [ -s "$ds_includes_file" ]; then
+		while IFS= read -r ds_root; do
+			[ -n "$ds_root" ] || continue
+			set -- "$@" "$ds_root"
+		done <"$ds_includes_file"
+	else
+		set -- "$@" .
+	fi
+	set -- "$@" -maxdepth "$ds_find_depth"
 
 	# Append the prune expression from the exclude list, if any.
 	# Disable globbing so patterns like .gitnest-recovery-* stay literal.
@@ -295,9 +320,9 @@ discover_scan() {
 	set +f
 
 	if [ "$ds_have_prune" -eq 1 ]; then
-		set -- "$@" ')' -prune -o -name .git -print
+		set -- "$@" ')' -prune -o '(' -name .git -o -name .gitrepo ')' -print
 	else
-		set -- "$@" -name .git -print
+		set -- "$@" '(' -name .git -o -name .gitrepo ')' -print
 	fi
 
 	"$@" 2>/dev/null
@@ -305,37 +330,42 @@ discover_scan() {
 
 # Classify one discovered repository and append a porcelain row describing it.
 # Rows reuse the shared 7-column layout: code, path, state, target, current,
-# expected, detail. code is S(ubmodule)/R(epo)/N(est root); target carries the
-# managing subproject when the repo sits inside one; detail is a next-step hint.
-discover_classify_row() {
+# expected, detail. code is S(ubmodule)/R(nested-repo)/N(est root)/D(etached)/
+# G(it-subrepo); target carries the managing boundary when the path sits
+# inside one; detail is a next-step hint.
+#
+# dcr_boundaries is a growing file of paths already known to be boundaries:
+# it starts as the manifest's managed subprojects and gains one line per row
+# this function classifies. Callers must process candidates shallowest-first
+# (see survey_collect_rows) so that a path found underneath a boundary this
+# same scan already classified is recognized and never treated as a second,
+# independent finding -- the outer nest must never act on anything inside a
+# submodule/subrepo/nested-repo/nest-root it already identified.
+survey_classify_row() {
 	dcr_path=$1
 	dcr_rows=$2
-	# Determine whether the repo lives inside a managed subproject and find that
-	# parent so the suggestion can point at the right nest.
+	dcr_boundaries=$3
 	dcr_parent=-
 	dcr_inside=0
-	paths=$(mktemp)
-	manifest_subprojects >"$paths"
 	while IFS= read -r managed; do
 		[ -n "$managed" ] || continue
-		# A repo exactly at a managed path is the subproject's own checkout; skip.
-		[ "$dcr_path" = "$managed" ] && {
-			rm -f "$paths"
-			return 0
-		}
+		# A path exactly at a boundary is that boundary's own checkout; skip it.
+		[ "$dcr_path" = "$managed" ] && return 0
 		case "$dcr_path" in
 		"$managed"/*)
 			dcr_parent=$managed
 			dcr_inside=1
 			;;
 		esac
-	done <"$paths"
-	rm -f "$paths"
+	done <"$dcr_boundaries"
 
 	# Classify the kind of repository so callers know how to handle it. A plain
 	# nested repo whose path still carries a nest-owned ignore entry is a former
 	# subproject left behind by detach, so it is labeled detached.
-	if outer_submodule_name_for_path "$dcr_path" >/dev/null 2>&1; then
+	if [ -f "$dcr_path/.gitrepo" ]; then
+		dcr_code=G
+		dcr_state=subrepo
+	elif outer_submodule_name_for_path "$dcr_path" >/dev/null 2>&1; then
 		dcr_code=S
 		dcr_state=submodule
 	elif [ -f "$dcr_path/$MANIFEST_FILE" ]; then
@@ -349,30 +379,79 @@ discover_classify_row() {
 		dcr_state=nested-repo
 	fi
 
-	# Build a next-step suggestion appropriate to the situation.
+	# Build a next-step suggestion appropriate to the situation. The path is
+	# shell-quoted so the suggested command is safe to copy and paste verbatim
+	# even when the path contains a space or other shell metacharacter.
+	dcr_path_q=$(shell_quote "$dcr_path")
 	if [ "$dcr_inside" -eq 1 ]; then
-		dcr_detail="inside managed subproject $dcr_parent; run git-nest from there"
+		# dcr_parent is a boundary either way, but only some boundaries are
+		# actually persisted, managed subprojects; a boundary this same survey
+		# scan just discovered (an unmanaged submodule/subrepo/nested-repo/nest
+		# root) is not "managed" yet, so the message must not claim it is.
+		if [ -n "$(subproject_repo "$dcr_parent" || true)" ]; then
+			dcr_detail="inside managed subproject $dcr_parent; run git-nest from there"
+		else
+			dcr_detail="inside $dcr_parent (listed above); resolve that first, then re-run survey to see what is inside it"
+		fi
 	elif [ "$dcr_state" = nest-root ]; then
 		dcr_detail="nested nest; run git-nest inside it or use --recursive commands"
 	elif [ "$dcr_state" = submodule ]; then
-		dcr_detail="run git-nest absorb $dcr_path to convert the submodule"
+		dcr_detail="run git-nest absorb $dcr_path_q to convert the submodule"
 	elif [ "$dcr_state" = detached ]; then
-		dcr_detail="detached former subproject; git-nest absorb $dcr_path to re-manage, or move/remove it and run git-nest repair"
+		dcr_detail="detached former subproject; git-nest absorb $dcr_path_q to re-manage, or move/remove it and run git-nest repair"
+	elif [ "$dcr_state" = subrepo ]; then
+		dcr_detail="run git-nest absorb --subrepo $dcr_path_q (not absorbed by absorb-all)"
 	else
-		dcr_detail="run git-nest absorb $dcr_path to manage it"
+		dcr_detail="run git-nest absorb $dcr_path_q to manage it"
 	fi
 	printf '%s\t%s\t%s\t%s\t-\t-\t%s\n' "$dcr_code" "$dcr_path" "$dcr_state" "$dcr_parent" "$dcr_detail" >>"$dcr_rows"
+	# Record this path as a boundary for any deeper candidate processed later in
+	# this same scan.
+	printf '%s\n' "$dcr_path" >>"$dcr_boundaries"
+}
+
+# Shared scan-and-classify step used by both cmd_survey (display) and
+# cmd_absorb_all (candidate selection), so the two commands can never
+# disagree about what is out there. Appends stable, shallowest-first-safe
+# rows to scr_rows (an existing empty file the caller provides).
+survey_collect_rows() {
+	scr_max_depth=$1
+	scr_excludes=$2
+	scr_includes_file=$3
+	scr_rows=$4
+
+	scr_raw=$(mktemp)
+	scr_boundaries=$(mktemp)
+	manifest_subprojects >"$scr_boundaries"
+
+	survey_scan "$scr_max_depth" "$scr_excludes" "$scr_includes_file" | while IFS= read -r gitpath; do
+		repo=$(dirname -- "$gitpath")
+		repo=$(normalize_path "$repo")
+		repo=${repo#./}
+		# The nest root's own .git is expected and never reported.
+		[ "$repo" = "." ] && continue
+		[ -n "$repo" ] && printf '%s\n' "$repo"
+	done | sort -u | awk -F/ '{ print NF, $0 }' | sort -n | sed 's/^[0-9]* //' >"$scr_raw"
+
+	while IFS= read -r repo; do
+		[ -n "$repo" ] || continue
+		survey_classify_row "$repo" "$scr_rows" "$scr_boundaries"
+	done <"$scr_raw"
+
+	rm -f "$scr_raw" "$scr_boundaries"
 }
 
 # discover scans the current nest for nested Git repositories and submodules that
 # are not managed by .gitnest, and reports them with a suggested next step. It is
 # discovery only: it never adds, syncs, or registers anything.
-cmd_discover() {
+cmd_survey() {
 	max_depth=4
 	porcelain=0
 	json=0
 	pretty=0
-	excludes=$DISCOVER_DEFAULT_EXCLUDES
+	excludes=$SURVEY_DEFAULT_EXCLUDES
+	includes_file=$(mktemp)
+	: >"$includes_file"
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--max-depth)
@@ -383,8 +462,13 @@ cmd_discover() {
 			;;
 		--exclude)
 			[ $# -ge 2 ] || usage_error "--exclude requires a directory name"
-			validate_discover_exclude "$2"
+			validate_survey_exclude "$2"
 			excludes="$excludes $2"
+			shift 2
+			;;
+		--include)
+			[ $# -ge 2 ] || usage_error "--include requires a path"
+			validate_survey_include "$2" >>"$includes_file"
 			shift 2
 			;;
 		--porcelain)
@@ -400,33 +484,21 @@ cmd_discover() {
 			pretty=1
 			shift
 			;;
-		--*) usage_error "unknown discover option: $1" ;;
-		*) usage_error "discover takes no positional arguments" ;;
+		--*) usage_error "unknown survey option: $1" ;;
+		*) usage_error "survey takes no positional arguments" ;;
 		esac
 	done
-	[ "$porcelain" -eq 0 ] || [ "$json" -eq 0 ] || usage_error "discover cannot combine --porcelain with --json/--json-pretty"
+	[ "$porcelain" -eq 0 ] || [ "$json" -eq 0 ] || usage_error "survey cannot combine --porcelain with --json/--json-pretty"
 	ensure_manifest
 	validate_manifest_schema
 
-	# Collect and classify discovered repositories into a stable, sorted rows file.
-	raw=$(mktemp)
 	rows=$(mktemp)
 	empty=$(mktemp)
-	discover_scan "$max_depth" "$excludes" | while IFS= read -r gitpath; do
-		repo=$(dirname -- "$gitpath")
-		repo=$(normalize_path "$repo")
-		repo=${repo#./}
-		# The nest root's own .git is expected and never reported.
-		[ "$repo" = "." ] && continue
-		[ -n "$repo" ] && printf '%s\n' "$repo"
-	done | sort -u >"$raw"
-	while IFS= read -r repo; do
-		[ -n "$repo" ] || continue
-		discover_classify_row "$repo" "$rows"
-	done <"$raw"
+	survey_collect_rows "$max_depth" "$excludes" "$includes_file" "$rows"
+	rm -f "$includes_file"
 
 	if [ "$json" -eq 1 ]; then
-		emit_json_result discover 0 1 "$rows" "$empty" "$empty" "$pretty"
+		emit_json_result survey 0 1 "$rows" "$empty" "$empty" "$pretty"
 	elif [ "$porcelain" -eq 1 ]; then
 		# Stable fixed-column records for scripts; empty output means nothing found.
 		cat "$rows"
@@ -440,7 +512,7 @@ cmd_discover() {
 			printf 'No unmanaged repositories found under the current nest (max depth %s).\n' "$max_depth"
 		fi
 	fi
-	rm -f "$raw" "$rows" "$empty"
+	rm -f "$rows" "$empty"
 }
 
 # Report the reproducibility state of one managed subproject as a single letter:
@@ -489,6 +561,111 @@ list_rows() {
 		printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
 			"$lr_code" "$path" "$lr_state" "${lr_target:--}" "${lr_revision:--}" "${lr_tag:--}" "${lr_repo:--}" >>"$lr_rows"
 	done
+}
+
+# Collect rows for tree: one per managed subproject (code M, no annotation),
+# plus (with tcr_all=1) survey's own unmanaged findings, reusing
+# survey_collect_rows so tree never disagrees with survey about what is out
+# there. tcr_prefix is prepended to every path so a recursive call from
+# inside a nested nest reports paths relative to the outermost root; pass
+# "." for the top-level call. With tcr_recursive=1, a managed subproject
+# that is itself a nested nest (has its own .gitnest) is also descended
+# into, in its own subshell (isolating that recursive call's own variables
+# from this loop, the same pattern pull_recursive already uses), so a
+# mid-recursion path never corrupts an in-progress sibling iteration here.
+tree_collect_rows() {
+	tcr_all=$1
+	tcr_recursive=$2
+	tcr_prefix=$3
+	tcr_rows=$4
+
+	tcr_managed=$(mktemp)
+	manifest_subprojects >"$tcr_managed"
+	while IFS= read -r tcr_path; do
+		[ -n "$tcr_path" ] || continue
+		tcr_full=$tcr_path
+		[ "$tcr_prefix" = "." ] || tcr_full="$tcr_prefix/$tcr_path"
+		if [ -f "$tcr_path/$MANIFEST_FILE" ]; then
+			printf 'M\t%s\t(nested nest)\n' "$tcr_full" >>"$tcr_rows"
+			if [ "$tcr_recursive" -eq 1 ] && [ -d "$tcr_path/.git" ]; then
+				(cd "$tcr_path" && tree_collect_rows "$tcr_all" "$tcr_recursive" "$tcr_full" "$tcr_rows")
+			fi
+		else
+			printf 'M\t%s\t\n' "$tcr_full" >>"$tcr_rows"
+		fi
+	done <"$tcr_managed"
+	rm -f "$tcr_managed"
+
+	if [ "$tcr_all" -eq 1 ]; then
+		tcr_scan_rows=$(mktemp)
+		tcr_includes=$(mktemp)
+		: >"$tcr_includes"
+		survey_collect_rows 4 "$SURVEY_DEFAULT_EXCLUDES" "$tcr_includes" "$tcr_scan_rows"
+		rm -f "$tcr_includes"
+		while IFS='	' read -r tcr_code tcr_path tcr_state tcr_target tcr_current tcr_expected tcr_detail; do
+			[ -n "$tcr_code" ] || continue
+			tcr_full=$tcr_path
+			[ "$tcr_prefix" = "." ] || tcr_full="$tcr_prefix/$tcr_path"
+			printf '%s\t%s\t%s\n' "$tcr_code" "$tcr_full" "$tcr_state" >>"$tcr_rows"
+		done <"$tcr_scan_rows"
+		rm -f "$tcr_scan_rows"
+	fi
+}
+
+# tree displays an ASCII-art tree of the current nest, grouped by shared path
+# prefixes. Plain: every managed subproject. --all: also survey's own
+# detected-but-unmanaged findings (submodules, nested repos, git-subrepos,
+# nest roots, detached former subprojects); subtrees remain undetectable, the
+# same limitation survey already has. --recursive: also descends into nested
+# nests, rendering their own subprojects nested under that branch.
+cmd_tree() {
+	show_all=0
+	recursive=0
+	json=0
+	pretty=0
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--all)
+			show_all=1
+			shift
+			;;
+		--recursive)
+			recursive=1
+			shift
+			;;
+		--json)
+			json=1
+			shift
+			;;
+		--json-pretty)
+			json=1
+			pretty=1
+			shift
+			;;
+		--*) usage_error "unknown tree option: $1" ;;
+		*) usage_error "tree takes no positional arguments" ;;
+		esac
+	done
+	ensure_manifest
+	validate_manifest_schema
+
+	tree_rows=$(mktemp)
+	tree_collect_rows "$show_all" "$recursive" "." "$tree_rows"
+
+	if [ "$json" -eq 1 ]; then
+		tree_json_rows=$(mktemp)
+		tree_empty=$(mktemp)
+		while IFS='	' read -r tj_code tj_path tj_annot; do
+			[ -n "$tj_code" ] || continue
+			printf '%s\t%s\t%s\t-\t-\t-\t%s\n' "$tj_code" "$tj_path" "${tj_annot:--}" "$tj_annot" >>"$tree_json_rows"
+		done <"$tree_rows"
+		emit_json_result tree 0 1 "$tree_json_rows" "$tree_empty" "$tree_empty" "$pretty"
+		rm -f "$tree_json_rows" "$tree_empty"
+	else
+		tree_tab=$(printf '\t')
+		sort -t "$tree_tab" -k2,2 "$tree_rows" | awk -f "$SCRIPT_DIR/lib/tree-render.awk"
+	fi
+	rm -f "$tree_rows"
 }
 
 # list prints the managed subprojects in a stable order with their URL, target

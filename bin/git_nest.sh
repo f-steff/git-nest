@@ -24,7 +24,7 @@ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/git-nest-manifest.sh"
 . "$SCRIPT_DIR/lib/git-nest-commands.sh"
 . "$SCRIPT_DIR/lib/git-nest-hooks.sh"
-. "$SCRIPT_DIR/lib/git-nest-export.sh"
+. "$SCRIPT_DIR/lib/git-nest-conversion.sh"
 . "$SCRIPT_DIR/lib/git-nest-doctor.sh"
 
 MANIFEST_FILE=${GIT_NEST_MANIFEST:-.gitnest}

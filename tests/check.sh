@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# git-nest quality checks — run this before committing to verify that all
+# git-nest quality checks -- run this before committing to verify that all
 # shell files pass syntax, formatting, shellcheck, and bashism checks.
 #
 # This file can be executed directly (sh tests/check.sh) or sourced by other
@@ -38,7 +38,7 @@ fail_() { printf '  [%sFAIL%s] %s\n' "$RED" "$NC" "$*"; }
 skip_() { printf '  [%sSKIP%s] %s\n' "$YELLOW" "$NC" "$*"; }
 info_() { printf '  [%sINFO%s] %s\n' "$YELLOW" "$NC" "$*"; }
 
-# ── Auto-install ──────────────────────────────────────────────────────
+# --- Auto-install ---
 # Download a tool to ~/bin if missing. Supports shellcheck, shfmt, and
 # checkbashisms on Linux, macOS, and Windows/Git Bash.
 
@@ -132,7 +132,7 @@ tool_check() {
     return "$rc"
 }
 
-# ── Individual check functions ─────────────────────────────────────────
+# --- Individual check functions ---
 
 check_syntax() {
     rc=0
@@ -167,21 +167,44 @@ check_shfmt() {
 }
 
 check_bashisms() {
-    if tool_check checkbashisms checkbashisms --version >/dev/null 2>&1; then
-        issues=0
-        for f in $FILES; do
-            if checkbashisms "$REPO_ROOT/$f" 2>/dev/null | grep . >/dev/null 2>&1; then
-                fail_ "$f"
-                issues=$((issues + 1))
-            fi
-        done
-        [ "$issues" -eq 0 ] && pass_ "${FILE_COUNT} files, 0 bashisms"
-        return "$issues"
-    fi
-    return $?
+	if tool_check checkbashisms checkbashisms --version >/dev/null 2>&1; then
+		issues=0
+		for f in $FILES; do
+			if checkbashisms "$REPO_ROOT/$f" 2>/dev/null | grep . >/dev/null 2>&1; then
+				fail_ "$f"
+				issues=$((issues + 1))
+			fi
+		done
+		[ "$issues" -eq 0 ] && pass_ "${FILE_COUNT} files, 0 bashisms"
+		return "$issues"
+	fi
+	return $?
 }
 
-# ── Stats ─────────────────────────────────────────────────────────────
+# Every shell source file, test, and doc must be plain ASCII (see the "Keep
+# all files plain ASCII" rule in docs/maintainer.md): no em/en dashes, curly
+# quotes, arrows, or other non-ASCII punctuation. This keeps diffs and
+# terminal rendering identical across editors, shells, and platforms, and
+# needs no external tool, so it never skips. ANSI escape sequences (used by
+# help_setup_colors for optional, TTY-only, NO_COLOR-respecting colored help
+# output) are plain ASCII bytes and are unaffected by this check.
+#
+# survey_pull_feature__backup.md is excluded: it is a verbatim historical
+# backup of an earlier design draft, preserved for provenance, not shipped
+# documentation, so it is not held to the project's style rule.
+check_ascii() {
+	matches=$(cd "$REPO_ROOT" && grep -rPln "[^\x00-\x7F]" bin tests docs skills ./*.md 2>/dev/null | sed 's#^\./##' | grep -vx 'survey_pull_feature__backup.md')
+	if [ -n "$matches" ]; then
+		printf '%s\n' "$matches" | while IFS= read -r f; do
+			fail_ "$f"
+		done
+		return 1
+	fi
+	pass_ "no non-ASCII characters in bin, tests, docs, skills, or root markdown"
+	return 0
+}
+
+# --- Stats ---
 
 print_stats() {
     total_files=0
@@ -196,7 +219,7 @@ print_stats() {
     echo "  Files: ${total_files},  Lines: ${total_lines}"
 }
 
-# ── Standalone execution ──────────────────────────────────────────────
+# --- Standalone execution ---
 case "$(basename -- "$0")" in check.sh)
     set -eu
     rc=0
@@ -224,6 +247,10 @@ case "$(basename -- "$0")" in check.sh)
 
     echo "--- checkbashisms (POSIX compliance) ---"
     check_bashisms || [ $? -eq 2 ] || rc=1
+    echo ""
+
+    echo "--- ASCII-only (bin, tests, docs, skills, root markdown) ---"
+    check_ascii || rc=1
     echo ""
 
     echo "${BOLD}Summary${NC}"

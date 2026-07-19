@@ -6,6 +6,8 @@ Create a nest with `git-nest init`, add subprojects with `git-nest add`, restore
 
 Branching, committing, and pushing remain normal Git operations inside each repository. `git-nest branch-mark` can remember useful branch names, but it does not switch repositories.
 
+`git-nest survey` (read-only) and `git-nest absorb-all` (mutating) help migrate an existing tree of nested repositories and submodules into a nest in one pass: `survey` reports what is out there, and `absorb-all` reuses that same scan to absorb every detected submodule and nested repo, deepest path first, rolling back the whole batch by default on a mid-batch failure. Git-subrepos (`.gitrepo`) and subtrees are never touched by either; they require the explicit `absorb --subrepo`/`absorb --subtree` conversions. `git-nest pull` fast-forwards clean, tracked subprojects to their upstream branch heads and snapshots the result, reporting (never forcing past) dirty, detached, no-upstream, or diverged subprojects by path.
+
 ## Manifest
 
 `.gitnest` records repository URLs and exact revisions. The current manifest does not contain pending review state. Keys from the old pending workflow are schema errors.
@@ -16,7 +18,7 @@ git-nest keeps its ignore rules inside a self-healing `# BEGIN git-nest ignores`
 
 ## Conversion Backups
 
-The destructive conversions (`inline`, and `absorb --preserve-history`) first create a self-documenting recovery backup directory named `.gitnest-recovery-<operation>-<name>-<timestamp>/` containing a `RECOVERY.txt` with restore and cleanup steps. git-nest removes the backup automatically on success. While the conversion runs, the directory is ignored on demand through the repo-local `.git/info/exclude` file (never the committed `.gitignore`), so `git status` stays clean and no transient rule is ever committed. If a conversion is interrupted, the backup remains: the command's error message and `RECOVERY.txt` explain how to restore, and `git-nest doctor` reports the leftover so it is easy to discover. `discover` prunes `.gitnest-recovery-*` directories from its scan.
+The destructive conversions (`inline`, `absorb --preserve-history`, and `absorb-all`) first create a self-documenting recovery backup directory named `.gitnest-recovery-<operation>-<name>-<timestamp>/` containing a `RECOVERY.txt` with restore and cleanup steps. git-nest removes the backup automatically on success. While the conversion runs, the directory is ignored on demand through the repo-local `.git/info/exclude` file (never the committed `.gitignore`), so `git status` stays clean and no transient rule is ever committed. If a conversion is interrupted, the backup remains: the command's error message and `RECOVERY.txt` explain how to restore, and `git-nest doctor` reports the leftover so it is easy to discover. `survey` prunes `.gitnest-recovery-*` directories from its scan. `absorb-all` uses one recovery backup for its whole batch: a full copy of each item's pre-absorb directory plus the outer `.gitnest`/`.gitignore`/`.gitmodules` files, so a mid-batch failure can restore everything absorbed so far in one step (`--force-partial` keeps the successfully-absorbed items instead and skips the rollback).
 
 ## Hooks
 
@@ -42,7 +44,27 @@ Manifest writers validate required fields before writing. Dirty subprojects are 
 
 ## Dry-Run Semantics
 
-`restore --dry-run` and `snapshot --dry-run` print planned changes without writing manifests, cloning, fetching, checking out, or pruning. `freeze`, `absorb`, `inline`, `detach`, and `remove` also support `--dry-run` and report the planned change without writing.
+`restore --dry-run` and `snapshot --dry-run` print planned changes without writing manifests, cloning, fetching, checking out, or pruning. `freeze`, `absorb` (including `--subrepo`/`--subtree`), `absorb-all`, `inline`, `detach`, `remove`, and `pull` also support `--dry-run` and report the planned change without writing. `absorb-all --dry-run` never runs the init step either, even when the scanned directory is not yet a nest.
+
+## Worktree Compatibility
+
+git-nest is transparent to Git worktrees. Each linked worktree created with `git worktree add` has its own independent manifest checkout, subproject checkouts, and materialized state. No special setup or configuration is needed.
+
+The materialized state file (`<git-path>/git-nest/subprojects`) is resolved through `git rev-parse --git-path`, which Git automatically points to the worktree's private storage under `.git/worktrees/<name>/` instead of the shared `.git/`. This ensures that `restore`, `snapshot`, `status`, and all other commands operate on the correct worktree-local state without cross-contamination.
+
+### Per-worktree vs shared components
+
+| Component | Scope | Notes |
+|---|---|---|
+| `.gitnest` manifest | Per-worktree | Each worktree has its own checkout of the manifest; changes in one worktree do not affect another until committed and merged |
+| Subproject checkouts | Per-worktree | Cloned independently per worktree; disk usage depends on Git's `--reference` or `--shared` options |
+| Materialized state (`git-nest/subprojects`) | Per-worktree | Resolved through `--git-path`, landing in the worktree's private git dir |
+| `.gitignore` managed block | Per-worktree | Each worktree edits its own checkout of `.gitignore` |
+| `.gitnest.lock` | Per-worktree | Lock is local to the current worktree |
+| Git object store | Shared | Underlying objects and refs are shared through Git's object store |
+| Subproject remote objects | Shared | Cloned subprojects share the Git object store of the containing worktree |
+
+Running `git-nest` commands from a linked worktree affects only that worktree's state. Committing and pushing changes to `.gitnest` follows normal Git worktree practices: commit from the worktree, then merge or rebase across branches.
 
 ## Tests
 

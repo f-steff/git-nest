@@ -1,5 +1,8 @@
 #!/bin/sh
 #
+# git-nest: record and restore reproducible nests of independent Git repositories.
+# https://github.com/f-steff/git-nest
+#
 # Core manifest and helper functions for git-nest.
 # Sourced by bin/git_nest.sh and its library modules.
 #
@@ -11,6 +14,26 @@
 die() {
 	printf 'Error: %s\n' "$*" >&2
 	exit 1
+}
+
+# Single-quote a value (typically a path) for safe embedding in a suggested
+# shell command shown to the user, e.g. "run: git -C <path> checkout main" in
+# pull's summary or "run git-nest absorb <path>" in discover/survey's
+# next-step hints. Without this, a path containing a space or other shell
+# metacharacter would print a suggestion that looks correct but breaks or
+# does the wrong thing if the user copies and pastes it verbatim.
+#
+# Only quotes when the value actually needs it (matches the same safe
+# character class tests/helper.sh's print_command already uses), so an
+# ordinary path prints exactly as before and only a path with a space or
+# other shell metacharacter gains quotes.
+shell_quote() {
+	case "$1" in
+	*[!A-Za-z0-9_./:=,@%+-]* | '')
+		printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+		;;
+	*) printf '%s' "$1" ;;
+	esac
 }
 
 die_code() {
@@ -531,18 +554,34 @@ assert_safe_project_path() {
 		precondition_error "path must be a relative path inside the current project: $path"
 }
 
+# Refuse a candidate path that lies inside any existing managed subproject,
+# whether or not that subproject is itself a nested nest. A subproject's
+# checkout belongs to its own repository, not the outer nest, so no new
+# manifest entry, clone, or conversion may ever be created underneath one.
+#
+# Reads the boundary list from a temp file rather than piping directly into
+# the while loop: piping runs the loop in a subshell, so a precondition_error
+# (which calls exit) inside it would only terminate that subshell and let the
+# caller silently continue past the guard instead of aborting the command.
 assert_path_not_inside_nested_project() {
 	candidate=$1
 	assert_safe_project_path "$candidate"
-	manifest_subprojects | while IFS= read -r boundary; do
+	apinp_tmp=$(tmp_for "$MANIFEST_FILE.boundarycheck")
+	manifest_subprojects >"$apinp_tmp"
+	while IFS= read -r boundary; do
 		[ -n "$boundary" ] || continue
-		[ -f "$boundary/$MANIFEST_FILE" ] || continue
 		case "$candidate" in
 		"$boundary"/*)
-			precondition_error "$candidate is inside nested project $boundary; run git-nest from $boundary instead"
+			rm -f "$apinp_tmp"
+			if [ -f "$boundary/$MANIFEST_FILE" ]; then
+				precondition_error "$candidate is inside nested project $boundary; run git-nest from $boundary instead"
+			else
+				precondition_error "$candidate is inside managed subproject $boundary; that path belongs to $boundary's own repository, not this nest"
+			fi
 			;;
 		esac
-	done
+	done <"$apinp_tmp"
+	rm -f "$apinp_tmp"
 }
 
 # Refuse a new subproject path that differs from an existing managed path only by
@@ -567,12 +606,31 @@ assert_no_case_collision() {
 	rm -f "$ncc_tmp"
 }
 
+# Refuse a candidate path that contains a nested git-nest project, or that
+# contains any existing managed subproject beneath it. A new subproject's
+# working tree must belong entirely to the outer nest: converting a path that
+# swallows another subproject's separately tracked checkout would merge two
+# unrelated repositories' files together and corrupt both.
 assert_path_not_containing_nested_project() {
 	candidate=$1
 	[ -d "$candidate" ] || return 0
 	if find "$candidate" -mindepth 1 -name "$MANIFEST_FILE" -type f 2>/dev/null | sed -n '1p' | grep . >/dev/null 2>&1; then
 		precondition_error "$candidate contains a nested git-nest project; recursive absorb is not supported yet"
 	fi
+	# See assert_path_not_inside_nested_project for why this reads from a temp
+	# file rather than piping into the while loop.
+	apcnp_tmp=$(tmp_for "$MANIFEST_FILE.containcheck")
+	manifest_subprojects >"$apcnp_tmp"
+	while IFS= read -r boundary; do
+		[ -n "$boundary" ] || continue
+		case "$boundary" in
+		"$candidate"/*)
+			rm -f "$apcnp_tmp"
+			precondition_error "$candidate contains managed subproject $boundary; converting $candidate would swallow that subproject's separate checkout"
+			;;
+		esac
+	done <"$apcnp_tmp"
+	rm -f "$apcnp_tmp"
 }
 
 stage_outer_paths() {
@@ -604,7 +662,20 @@ manifest_load_cache() {
 }
 
 # Build the encoded variable name for a section+key pair. Must match the naming
-# convention used by manifest_load_cache.
+# convention used by manifest_load_cache (parse-gitnest.awk computes the same
+# subproject hash independently; the two must always agree).
+#
+# The subproject path is hashed with cksum rather than lossily encoded by
+# character substitution: a path may contain spaces or other characters that
+# are not valid in a shell variable name (a literal space would previously
+# break the "${...}" expansion in manifest_get with "bad substitution"), and a
+# naive substitution (e.g. "-"/"." -> "_") can collide between two genuinely
+# different paths ("libs/foo-bar" and "libs/foo.bar" would both encode to
+# "libs_foo_bar"). cksum's output is deterministic for identical input and
+# available on every platform this tool targets (POSIX-specified, present in
+# GNU coreutils and BSD userland alike), so hashing the raw path keeps the
+# variable name always well-formed and, for realistic subproject counts,
+# effectively collision-free.
 manifest_varname() {
 	section=$1
 	key=$2
@@ -614,8 +685,9 @@ manifest_varname() {
 	subproject\ \"*\")
 		path=${section#subproject \"}
 		path=${path%\"}
-		encoded=$(printf '%s' "$path" | sed 's#/#__#g; s/[-.]/_/g')
-		printf '_mnf_sp_%s_%s\n' "$encoded" "$kee"
+		hash=$(printf '%s' "$path" | cksum)
+		hash=${hash%% *}
+		printf '_mnf_sp_%s_%s\n' "$hash" "$kee"
 		;;
 	esac
 }
@@ -1187,12 +1259,18 @@ write_materialized_state() {
 		printf '%s\t%s\n' "$path" "$repo"
 	done >"$tmp"
 	if [ -f "$state_file" ]; then
-		while IFS='	' read -r old_path old_repo; do
-			[ -n "$old_path" ] || continue
-			[ -n "$old_repo" ] || continue
-			pair_path_exists "$current_pairs" "$old_path" && continue
-			[ -e "$old_path" ] || continue
-			printf '%s\t%s\n' "$old_path" "$old_repo" >>"$tmp"
+		# Prefixed loop variables (not old_path/old_repo): this function is called
+		# from commands such as move that keep their own old_path/new_path in
+		# scope across the call, and this shell has no per-function variable
+		# scoping, so reusing those names here would silently clobber the
+		# caller's values (the final read past the last line clears them even if
+		# the loop body never matched anything).
+		while IFS='	' read -r wms_old_path wms_old_repo; do
+			[ -n "$wms_old_path" ] || continue
+			[ -n "$wms_old_repo" ] || continue
+			pair_path_exists "$current_pairs" "$wms_old_path" && continue
+			[ -e "$wms_old_path" ] || continue
+			printf '%s\t%s\n' "$wms_old_path" "$wms_old_repo" >>"$tmp"
 		done <"$state_file"
 	fi
 	rm -f "$current_pairs"

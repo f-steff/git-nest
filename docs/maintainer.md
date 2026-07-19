@@ -14,6 +14,7 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
 - Keep manifest rewrites deterministic and readable.
 - Do not add mandatory provider integration or automatic PR creation.
 - Keep hooks opt-in; hooks may run `git-nest snapshot --quiet` or reproducibility checks but must not push automatically.
+- **Keep all files plain ASCII** (code and documentation alike). No em/en dashes, curly quotes, arrows, box-drawing characters, or other non-ASCII punctuation. Use `--` for em-dash, `-` for en-dash, `->` for arrows, and plain `-`/`=` characters for divider lines. Straight quotes only (`'` and `"`), never curly (`'` `'` `"` `"`). This keeps diffs clean across editors/terminals with inconsistent Unicode rendering and avoids encoding surprises on Windows. This is enforced automatically: `check_ascii` in `tests/check.sh`, run as a step of `tests/test_0000_static_code_analysis.sh`, fails the suite on any non-ASCII character under `bin`, `tests`, `docs`, `skills`, or root-level `*.md` files (except `survey_pull_feature__backup.md`, a verbatim historical backup kept for provenance, not shipped documentation). To check manually: `grep -rPn "[^\x00-\x7F]" bin tests docs skills *.md` (should return nothing). This does not affect the optional ANSI color escapes in `--help` output (`help_setup_colors`): those are plain ASCII bytes (ESC + digits/letters), already gated to TTY-only output and disabled by `NO_COLOR`/`GIT_NEST_NO_COLOR`/`TERM=dumb`, so they are unrelated to this rule.
 
 ## Change Workflow
 

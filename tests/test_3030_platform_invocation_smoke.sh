@@ -12,7 +12,11 @@ test_step "Invoke git-nest directly and as a git subcommand" "The shipped entryp
 PATH="$(CDPATH= cd -- "$(dirname -- "$GIT_NEST_REAL")" && pwd):$PATH"
 export PATH
 
-expected_version='git-nest 0.8.2 \\_oOO_//'
+# Computed from the real entrypoint rather than hardcoded: a hardcoded
+# literal silently goes stale on every version bump (this test failed for
+# exactly that reason -- it still expected 0.8.2 after the version moved to
+# 0.8.3).
+expected_version=$(sh "$GIT_NEST_REAL" version)
 
 run_ok "direct --help works" -- sh "$GIT_NEST_REAL" --help
 test "$(sh "$GIT_NEST_REAL" version)" = "$expected_version"

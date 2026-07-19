@@ -7,7 +7,7 @@
   - Do not let the installer hide required PATH or shell-profile steps behind decorative output.
 - Consider a Go port if the shell implementation becomes too large to maintain:
   - **Pros**: native cross-compilation for Windows/Linux/macOS without Git Bash dependency; typed data structures and proper JSON encoding; `flag` or `cobra` for robust CLI parsing; `testing` package with real `t.Parallel()` and no subshell overhead; proper error wrapping; no awk/INI fragility; `go-git` for git operations without forking `git` (though forking is often simpler to keep accurate); static binary distribution; goroutines for concurrent subproject operations (huge win for `restore`/`foreach` with 100+ subprojects).
-  - **Cons**: adds a build step and Go toolchain requirement for contributors; loses the "edit and run" shell iteration loop; `go-git` credential/transport handling may differ from system `git` (especially on Windows with Git Credential Manager); the current shell code already handles edge cases that a Go port would need to re-discover through testing; the tool's simplicity is a feature — a Go binary feels "heavier" than a shell script; maintaining two implementations during a rewrite is expensive.
+  - **Cons**: adds a build step and Go toolchain requirement for contributors; loses the "edit and run" shell iteration loop; `go-git` credential/transport handling may differ from system `git` (especially on Windows with Git Credential Manager); the current shell code already handles edge cases that a Go port would need to re-discover through testing; the tool's simplicity is a feature -- a Go binary feels "heavier" than a shell script; maintaining two implementations during a rewrite is expensive.
   - **Decision port**: wait until the shell codebase routinely exceeds 10k lines, or contributors report that shell-based development is a significant barrier. For the 0.x lifetime, keep shell and invest in module splits (`lib/`) and ShellCheck.
   - **Decision stay**: the shell approach has proven maintainable on a single-file 7k-line script and is the right choice for a lightweight, dependency-free tool that lives in a `bin/` directory in a Git checkout.
 - Keep subtree and git-subrepo support as deferred, explicit `absorb` source types:
@@ -39,52 +39,12 @@
   - How to do it: keep it explicit, reversible, and visibly installed by git-nest. The global hook should only detect `.gitnest` and delegate to local `hooks-install` or guidance; it must not store hook-installed state in `.gitnest`.
   - How not to do it: do not silently edit global Git config, do not auto-run destructive `restore`, and do not make ordinary repositories depend on git-nest being installed.
 
-- Add `git-nest survey` to help migrate existing projects (submodules, nested repos, subtrees) into a git-nest workspace:
-  - Scans from CWD without requiring an existing nest.
-  - Detects submodules and nested repos.
-  - Prints the exact `git-nest absorb` commands to bring each one in.
-  - `survey --apply` runs those commands automatically.
-
-  **Open questions**:
-  1. **Command name (chosen: `survey`)?**
-     - `survey` — suggests a broad, non-invasive overview. Chosen.
-     - `analyze` — suggests read-only inspection, familiar from static analysis tools. Mild risk of implying "deep code analysis" rather than "repo structure scan".
-     - `scan` — suggests active search, matches `discover`'s sibling. Shorter and more active. Could conflict with security scanners in the user's mental model.
-     - `audit` — carries compliance/conformance overtones. May imply more authority than the command has.
-     - `onboard` — describes the purpose (onboarding an existing project into git-nest). Unusual for a CLI verb, but self-explanatory once seen.
-
-  2. **Execute flag name?**
-     - `--execute` — clear and explicit, but long. Matches `--dry-run` as its opposite.
-     - `--apply` — shorter, suggests applying a plan. Common in Terraform/Puppet ecosystems.
-     - `--do-it` — informal, unambiguous, hard to forget. Unconventional for a CLI.
-     - `--commit` — would be confused with `git commit` and the existing `--commit` on `inline`.
-     - `--yes` / `--confirm` — suggests confirming a prompt, not executing actions.
-     - Recommendation: `--apply` is the clearest short form; `--execute` is the safest long form.
-
-  3. **New command vs dry-run mode?**
-     - Pro standalone: clear entry point, discoverable via help, no confusion about which command does what.
-     - Pro dry-run: reuses existing `absorb --dry-run` machinery, less surface area.
-     - Con dry-run: user has to know about `absorb` first to discover `absorb --analyze` or similar; also `absorb` currently operates on one path at a time, so a bulk mode would be a different semantic.
-     - Special: if standalone, the command name matters — `analyze` suggests read-only, `scan` suggests active search, `survey` or `audit` are alternatives.
-
-  4. **Ordering — two-phase or one-pass?**
-     - Pro two-phase: user reviews the plan, reorders absorbs, skips unwanted items, then runs `--execute`. Matches `absorb --dry-run` precedent.
-     - Pro one-pass: `--execute` mode is simpler and faster for confident users.
-     - Special: even in one-pass, execution order matters — deeper paths must be absorbed before their parents (e.g., absorb a nested repo inside a submodule after converting the submodule). The user may need to rearrange.
-
-  5. **Automatic init?**
-     - Pro auto: completes the migration in one command — the user runs `analyze --execute` and walks away.
-     - Pro explicit: `init` is a separate deliberate step; mixing it into analyze conflates two concerns (analysis vs. workspace creation).
-     - Special: what if the CWD is already inside a nest? Should analyze refuse, extend the existing nest, or require `--sure`? This parallels `init --sure` for nested nests.
-
-  6. **Replace or coexist with discover?**
-     - Pro replace: one command does everything, less to learn, `discover` becomes an alias pointing to `analyze`.
-     - Pro coexist: `discover` is nest-scoped, read-only, and deliberately narrow; `analyze` is a broader onboarding tool. Two different audiences (daily inspection vs. initial migration).
-     - Special: if both exist, their output format should match (same JSON schema, same --porcelain flags) so scripts can consume either.
+- `git-nest survey` (replacing `discover`) and `git-nest pull`: design finalized in `survey_pull_feature.md` after the questions below were answered and integrated. `absorb --subrepo`/`--subtree` and the `pull` base implementation are done; `survey` itself (detection mode plus `--absorb-all`) is the remaining implementation work. See that file for the full spec, edge-case decisions (including the `init --sure`/`--adopt` nested-nest-overlap case in section 1c, and the subproject-boundary-containment bug found and fixed in section 1b), and current implementation status.
 
 # done
 
-- 0.8.3: Quality and maintainability release. See `version.md` and `outstanding.md`.
+- `git-nest tree [--all] [--recursive] [--json | --json-pretty]`: displays an ASCII-art tree of the current nest grouped by shared path prefixes (design recovered from a backup note the user found after the original discussion was lost). Plain mode shows every managed subproject; `--all` also shows `survey`'s own detected-but-unmanaged findings (reusing `survey_collect_rows`), each marked with its code, distinct from managed entries; `--recursive` also descends into nested nests using the same visited-subshell pattern `pull_recursive` already uses, nesting their own subprojects under that branch. Rendering uses ASCII-only connectors (`|--`, `` `-- ``, `|`), the same convention GNU `tree --charset=ascii` uses, via a dedicated `bin/lib/tree-render.awk`. Covered by `test_0300_command_tree.sh`.
+- 0.8.3: Quality and maintainability release. See `version.md`.
 
 - Shipped the current-branch update and cross-repository feature-branch workflows as documented `foreach` recipes instead of new commands. Added a "Updating Subprojects On Their Current Branch" README section for `foreach-clean -- git pull --ff-only` (clean-only, fast-forward-only, `--continue-on-error` to report diverged subprojects, explicitly not a `restore`/`snapshot` replacement), and clarified the existing "Working Across Dirty Subprojects" recipe to note that `foreach` never touches the nest root and that `branch-mark` is only a local notepad. The remaining first-class-command ambitions (participant tracking and the post-PR-merge return step) moved to `# suggestions` to be built only if the recipes prove insufficient. Verified by `test_5030_workflow_foreach_pull_current_branch.sh` (fast-forward, dirty-skip, and non-fast-forward reporting) and `test_5040_workflow_foreach_feature_branch.sh` (single-pass branch/commit/push across dirty subprojects, then `snapshot` pins the new revisions).
 - Hardened filesystem and concurrency behavior. Manifest schema validation now rejects unsafe subproject paths in the manifest content itself (absolute, `..` escape, backslash, Git-internal names), so no command clones, checks out, or removes outside the nest root. `add`, `move`, and `absorb` refuse a path that differs from an existing subproject only by letter case (case-insensitive-filesystem collision). Confirmed the existing lock (bounded wait, PID/recovery message, EXIT/INT/TERM release) and unique `mktemp` temp files satisfy the rest. Covered by `test_2080_contract_lock_release.sh` and additions to `test_2060_contract_path_safety.sh`.

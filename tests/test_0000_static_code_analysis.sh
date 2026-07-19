@@ -1,5 +1,5 @@
 #!/bin/sh
-# Test: static code analysis — syntax, shellcheck, formatting, bashism compliance
+# Test: static code analysis -- syntax, shellcheck, formatting, bashism compliance
 
 . "$(dirname "$0")/helper.sh"
 . "$(dirname "$0")/check.sh"
@@ -40,6 +40,10 @@ case $cb_rc in
     2) describe_result "checkbashisms: skipped (tool not available)."; skipped=$((skipped + 1)) ;;
     *) exit 1 ;;
 esac
+
+test_step "ASCII-only (bin, tests, docs, skills, root markdown)" "Keeps all source and documentation plain ASCII (no em/en dashes, curly quotes, arrows, or box-drawing characters) so diffs and terminal rendering stay identical across editors, shells, and platforms. Uses grep only, so it never skips."
+check_ascii || exit 1
+describe_result "No non-ASCII characters found."
 
 if [ "$skipped" -gt 0 ]; then
     describe_result "Static analysis passed ($skipped tool(s) skipped, install with: sh tests/check.sh)."

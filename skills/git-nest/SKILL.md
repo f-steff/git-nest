@@ -29,11 +29,25 @@ git nest doctor --offline
 git nest log --max-count 10
 ```
 
-Use `list` for a stable, scriptable inventory of managed subprojects (path, URL, target branch, revision, tag, checkout state, and reproducibility); it accepts `--porcelain` and `--json`/`--json-pretty`. Use `discover` to find nested repositories or submodules that are not managed by `.gitnest`; it is read-only and suggests a next step. `discover` labels a `detached` former subproject (a checkout left behind by `detach` whose path still carries a nest-owned ignore entry):
+Use `list` for a stable, scriptable inventory of managed subprojects (path, URL, target branch, revision, tag, checkout state, and reproducibility); it accepts `--porcelain` and `--json`/`--json-pretty`. Use `survey` to find nested repositories, submodules, or git-subrepos that are not managed by `.gitnest`; it is read-only and suggests a next step. `survey` labels a `detached` former subproject (a checkout left behind by `detach` whose path still carries a nest-owned ignore entry) and a `subrepo` (a `<path>/.gitrepo` marker):
 
 ```sh
 git nest list --porcelain
-git nest discover
+git nest survey
+```
+
+Use `tree` for a quick visual overview grouped by shared path prefixes instead of `list`'s flat table; `--all` adds `survey`'s own unmanaged findings, and `--recursive` also descends into nested nests:
+
+```sh
+git nest tree
+git nest tree --all --recursive
+```
+
+To bring everything `survey` finds into the nest in one step, use `absorb-all`; it never touches git-subrepos or subtrees (those need the explicit `absorb --subrepo`/`absorb --subtree` conversion) and rolls back the whole batch by default if one item fails partway through:
+
+```sh
+git nest absorb-all --dry-run
+git nest absorb-all
 ```
 
 git-nest keeps its ignore rules in a managed `# BEGIN git-nest ignores` block in `.gitignore`. If the user reports leftover ignore rules for directories they deleted, run `git nest repair`, which reconciles the block and prunes stale nest-owned entries; `git nest doctor` warns when stale entries exist. Do not hand-edit the managed block; edit via git-nest commands or `repair`.
@@ -49,6 +63,24 @@ bin/git-nest.bat version
 ```
 
 Use the command form already used by the project when possible.
+
+## Worktrees
+
+If the project uses Git worktrees, each worktree maintains its own independent state:
+
+- Each linked worktree has its own checkout of `.gitnest`, subproject checkouts, `.gitignore` managed block, and materialized state.
+- Operations in one worktree (restore, snapshot, status, etc.) do not affect another worktree.
+- The Git object store is shared, so cloning is efficient, but working trees are fully isolated otherwise.
+- Treat each worktree as a separate workspace. If an agent is inside a linked worktree, all `git nest` commands operate on that worktree only.
+- No special setup or configuration is needed -- git-nest is transparent to linked worktrees.
+
+Example: after creating a linked worktree, run the usual discovery commands:
+
+```sh
+cd path/to/linked-worktree
+git nest status
+git nest restore
+```
 
 ## Normal Workflow
 
@@ -117,6 +149,16 @@ git nest foreach-modified -- sh -c 'git status --short'
 ```
 
 `foreach-modified` means dirty working trees. `foreach-clean` means clean checked-out subprojects.
+
+Use `pull` to fast-forward clean, tracked subprojects to their upstream branch heads and record the result, instead of the older `foreach-clean -- git pull --ff-only` recipe:
+
+```sh
+git nest pull
+git nest pull --sure          # also pulls the nest root
+git nest pull --recursive     # also descends into nested nests
+```
+
+`pull` never force-merges: a dirty, detached-HEAD, no-upstream, or diverged subproject is skipped and reported by path with a fix-it command, and a network/fetch failure on one subproject does not stop the rest.
 
 ## Branching And Recording State
 

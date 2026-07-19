@@ -1,8 +1,14 @@
 #!/bin/sh
 #
-# git-nest export ? sourced by bin/git_nest.sh
+# git-nest: record and restore reproducible nests of independent Git repositories.
+# https://github.com/f-steff/git-nest
 #
-# Export archive creation, path absorption, and subproject inlining.
+# git-nest conversion -- sourced by bin/git_nest.sh
+#
+# Nest-boundary conversions: export archive creation, path absorption
+# (bringing external repos into the nest), and subproject inlining
+# (dissolving a subproject back into outer files), plus the shared
+# recovery-backup infrastructure used by the destructive conversions.
 #
 # Copyright (c) 2026 Flemming Steffensen.
 # License: MIT
@@ -127,13 +133,21 @@ stage_export_tree() {
 	deterministic=$3
 	copy_file_to_stage "$MANIFEST_FILE" "$stage/$MANIFEST_FILE"
 	write_export_manifest_lock "$stage" "$deterministic"
-	manifest_subprojects | while IFS= read -r path; do
+	# Read from a temp file rather than piping into the while loop: piping runs
+	# the loop in a subshell, so a precondition_error (which calls exit) inside
+	# it would only terminate that subshell, letting the export silently
+	# continue and produce an incomplete archive instead of aborting.
+	set_tmp=$(mktemp)
+	manifest_subprojects >"$set_tmp"
+	while IFS= read -r path; do
 		[ -n "$path" ] || continue
 		if [ ! -d "$path/.git" ]; then
+			rm -f "$set_tmp"
 			precondition_error "cannot export missing subproject $path; run git-nest restore"
 		fi
 		copy_subproject_files_to_stage "$path" "$stage" "$include_git"
-	done
+	done <"$set_tmp"
+	rm -f "$set_tmp"
 }
 
 make_deterministic_stage() {
@@ -570,6 +584,180 @@ This restores the original files that were at $path before the history rewrite."
 	fi
 }
 
+# Read one key from a .gitrepo file (git-subrepo metadata). Values use
+# "key = value" syntax inside a bracketed [subrepo] section.
+gitrepo_get() {
+	gr_file=$1
+	gr_key=$2
+	awk -v key="$gr_key" '
+		/^\[subrepo\]/ { insec = 1; next }
+		/^\[/ { insec = 0 }
+		insec {
+			line = $0
+			eq = index(line, "=")
+			if (eq == 0) next
+			k = substr(line, 1, eq - 1)
+			gsub(/^[ \t]+|[ \t]+$/, "", k)
+			if (k == key) {
+				v = substr(line, eq + 1)
+				gsub(/^[ \t]+|[ \t]+$/, "", v)
+				print v
+				exit
+			}
+		}
+	' "$gr_file"
+}
+
+# Absorb a git-subrepo (marked by <path>/.gitrepo) into the nest as a managed
+# subproject. Forward-only: no attempt is made to reconstruct or preserve the
+# subrepo's own merge/split history -- the resulting subproject is a fresh
+# single-commit snapshot, exactly like absorbing plain outer-repository files.
+# Reads parsed globals from cmd_absorb.
+absorb_subrepo() {
+	if [ "$branch_set" -eq 1 ] || [ "$preserve_history" -eq 1 ] || [ "$push_after" -eq 1 ]; then
+		usage_error "--branch, --preserve-history, and --push do not apply to --subrepo; the branch and remote come from .gitrepo unless overridden by <remote-url>"
+	fi
+	gitrepo_file="$path/.gitrepo"
+	[ -f "$gitrepo_file" ] || precondition_error "$path has no .gitrepo file; it is not a git-subrepo (use plain absorb for outer-repo files, or absorb --subtree for a Git subtree)"
+	sr_remote=$(gitrepo_get "$gitrepo_file" remote)
+	sr_commit=$(gitrepo_get "$gitrepo_file" commit)
+	sr_branch=$(gitrepo_get "$gitrepo_file" branch)
+	[ -n "$sr_remote" ] || precondition_error "$gitrepo_file has no remote entry; cannot determine the subrepo's upstream URL"
+	url=${repo_arg:-$sr_remote}
+	target=${sr_branch:-main}
+	assert_path_not_containing_nested_project "$path"
+	[ -d "$path" ] || precondition_error "$path is not a directory"
+	if ! git ls-files -- "$path" | sed -n '1p' | grep . >/dev/null 2>&1; then
+		precondition_error "$path has no tracked files to absorb"
+	fi
+
+	emit_path=$path
+	emit_target=$target
+	emit_url=$url
+
+	if [ "$dry_run" -eq 1 ]; then
+		[ "$json" -eq 0 ] || GIT_NEST_JSON_DRY_RUN=1
+		if [ "$json" -eq 1 ]; then
+			json_single_row_result "$pretty" absorb 1 A "$emit_path" subrepo "$emit_target" - "$emit_url" "would absorb git-subrepo into the nest (forward-only; upstream merge/split history is not reconstructed)"
+		else
+			printf 'Would absorb subrepo %s into the nest as a subproject (remote %s).\n' "$emit_path" "$emit_url"
+			printf 'The .gitrepo-recorded upstream commit %s and its merge/split history would NOT be reconstructed; the subproject starts as a single fresh commit.\n' "${sr_commit:-unknown}"
+		fi
+		return 0
+	fi
+
+	[ -n "$message" ] || message="Absorb subrepo $path"
+	staged_under_path=$(git diff --cached --name-only -- "$path" 2>/dev/null | sed -n '1p')
+	if [ -n "$staged_under_path" ] && [ "$force" -eq 0 ]; then
+		precondition_error "$path has staged outer-repository changes; review them or rerun absorb --subrepo with --force to replace that staged state"
+	fi
+	unstaged_under_path=$(git diff --name-only -- "$path" 2>/dev/null | sed -n '1p')
+	[ -z "$unstaged_under_path" ] || precondition_error "$path has unstaged content changes; commit these files in the outer repo first, then rerun absorb --subrepo"
+	untracked_under_path=$(git ls-files --others --exclude-standard -- "$path" 2>/dev/null | sed -n '1p')
+	[ -z "$untracked_under_path" ] || precondition_error "$path has untracked files; commit these files in the outer repo first, then rerun absorb --subrepo"
+
+	ensure_gitignore_hygiene
+	backup=$(begin_recovery_backup "absorb --subrepo" "$path" \
+		"    rm -rf \"$path\"
+    mv \"<this-dir>/original\" \"$path\"
+
+This restores the original git-subrepo directory (including its .gitrepo
+metadata file) that was at $path before the conversion.")
+	copy_path_backup "$path" "$backup/original"
+
+	rm -f "$path/.gitrepo" || git_error "failed to remove .gitrepo metadata from $path"
+	absorb_files_snapshot_repo "$path" "$target" "$url" "$message"
+
+	revision=$(resolve_head_commit "$path" "cannot resolve absorbed subrepo $path")
+	emit_revision=$revision
+	git rm -r --cached -- "$path" >/dev/null 2>&1 ||
+		git_error "failed to untrack absorbed subrepo files from outer repository"
+	ensure_gitignore_entry "$path"
+	manifest_write_subproject "$path" "$url" tracked "$target" "$revision" "$clone_mode"
+	write_materialized_state
+	stage_outer_paths "$MANIFEST_FILE" .gitignore
+	end_recovery_backup "$backup"
+
+	if [ "$json" -eq 1 ]; then
+		json_single_row_result "$pretty" absorb 1 A "$emit_path" subrepo "$emit_target" "$emit_revision" "$emit_url" "absorbed git-subrepo into the nest"
+	else
+		printf 'Absorbed subrepo %s as a git-nest subproject at %.12s (remote %s).\n' "$emit_path" "$emit_revision" "$emit_url"
+		printf 'The upstream merge/split history recorded in the former .gitrepo file was not preserved.\n'
+	fi
+}
+
+# Absorb a Git subtree (a plain tracked folder previously added with
+# `git subtree add`) into the nest as a managed subproject. There is no
+# reliable marker for a subtree, so this path is reached only when the caller
+# explicitly passes --subtree; the remote URL must be supplied because a
+# subtree keeps no record of it once merged. Forward-only: the resulting
+# subproject is a fresh single-commit snapshot, exactly like plain outer-repo
+# file absorption. Reads parsed globals from cmd_absorb.
+absorb_subtree() {
+	if [ "$preserve_history" -eq 1 ] || [ "$push_after" -eq 1 ]; then
+		usage_error "--preserve-history and --push do not apply to --subtree; the conversion is always a fresh single-commit snapshot"
+	fi
+	[ -n "$repo_arg" ] || usage_error "absorbing a subtree needs a remote URL: git-nest absorb --subtree <path> <remote-url> [options]"
+	assert_path_not_containing_nested_project "$path"
+	[ -d "$path" ] || precondition_error "$path is not a directory"
+	if ! git ls-files -- "$path" | sed -n '1p' | grep . >/dev/null 2>&1; then
+		precondition_error "$path has no tracked outer-repository files to absorb; commit these files in the outer repo first, then rerun absorb --subtree"
+	fi
+
+	emit_path=$path
+	emit_target=$branch
+	emit_url=$repo_arg
+
+	if [ "$dry_run" -eq 1 ]; then
+		[ "$json" -eq 0 ] || GIT_NEST_JSON_DRY_RUN=1
+		if [ "$json" -eq 1 ]; then
+			json_single_row_result "$pretty" absorb 1 A "$emit_path" subtree "$emit_target" - "$emit_url" "would absorb subtree into the nest as a fresh single-commit subproject (forward-only; prior subtree history is not carried across)"
+		else
+			printf 'Would absorb subtree %s into the nest as subproject on branch %s (remote %s).\n' "$emit_path" "$branch" "$emit_url"
+			printf 'Prior subtree merge/split history would NOT be carried across; the subproject starts as a single fresh commit.\n'
+		fi
+		return 0
+	fi
+
+	[ -n "$message" ] || message="Absorb subtree $path"
+	staged_under_path=$(git diff --cached --name-only -- "$path" 2>/dev/null | sed -n '1p')
+	if [ -n "$staged_under_path" ] && [ "$force" -eq 0 ]; then
+		precondition_error "$path has staged outer-repository changes; review them or rerun absorb --subtree with --force to replace that staged state"
+	fi
+	unstaged_under_path=$(git diff --name-only -- "$path" 2>/dev/null | sed -n '1p')
+	[ -z "$unstaged_under_path" ] || precondition_error "$path has unstaged content changes; commit these files in the outer repo first, then rerun absorb --subtree"
+	untracked_under_path=$(git ls-files --others --exclude-standard -- "$path" 2>/dev/null | sed -n '1p')
+	[ -z "$untracked_under_path" ] || precondition_error "$path has untracked files; commit these files in the outer repo first, then rerun absorb --subtree"
+
+	ensure_gitignore_hygiene
+	backup=$(begin_recovery_backup "absorb --subtree" "$path" \
+		"    rm -rf \"$path\"
+    mv \"<this-dir>/original\" \"$path\"
+
+This restores the original tracked files that were at $path before the
+subtree conversion.")
+	copy_path_backup "$path" "$backup/original"
+
+	absorb_files_snapshot_repo "$path" "$branch" "$repo_arg" "$message"
+
+	revision=$(resolve_head_commit "$path" "cannot resolve absorbed subtree $path")
+	emit_revision=$revision
+	git rm -r --cached -- "$path" >/dev/null 2>&1 ||
+		git_error "failed to untrack absorbed subtree files from outer repository"
+	ensure_gitignore_entry "$path"
+	manifest_write_subproject "$path" "$repo_arg" tracked "$branch" "$revision" "$clone_mode"
+	write_materialized_state
+	stage_outer_paths "$MANIFEST_FILE" .gitignore
+	end_recovery_backup "$backup"
+
+	if [ "$json" -eq 1 ]; then
+		json_single_row_result "$pretty" absorb 1 A "$emit_path" subtree "$emit_target" "$emit_revision" "$emit_url" "absorbed subtree into the nest"
+	else
+		printf 'Absorbed subtree %s as a git-nest subproject at %.12s (remote %s).\n' "$emit_path" "$emit_revision" "$emit_url"
+		printf 'Prior subtree history was not carried across.\n'
+	fi
+}
+
 # Absorb an existing on-disk Git repository (a standalone nested repo, or a
 # submodule) into the nest as a managed subproject, keeping its own history.
 # Reads parsed globals from cmd_absorb; $source selects the exact behavior.
@@ -695,10 +883,20 @@ cmd_absorb() {
 	dry_run=0
 	json=0
 	pretty=0
+	subrepo=0
+	subtree=0
 	path_arg=
 	repo_arg=
 	while [ $# -gt 0 ]; do
 		case "$1" in
+		--subrepo)
+			subrepo=1
+			shift
+			;;
+		--subtree)
+			subtree=1
+			shift
+			;;
 		--branch)
 			[ $# -ge 2 ] || usage_error "--branch requires a name"
 			branch=$2
@@ -754,6 +952,7 @@ cmd_absorb() {
 			;;
 		esac
 	done
+	[ "$subrepo" -eq 0 ] || [ "$subtree" -eq 0 ] || usage_error "--subrepo and --subtree are mutually exclusive"
 	[ -n "$path_arg" ] || usage_error "usage: git-nest absorb <path> [<remote-url>] [options]"
 	reject_backslash_path "$path_arg"
 	path=$(normalize_path "$path_arg")
@@ -762,6 +961,23 @@ cmd_absorb() {
 	ensure_manifest
 	validate_manifest_schema
 	assert_path_not_inside_nested_project "$path"
+
+	# --subrepo and --subtree are explicit, conscious conversions: they touch
+	# actual tracked files in the outer repository, so they are never
+	# auto-detected. Refuse an already-managed path before routing to them.
+	if [ "$subrepo" -eq 1 ] || [ "$subtree" -eq 1 ]; then
+		if [ -n "$(subproject_repo "$path" || true)" ]; then
+			precondition_error "$path is already a nest subproject; use git-nest inline, git-nest detach, or git-nest remove to take it out of the nest"
+		fi
+		assert_no_case_collision "$path"
+		if [ "$subrepo" -eq 1 ]; then
+			absorb_subrepo
+		else
+			absorb_subtree
+		fi
+		return
+	fi
+
 	# Route by source type; refuse when the path is already managed so the old
 	# reversed meaning of absorb can never run by accident.
 	source=$(absorb_detect_source "$path")
@@ -779,6 +995,284 @@ cmd_absorb() {
 		;;
 	*) die "internal error: unknown absorb source $source" ;;
 	esac
+}
+
+# Make sure a nest exists at the current Git root before absorb-all scans and
+# absorbs, mirroring cmd_init's own nested-nest-conflict handling exactly (see
+# survey_pull_feature.md section 2) rather than reimplementing it differently.
+# Already a nest: return immediately. Not yet a nest, but nested inside an
+# ancestor one: refuse unless --sure, exactly like init --sure. Otherwise:
+# initialize here, the same as plain init would.
+#
+# The lock is released immediately after use (cleanup_manifest_lock) instead
+# of being held for the rest of the batch: each subsequent per-item absorb
+# call runs in its own subshell to survive a mid-batch failure (see
+# cmd_absorb_all), and a subshell inherits MANIFEST_LOCK_HELD and the EXIT
+# trap that releases it -- if this function left the lock held, the first
+# such subshell to exit would prematurely delete it out from under the rest
+# of the batch.
+absorb_all_ensure_nest() {
+	aan_sure=$1
+	aan_dry_run=$2
+	aan_json=$3
+	if root=$(git rev-parse --show-toplevel 2>/dev/null); then
+		cd "$root" || die "cannot enter Git root $root"
+	fi
+	[ -f "$MANIFEST_FILE" ] && return 0
+	if parent_root=$(nearest_parent_manifest_root 2>/dev/null); then
+		[ "$aan_sure" -eq 1 ] || precondition_error "this directory is inside existing git-nest workspace $parent_root; rerun git-nest absorb-all --sure to create an intentional nested nest here"
+	fi
+	if [ "$aan_dry_run" -eq 1 ]; then
+		# --dry-run must never write, so report the plan and stop here; the
+		# caller skips validate_manifest_schema when no manifest exists yet.
+		[ "$aan_json" -eq 1 ] || printf 'Would create a git-nest workspace at %s before absorbing.\n' "$(pwd)"
+		return 0
+	fi
+	ensure_outer_repo
+	acquire_manifest_lock
+	ensure_manifest
+	validate_manifest_schema
+	ensure_gitattributes_guard
+	[ -f .gitignore ] || : >.gitignore
+	ensure_gitignore_hygiene
+	cleanup_manifest_lock
+}
+
+# absorb-all scans like survey, then absorbs every detected submodule and
+# nested repo into the nest in one step. It never absorbs git-subrepos or
+# subtrees (always a conscious absorb --subrepo/--subtree action) and never
+# absorbs anything found underneath a boundary the scan already classified
+# (survey's boundary rule -- see survey_pull_feature.md section 1a).
+cmd_absorb_all() {
+	sure=0
+	force_partial=0
+	dry_run=0
+	json=0
+	pretty=0
+	max_depth=4
+	excludes=$SURVEY_DEFAULT_EXCLUDES
+	includes_file=$(mktemp)
+	: >"$includes_file"
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--sure)
+			sure=1
+			shift
+			;;
+		--force-partial)
+			force_partial=1
+			shift
+			;;
+		--dry-run)
+			dry_run=1
+			shift
+			;;
+		--max-depth)
+			[ $# -ge 2 ] || usage_error "--max-depth requires a positive integer"
+			validate_positive_integer "$2" "--max-depth"
+			max_depth=$2
+			shift 2
+			;;
+		--exclude)
+			[ $# -ge 2 ] || usage_error "--exclude requires a directory name"
+			validate_survey_exclude "$2"
+			excludes="$excludes $2"
+			shift 2
+			;;
+		--include)
+			[ $# -ge 2 ] || usage_error "--include requires a path"
+			validate_survey_include "$2" >>"$includes_file"
+			shift 2
+			;;
+		--json)
+			json=1
+			shift
+			;;
+		--json-pretty)
+			json=1
+			pretty=1
+			shift
+			;;
+		--*) usage_error "unknown absorb-all option: $1" ;;
+		*) usage_error "absorb-all takes no positional arguments" ;;
+		esac
+	done
+
+	absorb_all_ensure_nest "$sure" "$dry_run" "$json"
+	[ ! -f "$MANIFEST_FILE" ] || validate_manifest_schema
+
+	scan_rows=$(mktemp)
+	survey_collect_rows "$max_depth" "$excludes" "$includes_file" "$scan_rows"
+	rm -f "$includes_file"
+
+	# Only submodules and nested repos, and only ones not already inside
+	# another boundary this same scan classified (target column is "-").
+	# Carries the source kind (sc_state) alongside the path so the result rows
+	# below can report it, matching plain absorb's own JSON row shape.
+	candidates=$(mktemp)
+	while IFS='	' read -r sc_code sc_path sc_state sc_target sc_current sc_expected sc_detail; do
+		[ -n "$sc_code" ] || continue
+		case "$sc_code" in
+		S | R) ;;
+		*) continue ;;
+		esac
+		[ "$sc_target" = "-" ] || continue
+		printf '%s\t%s\n' "$sc_path" "$sc_state" >>"$candidates"
+	done <"$scan_rows"
+	rm -f "$scan_rows"
+
+	# Absorb deepest paths first, so a nested repo is absorbed before any repo
+	# containing it. survey_collect_rows already sorted shallowest-first;
+	# reverse that stable order rather than re-deriving depth here.
+	ordered=$(mktemp)
+	sed '1!G;h;$!d' "$candidates" >"$ordered"
+	rm -f "$candidates"
+
+	result_rows=$(mktemp)
+	empty=$(mktemp)
+
+	if [ "$dry_run" -eq 1 ]; then
+		while IFS='	' read -r cpath ckind; do
+			[ -n "$cpath" ] || continue
+			cpath_q=$(shell_quote "$cpath")
+			printf 'A\t%s\t%s\t-\t-\t-\twould absorb %s into the nest\n' "$cpath" "$ckind" "$cpath_q" >>"$result_rows"
+		done <"$ordered"
+		if [ "$json" -eq 1 ]; then
+			GIT_NEST_JSON_DRY_RUN=1
+			emit_json_result absorb-all 1 1 "$result_rows" "$empty" "$empty" "$pretty"
+		elif [ -s "$result_rows" ]; then
+			printf 'Would absorb %s subproject(s):\n' "$(wc -l <"$result_rows" | tr -d '[:space:]')"
+			while IFS='	' read -r rc_code rc_path rc_state rc_target rc_current rc_expected rc_detail; do
+				printf '  %s\n' "$rc_detail"
+			done <"$result_rows"
+		else
+			printf 'No submodules or nested repos found to absorb.\n'
+		fi
+		rm -f "$ordered" "$result_rows" "$empty"
+		return 0
+	fi
+
+	if [ ! -s "$ordered" ]; then
+		rm -f "$ordered" "$result_rows"
+		if [ "$json" -eq 1 ]; then
+			emit_json_result absorb-all 0 1 "$empty" "$empty" "$empty" "$pretty"
+		else
+			printf 'No submodules or nested repos found to absorb.\n'
+		fi
+		rm -f "$empty"
+		return 0
+	fi
+
+	# Back up everything this batch could touch before absorbing anything, so
+	# a mid-batch failure can be rolled back completely by default: the three
+	# shared outer-repo files, plus (per item) a full copy of the path as it
+	# looked before that item's absorb ran. Uses the same transient,
+	# self-documenting recovery-backup convention as inline/absorb
+	# --preserve-history, so a leftover after a crash is discoverable the
+	# same way (git-nest doctor's recovery-backup check, RECOVERY.txt).
+	batch=$(begin_recovery_backup "absorb-all" "batch" \
+		"    rm -rf \"$MANIFEST_FILE\" .gitignore .gitmodules
+    cp \"<this-dir>/$MANIFEST_FILE.orig\" \"$MANIFEST_FILE\" 2>/dev/null
+    cp \"<this-dir>/gitignore.orig\" .gitignore 2>/dev/null
+    cp \"<this-dir>/gitmodules.orig\" .gitmodules 2>/dev/null
+    for d in \"<this-dir>\"/item-*; do
+        p=\$(cat \"\$d/path\")
+        rm -rf -- \"\$p\"
+        mv \"\$d/original\" \"\$p\"
+    done
+
+This restores every subproject absorbed by this absorb-all run, and the
+outer manifest/ignore/submodule files, to how they looked before it started.")
+	[ -f "$MANIFEST_FILE" ] && cp "$MANIFEST_FILE" "$batch/$MANIFEST_FILE.orig"
+	[ -f .gitignore ] && cp .gitignore "$batch/gitignore.orig"
+	[ -f .gitmodules ] && cp .gitmodules "$batch/gitmodules.orig"
+
+	absorbed=0
+	failed_path=
+	failed_err=$(mktemp)
+
+	while IFS='	' read -r cpath ckind; do
+		[ -n "$cpath" ] || continue
+		item_hash=$(printf '%s' "$cpath" | cksum)
+		item_hash=${item_hash%% *}
+		item_dir="$batch/item-$item_hash"
+		mkdir -p "$item_dir"
+		printf '%s\n' "$cpath" >"$item_dir/path"
+		copy_path_backup "$cpath" "$item_dir/original"
+
+		item_err=$(mktemp)
+		if (cmd_absorb "$cpath") >/dev/null 2>"$item_err"; then
+			absorbed=$((absorbed + 1))
+			# The subshell wrote fresh manifest content to disk, but this
+			# process's own manifest cache does not know that (subshell
+			# variable changes never propagate back); force a re-read so the
+			# lookups below see what was actually just written.
+			_MNF_LOADED=
+			c_repo=$(subproject_repo "$cpath" || true)
+			c_target=$(subproject_key "$cpath" target_branch || true)
+			c_revision=$(subproject_key "$cpath" revision || true)
+			printf 'A\t%s\t%s\t%s\t%s\t%s\tabsorbed %s into the nest\n' "$cpath" "$ckind" "${c_target:--}" "${c_revision:--}" "${c_repo:--}" "$ckind" >>"$result_rows"
+			rm -f "$item_err"
+		else
+			failed_path=$cpath
+			cp "$item_err" "$failed_err"
+			rm -f "$item_err"
+			break
+		fi
+	done <"$ordered"
+	rm -f "$ordered"
+
+	if [ -n "$failed_path" ]; then
+		printf 'Error: absorb-all failed on %s:\n' "$failed_path" >&2
+		cat "$failed_err" >&2
+		if [ "$force_partial" -eq 1 ]; then
+			printf '%s subproject(s) already absorbed remain in place (--force-partial). Fix the problem above, then rerun absorb-all for the rest.\n' "$absorbed" >&2
+			end_recovery_backup "$batch"
+		else
+			printf 'Rolling back %s already-absorbed subproject(s)...\n' "$absorbed" >&2
+			for item_dir in "$batch"/item-*; do
+				[ -d "$item_dir" ] || continue
+				spath=$(cat "$item_dir/path")
+				rm -rf -- "$spath"
+				mv "$item_dir/original" "$spath"
+			done
+			if [ -f "$batch/$MANIFEST_FILE.orig" ]; then
+				cp "$batch/$MANIFEST_FILE.orig" "$MANIFEST_FILE"
+			else
+				rm -f "$MANIFEST_FILE"
+			fi
+			if [ -f "$batch/gitignore.orig" ]; then
+				cp "$batch/gitignore.orig" .gitignore
+			else
+				rm -f .gitignore
+			fi
+			if [ -f "$batch/gitmodules.orig" ]; then
+				cp "$batch/gitmodules.orig" .gitmodules
+			else
+				rm -f .gitmodules
+			fi
+			stage_outer_paths_if_repo "$MANIFEST_FILE" .gitignore
+			[ -f .gitmodules ] && stage_outer_paths_if_repo .gitmodules || true
+			_MNF_LOADED=
+			end_recovery_backup "$batch"
+			printf 'Rolled back. Fix the problem above and re-run absorb-all, or pass --force-partial next time to keep partial progress instead of rolling back.\n' >&2
+		fi
+		rm -f "$result_rows" "$empty" "$failed_err"
+		exit "$EXIT_PRECONDITION"
+	fi
+
+	end_recovery_backup "$batch"
+	rm -f "$failed_err"
+
+	if [ "$json" -eq 1 ]; then
+		emit_json_result absorb-all 0 1 "$result_rows" "$empty" "$empty" "$pretty"
+	else
+		printf 'Absorbed %s subproject(s):\n' "$absorbed"
+		while IFS='	' read -r rc_code rc_path rc_state rc_target rc_current rc_expected rc_detail; do
+			printf '  %s (%s) at %.12s\n' "$rc_path" "$rc_state" "$rc_current"
+		done <"$result_rows"
+	fi
+	rm -f "$result_rows" "$empty"
 }
 
 # inline dissolves a managed subproject back into the outer repository as ordinary

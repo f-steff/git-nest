@@ -1,3 +1,10 @@
+## 0.8.4 - 2026-07-19
+
+### Survey, boundaries, and paths
+  * Added survey command replacing discover: read-only scan for nest-managed subprojects, uninitialized submodules, and detached former subprojects.
+  * Enforced project-boundary safety: write-side commands refuse parent-to-nested-project path crossings.
+  * Hardened paths-with-spaces handling across absorb --subrepo/--subtree, pull, and boundary enforcement.
+
 # Version History
 
 ## 0.8.3 - 2026-07-18
