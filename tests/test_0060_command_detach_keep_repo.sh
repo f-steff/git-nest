@@ -57,9 +57,9 @@ test "$(git -C libs/one rev-parse HEAD)" = "$one_head"
 run_capture "status reports the kept checkout as unmanaged" status.out status.err -- "$GIT_NEST" status --porcelain
 assert_file_contains status.out 'U	libs/one	unmanaged	-	-	-	nested-git-repo'
 
-# survey labels the kept checkout as a detached former subproject because its
+# discover labels the kept checkout as a detached former subproject because its
 # path still carries a nest-owned ignore entry.
-run_capture "survey labels the detached repo" disc.out disc.err -- "$GIT_NEST" survey --porcelain
+run_capture "discover labels the detached repo" disc.out disc.err -- "$GIT_NEST" discover --porcelain
 assert_file_contains disc.out 'D	libs/one	detached'
 
 # --- Round trip: the detached repo can be absorbed back into the nest ---

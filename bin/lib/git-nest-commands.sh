@@ -111,7 +111,6 @@ usage() {
 	help_usage "diff" "[--since <ref>] [--stat] [--json | --json-pretty]"
 	help_usage "log" "[--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]"
 	help_usage "list" "[--porcelain | --json | --json-pretty] [--redact]"
-	help_usage "tree" "[--all] [--recursive] [--json | --json-pretty]"
 	help_usage "survey" "[--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
 	help_usage "doctor" "[--json | --json-pretty] [--online | --offline] [--timeout <seconds>] [--exit-code] [--redact]"
 
@@ -262,10 +261,6 @@ usage() {
 	help_command "list [--porcelain | --json | --json-pretty] [--redact]"
 	help_text "List managed subprojects with URL, target branch, revision, tag, state, and reproducibility."
 	help_detail "Stable order for scripts; --porcelain and --json/--json-pretty print machine-readable output."
-	help_command "tree [--all] [--recursive] [--json | --json-pretty]"
-	help_text "Display an ASCII-art tree of the nest, grouped by shared path prefixes."
-	help_detail "--all also shows survey's own detected-but-unmanaged findings, marked with their code."
-	help_detail "--recursive also descends into nested nests, rendering their subprojects nested under that branch."
 	help_command "survey [--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
 	help_text "Scan for nested Git repositories, submodules, and git-subrepos not managed by .gitnest."
 	help_detail "Bounded by --max-depth (default 4) and pruned by default and extra --exclude directory names."
@@ -637,20 +632,6 @@ command_help() {
 		help_example "git-nest list --json-pretty --redact"
 		help_detail "status stays focused on workspace health; use list for a scriptable inventory."
 		;;
-	tree)
-		help_command "tree [--all] [--recursive] [--json | --json-pretty]"
-		help_text "Display an ASCII-art tree of the current nest, grouped by shared path prefixes."
-		help_detail "Plain: every managed subproject, as a branch from the nest root."
-		help_detail "--all also shows survey's own detected-but-unmanaged findings (submodules, nested repos, git-subrepos, nest roots, detached former subprojects), each marked with its code."
-		help_detail "--recursive also descends into nested nests, rendering their own subprojects nested under that branch."
-		help_detail "Uses ASCII connectors only (|--, \`--, |); no Unicode box-drawing characters."
-		help_detail "--json/--json-pretty print the same shared row schema other inspection commands use."
-		help_heading "Examples:"
-		help_example "git-nest tree"
-		help_example "git-nest tree --all"
-		help_example "git-nest tree --all --recursive"
-		help_opposite "list prints the same managed subprojects as a flat, scriptable table."
-		;;
 	survey)
 		help_command "survey [--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
 		help_text "Scan the current nest for nested Git repositories, submodules, and git-subrepos not in .gitnest."
@@ -977,10 +958,6 @@ git_nest_main() {
 	list)
 		enter_project_root_required
 		cmd_list "$@"
-		;;
-	tree)
-		enter_project_root_required
-		cmd_tree "$@"
 		;;
 	completion) cmd_completion "$@" ;;
 	export)
@@ -4470,7 +4447,7 @@ cmd_pull() {
 }
 
 GIT_NEST_command_names() {
-	printf '%s\n' "init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
+	printf '%s\n' "init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list completion export absorb absorb-all inline detach version help"
 }
 
 # Internal completion data endpoint used by generated shell completion scripts.
@@ -4496,7 +4473,7 @@ _git_nest_complete()
     local cur cmd commands subprojects
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
-    commands="init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
+    commands="init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list completion export absorb absorb-all inline detach version help"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -4549,9 +4526,6 @@ _git_nest_complete()
         list)
             COMPREPLY=( $(compgen -W "--porcelain --json --json-pretty --redact" -- "$cur") )
             ;;
-        tree)
-            COMPREPLY=( $(compgen -W "--all --recursive --json --json-pretty" -- "$cur") )
-            ;;
         diff)
             COMPREPLY=( $(compgen -W "--since --stat --json --json-pretty" -- "$cur") )
             ;;
@@ -4599,7 +4573,7 @@ completion_zsh() {
 _git_nest()
 {
     local -a commands subprojects
-    commands=(init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help)
+    commands=(init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list completion export absorb absorb-all inline detach version help)
 
     if (( CURRENT == 2 )); then
         _describe 'git-nest command' commands
@@ -4612,7 +4586,7 @@ _git_nest()
             _arguments '1:shell:(bash zsh fish)'
             ;;
         help)
-            _arguments '1:command:(init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help)'
+            _arguments '1:command:(init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list completion export absorb absorb-all inline detach version help)'
             ;;
         export)
             _arguments '--output[write archive or directory]:path:_files' '--format[archive format]:format:(tar.gz zip dir)' '--include-git[keep .git directories]' '--deterministic[normalize archive metadata]' '--allow-dirty[allow dirty subprojects]'
@@ -4652,9 +4626,6 @@ _git_nest()
             ;;
         list)
             _arguments '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]' '--redact[strip credentials and home paths]'
-            ;;
-        tree)
-            _arguments '--all[also show unmanaged findings]' '--recursive[also descend into nested nests]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
             ;;
         diff)
             _arguments '--since[read manifest from ref]:ref:' '--stat[include file statistics]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
@@ -4698,8 +4669,8 @@ function __git_nest_subprojects
     git-nest __complete subprojects 2>/dev/null
 end
 
-complete -c git-nest -f -n "__fish_use_subcommand" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
-complete -c git-nest -f -n "__fish_seen_subcommand_from help" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
+complete -c git-nest -f -n "__fish_use_subcommand" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list completion export absorb absorb-all inline detach version help"
+complete -c git-nest -f -n "__fish_seen_subcommand_from help" -a "init repair add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list completion export absorb absorb-all inline detach version help"
 complete -c git-nest -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
 complete -c git-nest -f -n "__fish_seen_subcommand_from export" -a "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir"
 complete -c git-nest -f -n "__fish_seen_subcommand_from absorb" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run --json --json-pretty --subrepo --subtree full partial (__git_nest_subprojects)"
@@ -4714,7 +4685,6 @@ complete -c git-nest -f -n "__fish_seen_subcommand_from doctor" -a "--json --jso
 complete -c git-nest -f -n "__fish_seen_subcommand_from survey" -a "--max-depth --exclude --include --porcelain --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from absorb-all" -a "--sure --force-partial --dry-run --max-depth --exclude --include --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from list" -a "--porcelain --json --json-pretty --redact"
-complete -c git-nest -f -n "__fish_seen_subcommand_from tree" -a "--all --recursive --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from diff" -a "--since --stat --json --json-pretty"
 complete -c git-nest -f -n "__fish_seen_subcommand_from log" -a "--max-count --since --until --subproject --oneline --recursive"
 complete -c git-nest -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --dry-run --check --strict --no-fetch (__git_nest_subprojects)"

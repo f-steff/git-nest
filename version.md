@@ -1,3 +1,10 @@
+## 0.8.5 - 2026-07-20
+
+### absorb-all, pull, and documentation
+  * Added absorb-all: recursively convert all nested repositories and submodules into managed subprojects in one pass.
+  * Added JSON output to pull and hardened pull edge-case handling.
+  * Documented survey, absorb-all, absorb --subrepo/--subtree, and pull.
+
 ## 0.8.4 - 2026-07-19
 
 ### Survey, boundaries, and paths

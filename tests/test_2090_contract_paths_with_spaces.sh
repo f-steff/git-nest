@@ -67,13 +67,13 @@ assert_file_not_contains .gitnest '[subproject "libs/my project"]'
 test -d "libs/another one/.git"
 test ! -e "libs/my project"
 
-# --- survey: an unmanaged nested repo with a space in its path, and the
+# --- discover: an unmanaged nested repo with a space in its path, and the
 # suggested absorb command must be shell-quoted so it is safe to copy/paste.
-# Deliberately not under vendor/ (or another name in SURVEY_DEFAULT_EXCLUDES)
+# Deliberately not under vendor/ (or another name in DISCOVER_DEFAULT_EXCLUDES)
 # since those are pruned by design and would never be reported. ---
-test_step "survey reports a space-containing unmanaged repo with a quoted suggestion" "The suggested absorb command must be safe to copy and paste verbatim even when the path contains a space."
+test_step "discover reports a space-containing unmanaged repo with a quoted suggestion" "The suggested absorb command must be safe to copy and paste verbatim even when the path contains a space."
 git clone -q "file://$remote_bar" "external/other project" >/dev/null 2>&1
-run_capture "survey finds the space-containing unmanaged repo" discover.out discover.err -- "$GIT_NEST" survey
+run_capture "discover finds the space-containing unmanaged repo" discover.out discover.err -- "$GIT_NEST" discover
 assert_file_contains discover.out "external/other project"
 assert_file_contains discover.out "run git-nest absorb 'external/other project' to manage it"
 
@@ -135,4 +135,4 @@ run_ok "exported to a space-containing directory" -- "$GIT_NEST" export --output
 test -d "$root/export dir/libs/another one"
 test -d "$root/export dir/external/other project"
 
-describe_result "Subproject paths containing spaces were correctly stored, read, converted, guarded, and reported (with safely quoted suggestions) across add, absorb (all sources), move, config, survey, pull, remove, and export."
+describe_result "Subproject paths containing spaces were correctly stored, read, converted, guarded, and reported (with safely quoted suggestions) across add, absorb (all sources), move, config, discover, pull, remove, and export."

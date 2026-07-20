@@ -36,13 +36,6 @@ git nest list --porcelain
 git nest survey
 ```
 
-Use `tree` for a quick visual overview grouped by shared path prefixes instead of `list`'s flat table; `--all` adds `survey`'s own unmanaged findings, and `--recursive` also descends into nested nests:
-
-```sh
-git nest tree
-git nest tree --all --recursive
-```
-
 To bring everything `survey` finds into the nest in one step, use `absorb-all`; it never touches git-subrepos or subtrees (those need the explicit `absorb --subrepo`/`absorb --subtree` conversion) and rolls back the whole batch by default if one item fails partway through:
 
 ```sh
