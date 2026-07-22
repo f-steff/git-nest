@@ -6,7 +6,7 @@ git-nest is a thoughtful tool that solves a real problem: coordinating multiple 
 
 The nest is a home for related repositories. Each subproject remains a normal Git repository with its own history, branches, remotes, and workflow. The outer repository records how those repositories belong together in the `.gitnest` manifest.
 
-## Current 0.8 Capabilities
+## Current Capabilities
 
 Since conception as a script dealing with submodules, `git-nest` has focused on making multi-repository workspaces explicit and reproducible without turning them into a monorepo.
 
@@ -15,17 +15,19 @@ It can:
 - create a nest manifest with `init`, and refresh managed support files with `repair`;
 - add, remove, move, and retarget subproject entries;
 - clone an outer repository and restore its recorded subprojects;
-- restore the filesystem from `.gitnest` with `restore`;
+- restore the filesystem from `.gitnest` with `restore`, and fast-forward clean subprojects to their upstream branch heads with `pull`;
 - snapshot clean, reproducible subproject commits back into `.gitnest`;
-- inspect state with `status`, `verify`, `outdated`, `diff`, `log`, `list`, and `doctor`;
-- discover unmanaged nested repositories and submodules with `discover`;
+- inspect state with `status`, `verify`, `outdated`, `diff`, `log`, `list`, `tree`, and `doctor`;
+- survey unmanaged nested repositories, submodules, and git-subrepos with `survey`, and bring every detected submodule and nested repo in at once with `absorb-all`;
 - update one subproject to a branch head, explicit revision, or tag;
 - remember reusable branch names with local `branch-*` commands;
 - install opt-in local hooks that help keep `.gitnest` current;
-- bring files, repositories, and submodules into the nest with `absorb`, and take subprojects back out with `inline`, `detach`, and `remove`;
+- bring files, repositories, submodules, git-subrepos, and subtrees into the nest with `absorb` (including `--subrepo`/`--subtree`), and take subprojects back out with `inline`, `detach`, and `remove`;
 - export a source snapshot.
 
 The tool does not replace normal Git commit, branch, review, or push workflows. Work in a subproject with Git, push that subproject when it is ready, then run `git-nest snapshot` so the outer manifest points at a reproducible commit.
+
+See `docs/examples.md` for walkthroughs of these workflows with real commands and output.
 
 ## Requirements
 
@@ -137,6 +139,8 @@ Rules enforced by `validate_manifest_schema` before any command reads or writes 
 Unknown keys beyond this set are preserved verbatim across manifest rewrites (see `docs/technical_docs.md` for the exact preservation contract) rather than silently dropped, so hand-added annotations survive normal git-nest operations.
 
 ## Typical Workflows
+
+See `docs/examples.md` for a fuller set of walkthroughs (absorbing existing repositories, submodules, git-subrepos, and subtrees; surveying and bulk-absorbing an unmanaged tree; nested nests; pulling; visualizing a nest with `tree`; and more), each with real commands and output.
 
 ### Create A Nest
 
@@ -382,6 +386,7 @@ git-nest ships as plain POSIX shell, split by responsibility rather than as one 
 | `bin/lib/git-nest-doctor.sh` | Read-only diagnostics: `doctor` and `discover`, plus the reproducibility-state classification `list` uses. |
 | `bin/lib/git-nest-hooks.sh` | Managed local Git hook installation, removal, and preflight (`hooks-install`/`hooks-uninstall`). |
 | `bin/lib/parse-gitnest.awk` | Single-pass `.gitnest` parser used by the manifest cache: emits shell-assignable variable declarations for `eval`, avoiding a subprocess per key read. |
+| `bin/lib/tree-render.awk` | Renders `tree`'s flat, pre-sorted row list as an ASCII-art tree grouped by shared path prefixes. |
 | `bin/.shellcheckrc` | ShellCheck configuration and the small set of justified, commented suppressions for this codebase. |
 | `docs/` | User-facing and technical documentation: the behavior contract, technical notes, exit codes, and maintainer guidance. |
 | `skills/git-nest/SKILL.md` | The portable AI-agent usage skill shipped to projects that consume git-nest (see "AI User Skill" below). |
@@ -417,6 +422,10 @@ sh tests/run-all-tests.sh help                 # commands and examples
 ```
 
 Options: `--verbose` (`-v`) streams everything (full raw output with a shell trace) instead of the curated narrative; `--stop-on-fail` stops at the first failure; `--no-log` skips the full-run log and `--log FILE` writes it elsewhere. An unknown command, option, or test ID prints the help and stops. All commands and options work through `tests\run-all-tests.bat` too.
+
+## Contributing And Maintenance
+
+See `docs/maintainer.md` for maintainer-facing guidance: coding conventions, the ASCII-only rule, release steps, and other project-specific rules not needed just to use the tool.
 
 ## AI User Skill
 

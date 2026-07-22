@@ -563,6 +563,125 @@ list_rows() {
 	done
 }
 
+# Collect rows for tree: one per managed subproject (code M, no annotation),
+# plus (with tcr_all=1) survey's own unmanaged findings, reusing
+# survey_collect_rows so tree never disagrees with survey about what is out
+# there. tcr_prefix is prepended to every path so a recursive call from
+# inside a nested nest reports paths relative to the outermost root; pass
+# "." for the top-level call. With tcr_recursive=1, a managed subproject
+# that is itself a nested nest (has its own .gitnest) is also descended
+# into, in its own subshell (isolating that recursive call's own variables
+# from this loop, the same pattern pull_recursive already uses), so a
+# mid-recursion path never corrupts an in-progress sibling iteration here.
+tree_collect_rows() {
+	tcr_all=$1
+	tcr_recursive=$2
+	tcr_prefix=$3
+	tcr_rows=$4
+
+	tcr_managed=$(mktemp)
+	manifest_subprojects >"$tcr_managed"
+	while IFS= read -r tcr_path; do
+		[ -n "$tcr_path" ] || continue
+		tcr_full=$tcr_path
+		[ "$tcr_prefix" = "." ] || tcr_full="$tcr_prefix/$tcr_path"
+		if [ -f "$tcr_path/$MANIFEST_FILE" ]; then
+			printf 'M\t%s\t(nested nest)\n' "$tcr_full" >>"$tcr_rows"
+			if [ "$tcr_recursive" -eq 1 ] && [ -d "$tcr_path/.git" ]; then
+				(cd "$tcr_path" && tree_collect_rows "$tcr_all" "$tcr_recursive" "$tcr_full" "$tcr_rows")
+			fi
+		else
+			printf 'M\t%s\t\n' "$tcr_full" >>"$tcr_rows"
+		fi
+	done <"$tcr_managed"
+	rm -f "$tcr_managed"
+
+	if [ "$tcr_all" -eq 1 ]; then
+		tcr_scan_rows=$(mktemp)
+		tcr_includes=$(mktemp)
+		: >"$tcr_includes"
+		survey_collect_rows 4 "$SURVEY_DEFAULT_EXCLUDES" "$tcr_includes" "$tcr_scan_rows"
+		rm -f "$tcr_includes"
+		while IFS='	' read -r tcr_code tcr_path tcr_state tcr_target tcr_current tcr_expected tcr_detail; do
+			[ -n "$tcr_code" ] || continue
+			tcr_full=$tcr_path
+			[ "$tcr_prefix" = "." ] || tcr_full="$tcr_prefix/$tcr_path"
+			printf '%s\t%s\t%s\n' "$tcr_code" "$tcr_full" "$tcr_state" >>"$tcr_rows"
+		done <"$tcr_scan_rows"
+		rm -f "$tcr_scan_rows"
+	fi
+}
+
+# tree displays an ASCII-art tree of the current nest, grouped by shared path
+# prefixes. Plain: every managed subproject. --all: also survey's own
+# detected-but-unmanaged findings (submodules, nested repos, git-subrepos,
+# nest roots, detached former subprojects); subtrees remain undetectable, the
+# same limitation survey already has. --recursive: also descends into nested
+# nests, rendering their own subprojects nested under that branch.
+cmd_tree() {
+	show_all=0
+	recursive=0
+	porcelain=0
+	json=0
+	pretty=0
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--all)
+			show_all=1
+			shift
+			;;
+		--recursive)
+			recursive=1
+			shift
+			;;
+		--porcelain)
+			porcelain=1
+			shift
+			;;
+		--json)
+			json=1
+			shift
+			;;
+		--json-pretty)
+			json=1
+			pretty=1
+			shift
+			;;
+		--*) usage_error "unknown tree option: $1" ;;
+		*) usage_error "tree takes no positional arguments" ;;
+		esac
+	done
+	[ "$porcelain" -eq 0 ] || [ "$json" -eq 0 ] || usage_error "tree cannot combine --porcelain with --json/--json-pretty"
+	ensure_manifest
+	validate_manifest_schema
+
+	tree_rows=$(mktemp)
+	tree_collect_rows "$show_all" "$recursive" "." "$tree_rows"
+
+	# Expand the 3-column (code/path/annot) rows tree_collect_rows produces into
+	# the shared 7-column porcelain schema so json, porcelain, and human output
+	# all derive from one row set and never disagree.
+	tree_full=$(mktemp)
+	while IFS='	' read -r tf_code tf_path tf_annot; do
+		[ -n "$tf_code" ] || continue
+		printf '%s\t%s\t%s\t-\t-\t-\t%s\n' "$tf_code" "$tf_path" "${tf_annot:--}" "$tf_annot" >>"$tree_full"
+	done <"$tree_rows"
+	rm -f "$tree_rows"
+
+	if [ "$json" -eq 1 ]; then
+		tree_empty=$(mktemp)
+		emit_json_result tree 0 1 "$tree_full" "$tree_empty" "$tree_empty" "$pretty"
+		rm -f "$tree_empty"
+	elif [ "$porcelain" -eq 1 ]; then
+		# Stable fixed-column records for scripts; empty output means nothing found.
+		cat "$tree_full"
+	else
+		tree_tab=$(printf '\t')
+		sort -t "$tree_tab" -k2,2 "$tree_full" | awk -f "$SCRIPT_DIR/lib/tree-render.awk"
+	fi
+	rm -f "$tree_full"
+}
+
 # list prints the managed subprojects in a stable order with their URL, target
 # branch, revision, tag, checkout state, and reproducibility. It is a script-first
 # inventory command; status stays focused on workspace health.

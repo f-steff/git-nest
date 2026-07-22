@@ -36,6 +36,13 @@ git nest list --porcelain
 git nest survey
 ```
 
+Use `tree` for a quick visual overview grouped by shared path prefixes instead of `list`'s flat table; `--all` adds `survey`'s own unmanaged findings, and `--recursive` also descends into nested nests:
+
+```sh
+git nest tree
+git nest tree --all --recursive
+```
+
 To bring everything `survey` finds into the nest in one step, use `absorb-all`; it never touches git-subrepos or subtrees (those need the explicit `absorb --subrepo`/`absorb --subtree` conversion) and rolls back the whole batch by default if one item fails partway through:
 
 ```sh
@@ -123,6 +130,8 @@ git nest snapshot --recursive
 ```
 
 Write-side commands preserve nest boundaries. From a parent nest, do not run path-changing commands against paths inside a nested nest; run from the nested nest root instead. Use `snapshot --recursive` only when the user wants recursive local manifest refresh. Keep current-nest scoped commands such as `diff`, `foreach-*`, and `export` rooted where the user asked you to run them.
+
+Only run `git-nest init --sure` to create a new nested nest when the user explicitly asks for one. `init --sure` (and `absorb-all`'s auto-init) always refuses, with no override, if the new nest's own subtree would contain a path already managed by an ancestor nest; the error names the conflicting ancestor and the exact `detach`/`init`/`absorb` recipe to resolve it. Follow that recipe rather than improvising a different fix.
 
 Use porcelain output when a script or automation step needs stable records:
 

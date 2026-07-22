@@ -405,8 +405,10 @@ copy_path_backup() {
 
 # Build a history-preserving subproject repo from tracked outer files using
 # git-filter-repo. Used by the files source of absorb with --preserve-history.
+# Uses an afph_-prefixed path (rather than bare path) because absorb_files
+# calls this without a subshell while holding its own bare path across the call.
 absorb_files_preserve_history_repo() {
-	path=$1
+	afph_path=$1
 	branch=$2
 	remote_url=$3
 	tmp_parent=$4
@@ -418,37 +420,40 @@ absorb_files_preserve_history_repo() {
 		git_error "failed to clone outer repository for history-preserving absorb"
 	(
 		cd "$filtered" || exit 1
-		git-filter-repo --path "$path/" --path-rename "$path/": --force >/dev/null 2>&1 ||
-			git_error "git-filter-repo failed while absorbing $path"
+		git-filter-repo --path "$afph_path/" --path-rename "$afph_path/": --force >/dev/null 2>&1 ||
+			git_error "git-filter-repo failed while absorbing $afph_path"
 		git branch -M "$branch" || git_error "failed to rename absorbed branch to $branch"
 		git remote remove origin >/dev/null 2>&1 || true
 		git remote add origin "$remote_url" || git_error "failed to set absorbed origin"
 	)
-	rm -rf -- "$path" || git_error "failed to replace $path with absorbed repository"
-	cp -R "$filtered" "$path" || git_error "failed to install absorbed repository at $path"
+	rm -rf -- "$afph_path" || git_error "failed to replace $afph_path with absorbed repository"
+	cp -R "$filtered" "$afph_path" || git_error "failed to install absorbed repository at $afph_path"
 }
 
 # Build a fresh single-commit subproject repo from tracked outer files. Used by
 # the files source of absorb without --preserve-history.
+# Uses an afsr_-prefixed path (rather than bare path) because absorb_files,
+# absorb_subrepo, and absorb_subtree all call this without a subshell while
+# holding their own bare path across the call.
 absorb_files_snapshot_repo() {
-	path=$1
+	afsr_path=$1
 	branch=$2
 	remote_url=$3
 	message=$4
 	outer_user_name=$(git config user.name 2>/dev/null || true)
 	outer_user_email=$(git config user.email 2>/dev/null || true)
 	(
-		cd "$path" || exit 1
+		cd "$afsr_path" || exit 1
 		git init -b "$branch" >/dev/null 2>&1 || {
 			git init >/dev/null
 			git checkout -b "$branch" >/dev/null
 		}
 		[ -z "$outer_user_name" ] || git config user.name "$outer_user_name"
 		[ -z "$outer_user_email" ] || git config user.email "$outer_user_email"
-		git remote add origin "$remote_url" || git_error "failed to set origin for $path"
-		git add -A || git_error "failed to stage absorbed files in $path"
+		git remote add origin "$remote_url" || git_error "failed to set origin for $afsr_path"
+		git add -A || git_error "failed to stage absorbed files in $afsr_path"
 		git commit --allow-empty -m "$message" >/dev/null ||
-			git_error "failed to create initial absorb commit in $path"
+			git_error "failed to create initial absorb commit in $afsr_path"
 	)
 }
 
@@ -1022,6 +1027,7 @@ absorb_all_ensure_nest() {
 	if parent_root=$(nearest_parent_manifest_root 2>/dev/null); then
 		[ "$aan_sure" -eq 1 ] || precondition_error "this directory is inside existing git-nest workspace $parent_root; rerun git-nest absorb-all --sure to create an intentional nested nest here"
 	fi
+	assert_new_nest_excludes_ancestor_subprojects
 	if [ "$aan_dry_run" -eq 1 ]; then
 		# --dry-run must never write, so report the plan and stop here; the
 		# caller skips validate_manifest_schema when no manifest exists yet.

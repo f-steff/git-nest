@@ -162,10 +162,13 @@ cmd_hooks_install() {
 }
 
 # Remove one hook only when it is git-nest managed.
+# Uses an rmh_-prefixed repo (rather than bare repo) because cmd_hooks_uninstall
+# calls this three times in a row without a subshell while holding its own
+# bare repo loop variable across the calls.
 remove_managed_hook() {
-	repo=$1
+	rmh_repo=$1
 	hook=$2
-	hook_file=$(hook_path_for "$repo" "$hook")
+	hook_file=$(hook_path_for "$rmh_repo" "$hook")
 	[ -f "$hook_file" ] || return 0
 	if grep -F '# git-nest managed hook' "$hook_file" >/dev/null 2>&1; then
 		rm -f "$hook_file"

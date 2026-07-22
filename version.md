@@ -1,3 +1,10 @@
+## 0.8.6 - 2026-07-22
+
+### Tree command
+  * Added git-nest tree: visual directory-tree rendering of the nest with subproject type labels, URLs, and repository state.
+  * Added --porcelain and --json modes for script-friendly output.
+  * Centered output on a single +-- connector with trailing / for directories.
+
 ## 0.8.5 - 2026-07-20
 
 ### absorb-all, pull, and documentation

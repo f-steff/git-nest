@@ -633,6 +633,50 @@ assert_path_not_containing_nested_project() {
 	rm -f "$apcnp_tmp"
 }
 
+# Refuse creating a new nest (at the current directory) whose subtree would
+# contain a path already registered as a subproject by an ancestor nest. This
+# can only happen if a directory that is an ancestor of an already-registered
+# deep subproject is later, retroactively, given its own Git repository and
+# becomes a valid new nest root -- see survey_pull_feature.md section 4 for
+# the full scenario and why absorb itself cannot hit this (assert_no_deeper_repos
+# and assert_path_not_containing_nested_project already guard every absorb
+# path; only nest creation itself was missing this check). Called from
+# cmd_init and absorb_all_ensure_nest before either creates anything at the
+# new root.
+#
+# Walks the full ancestor chain, not just the nearest manifest (unlike
+# nearest_parent_manifest_root): the premise of this bug is a broken
+# invariant, so a second retroactive repo boundary stacked on the first could
+# put the conflicting registration two ancestors up instead of one.
+assert_new_nest_excludes_ancestor_subprojects() {
+	anes_new_root=$(pwd -P)
+	anes_dir=$anes_new_root
+	anes_parent=$(dirname "$anes_dir")
+	while [ "$anes_parent" != "$anes_dir" ]; do
+		if [ -f "$anes_parent/$MANIFEST_FILE" ]; then
+			anes_tmp=$(tmp_for "$MANIFEST_FILE.ancestorcheck")
+			manifest_subprojects_from_file "$anes_parent/$MANIFEST_FILE" >"$anes_tmp"
+			while IFS= read -r anes_rel; do
+				[ -n "$anes_rel" ] || continue
+				anes_abs=$anes_parent/$anes_rel
+				case "$anes_abs" in
+				"$anes_new_root"/*)
+					anes_from_new=${anes_abs#"$anes_new_root"/}
+					anes_parent_q=$(shell_quote "$anes_parent")
+					anes_rel_q=$(shell_quote "$anes_rel")
+					anes_from_new_q=$(shell_quote "$anes_from_new")
+					rm -f "$anes_tmp"
+					precondition_error "$anes_new_root would become a nest whose subtree contains $anes_abs, already managed as subproject $anes_rel by the nest at $anes_parent; resolve this manually: (cd $anes_parent_q && git-nest detach $anes_rel_q), retry this init here, then run git-nest absorb $anes_from_new_q"
+					;;
+				esac
+			done <"$anes_tmp"
+			rm -f "$anes_tmp"
+		fi
+		anes_dir=$anes_parent
+		anes_parent=$(dirname "$anes_dir")
+	done
+}
+
 stage_outer_paths() {
 	git add -- "$@" || git_error "failed to stage outer repository changes"
 }
@@ -936,9 +980,12 @@ manifest_write_project() {
 }
 
 # Write one subproject section after validating state-specific required fields.
+# Uses an mws_-prefixed path/repo (rather than bare path/repo) because this is
+# called without a subshell from callers (add, freeze, snapshot, upload,
+# update, finalize, absorb) that hold their own bare path/repo across the call.
 manifest_write_subproject() {
-	path=$1
-	repo=$2
+	mws_path=$1
+	mws_repo=$2
 	state=$3
 	a=${4:-}
 	b=${5:-}
@@ -946,33 +993,33 @@ manifest_write_subproject() {
 	d=${7:-}
 	e=${8:-}
 	previous_clone=
-	[ -f "$MANIFEST_FILE" ] && previous_clone=$(subproject_key "$path" clone || true)
+	[ -f "$MANIFEST_FILE" ] && previous_clone=$(subproject_key "$mws_path" clone || true)
 	preserved=$(mktemp)
-	[ -f "$MANIFEST_FILE" ] && manifest_preserved_keys "$(subproject_section "$path")" "^(repo|clone|target_branch|revision|tag)$" >"$preserved" || : >"$preserved"
+	[ -f "$MANIFEST_FILE" ] && manifest_preserved_keys "$(subproject_section "$mws_path")" "^(repo|clone|target_branch|revision|tag)$" >"$preserved" || : >"$preserved"
 
-	require_value "$path" "cannot write manifest subproject with an empty path"
-	require_value "$repo" "cannot write manifest subproject $path without a repository URL"
+	require_value "$mws_path" "cannot write manifest subproject with an empty path"
+	require_value "$mws_repo" "cannot write manifest subproject $mws_path without a repository URL"
 	case "$state" in
 	finalized)
-		require_value "$a" "cannot pin $path without a resolved revision; fetch the subproject or pass --revision <sha>"
+		require_value "$a" "cannot pin $mws_path without a resolved revision; fetch the subproject or pass --revision <sha>"
 		clone=${d:-$previous_clone}
 		;;
 	pending)
 		die "pending manifest state is no longer supported; use git-nest snapshot after pushing the subproject commit"
 		;;
 	tracked)
-		require_value "$a" "cannot track $path without a target branch"
+		require_value "$a" "cannot track $mws_path without a target branch"
 		clone=${c:-$previous_clone}
 		;;
-	*) die "unknown manifest state for $path: $state" ;;
+	*) die "unknown manifest state for $mws_path: $state" ;;
 	esac
-	validate_clone_mode "$clone" "subproject $path clone mode"
+	validate_clone_mode "$clone" "subproject $mws_path clone mode"
 
 	ensure_manifest
-	manifest_remove_section "subproject \"$path\""
+	manifest_remove_section "subproject \"$mws_path\""
 	{
-		printf '\n[subproject "%s"]\n' "$path"
-		printf 'repo=%s\n' "$repo"
+		printf '\n[subproject "%s"]\n' "$mws_path"
+		printf 'repo=%s\n' "$mws_repo"
 		if [ -n "$clone" ]; then
 			printf 'clone=%s\n' "$clone"
 		fi
@@ -996,6 +1043,14 @@ manifest_write_subproject() {
 }
 
 # Remove one key from a subproject section, used for cleanup hints after deletion.
+# Bare "path" here is safe today (audited): cmd_config's "unset" call is the
+# function's last statement in its case branch (no read-after), and
+# cleanup_branch_for_subproject's two calls are safe because that function's
+# own path parameter is prefixed (cbfs_path), so this callee's bare "path"
+# no longer collides with anything the caller reads afterward. If a new
+# caller is added that holds its own bare "path"/"repo" across a call to
+# this function without an intervening subshell, prefix this parameter
+# (e.g. mrsk_path) the same way the other helpers in this file were fixed.
 manifest_remove_subproject_key() {
 	path=$1
 	key=$2
@@ -1104,28 +1159,30 @@ fetch_quiet() {
 
 # Clone a subproject using the selected storage mode. Partial clone remains strict:
 # if Git cannot create the requested partial checkout, callers get a hard error.
+# Uses a cs_-prefixed repo/path (rather than bare repo/path) because cmd_add
+# calls this without a subshell while holding its own bare repo/path across the call.
 clone_subproject() {
-	repo=$1
-	path=$2
+	cs_repo=$1
+	cs_path=$2
 	mode=$3
 	no_checkout=${4:-0}
 	case "$mode" in
 	full)
-		git clone "$repo" "$path" ||
-			git_error "failed to clone subproject $repo into $path; verify the repository URL and network access"
+		git clone "$cs_repo" "$cs_path" ||
+			git_error "failed to clone subproject $cs_repo into $cs_path; verify the repository URL and network access"
 		;;
 	partial)
 		if [ "$no_checkout" -eq 1 ]; then
-			git clone --filter=blob:none --no-checkout "$repo" "$path" ||
-				git_error "failed to partial-clone subproject $repo into $path; verify the repository supports partial clone"
+			git clone --filter=blob:none --no-checkout "$cs_repo" "$cs_path" ||
+				git_error "failed to partial-clone subproject $cs_repo into $cs_path; verify the repository supports partial clone"
 		else
-			git clone --filter=blob:none "$repo" "$path" ||
-				git_error "failed to partial-clone subproject $repo into $path; verify the repository supports partial clone"
+			git clone --filter=blob:none "$cs_repo" "$cs_path" ||
+				git_error "failed to partial-clone subproject $cs_repo into $cs_path; verify the repository supports partial clone"
 		fi
-		repo_is_partial_clone "$path" ||
-			die "Git did not configure $path as a partial clone; enable partial clone on the remote or use clone=full"
+		repo_is_partial_clone "$cs_path" ||
+			die "Git did not configure $cs_path as a partial clone; enable partial clone on the remote or use clone=full"
 		;;
-	*) die "unknown effective clone mode for $path: $mode" ;;
+	*) die "unknown effective clone mode for $cs_path: $mode" ;;
 	esac
 }
 
@@ -1251,12 +1308,16 @@ write_materialized_state() {
 	current_pairs=$(mktemp "$state_dir/subprojects.current.XXXXXX") ||
 		die "cannot create temporary git-nest state file"
 	manifest_pairs_file "$current_pairs"
-	manifest_subprojects | while IFS= read -r path; do
-		[ -n "$path" ] || continue
-		[ -d "$path/.git" ] || continue
-		repo=$(subproject_repo "$path" || true)
-		[ -n "$repo" ] || continue
-		printf '%s\t%s\n' "$path" "$repo"
+	# Prefixed loop variables (not path/repo): callers such as add/absorb keep
+	# their own path/repo globals in scope across this call, and reusing those
+	# names here would silently clobber them the same way old_path/old_repo
+	# did below before that was fixed (see the comment there).
+	manifest_subprojects | while IFS= read -r wms_path; do
+		[ -n "$wms_path" ] || continue
+		[ -d "$wms_path/.git" ] || continue
+		wms_repo=$(subproject_repo "$wms_path" || true)
+		[ -n "$wms_repo" ] || continue
+		printf '%s\t%s\n' "$wms_path" "$wms_repo"
 	done >"$tmp"
 	if [ -f "$state_file" ]; then
 		# Prefixed loop variables (not old_path/old_repo): this function is called
@@ -1278,21 +1339,32 @@ write_materialized_state() {
 }
 
 # Read current manifest subproject path/repo pairs into a tab-separated file.
+# Prefixed loop variables for consistency with the other helpers in this
+# file that share this call chain, even though this particular loop is
+# piped (and therefore already subshell-isolated from any caller's own
+# path/repo globals).
 manifest_pairs_file() {
 	out=$1
 	: >"$out"
-	manifest_subprojects | while IFS= read -r path; do
-		[ -n "$path" ] || continue
-		repo=$(subproject_repo "$path" || true)
-		[ -n "$repo" ] || continue
-		printf '%s\t%s\n' "$path" "$repo" >>"$out"
+	manifest_subprojects | while IFS= read -r mpf_path; do
+		[ -n "$mpf_path" ] || continue
+		mpf_repo=$(subproject_repo "$mpf_path" || true)
+		[ -n "$mpf_repo" ] || continue
+		printf '%s\t%s\n' "$mpf_path" "$mpf_repo" >>"$out"
 	done
 }
 
+# Prefixed parameters (not pairs/path): called from write_materialized_state's
+# stale-entry loop, which itself runs without a subshell (redirected from a
+# file, not piped) so callers such as add/absorb further up the call chain
+# keep their own path/repo globals live across the call -- a bare "path=$2"
+# here would silently clobber them (this really happened: a second add in
+# the same process printed the first subproject's path in its success
+# message because of exactly this collision).
 pair_path_exists() {
-	pairs=$1
-	path=$2
-	awk -F '	' -v path="$path" '$1 == path { found=1 } END { exit !found }' "$pairs"
+	ppe_pairs=$1
+	ppe_path=$2
+	awk -F '	' -v path="$ppe_path" '$1 == path { found=1 } END { exit !found }' "$ppe_pairs"
 }
 
 # Guard stale cleanup paths. The state file is local, but deletion still stays
@@ -1841,11 +1913,14 @@ manifest_rename_subproject_section() {
 	_MNF_LOADED=
 }
 
+# Uses an mssk_-prefixed path (rather than bare path) because cmd_mv and
+# cmd_config call this without a subshell while holding their own bare path
+# across the call.
 manifest_set_subproject_key() {
-	path=$1
+	mssk_path=$1
 	key=$2
 	value=$3
-	section=$(subproject_section "$path")
+	section=$(subproject_section "$mssk_path")
 	tmp=$(tmp_for "$MANIFEST_FILE")
 	awk -v section="$section" -v key="$key" -v value="$value" '
         $0 == "[" section "]" { in_section=1; wrote=0; print; next }
@@ -1910,14 +1985,16 @@ remote_tag_commit() {
     ' "$out"
 }
 
+# Uses an shr_-prefixed path (rather than bare path) because snapshot_one_subproject
+# calls this without a subshell while holding its own bare path across the call.
 subproject_head_is_reproducible() {
-	path=$1
+	shr_path=$1
 	head=$2
 	if [ "$GIT_NEST_DRY_RUN" -eq 0 ] && [ "$GIT_NEST_NO_FETCH" -eq 0 ]; then
-		fetch_quiet "$path" 2>/dev/null || return 1
+		fetch_quiet "$shr_path" 2>/dev/null || return 1
 	fi
-	git -C "$path" branch -r --contains "$head" 2>/dev/null | grep -E '^[* ]+origin/' >/dev/null 2>&1 && return 0
-	git -C "$path" tag --contains "$head" 2>/dev/null | grep . >/dev/null 2>&1 && return 0
+	git -C "$shr_path" branch -r --contains "$head" 2>/dev/null | grep -E '^[* ]+origin/' >/dev/null 2>&1 && return 0
+	git -C "$shr_path" tag --contains "$head" 2>/dev/null | grep . >/dev/null 2>&1 && return 0
 	return 1
 }
 

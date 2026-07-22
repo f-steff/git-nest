@@ -328,9 +328,10 @@ cannot resurface in the new commands.
 ## 4. `init`/`init --sure` creating a nested nest that overlaps a deeper subproject
 
 A related but distinct edge case surfaced while reasoning about the fixes in
-section 3, specific to `init --sure` rather than `add`/`absorb`: **not yet
-fixed, needs further design** before `absorb-all` (which can trigger `init`)
-can be considered complete.
+section 3, specific to `init --sure` rather than `add`/`absorb`.
+**Implemented: the detect-and-refuse behavior below (Option B) is done,
+tested, and documented; the `--adopt` automation (Option C) remains
+postponed -- see `todo.md`.**
 
 **Scenario:** the outer nest at `nest/` has a subproject registered at
 `a/b/c/d`. Someone runs `git-nest init --sure` at `nest/a/b` to create a
@@ -342,39 +343,93 @@ inner one. This is the mirror image of section 3: instead of a new
 subproject being created inside an existing one, a new *nest* is created
 around (as an ancestor of) an existing subproject it does not own.
 
-**Required behavior:** `init`/`init --sure` must detect this conflict before
-creating anything -- walk the new root's subtree for any path already
-registered as a subproject by an ancestor nest -- and refuse with a specific
-error identifying which outer nest owns the conflicting subproject(s) and
-their path(s).
+**How this is actually reachable (verified against the code, not just this
+description):** `cmd_init` always `cd`s to `git rev-parse --show-toplevel`
+before doing anything, so a new nest can only ever be created at a location
+that is *already its own distinct Git repository*. The conflict therefore
+requires two things to have happened separately: an ancestor nest registers
+a subproject at a deep path (`a/b/c/d`), and *afterward*, something gives an
+ancestor of that path (`a/b`) its own `.git` -- either a manual `git init`/
+`git clone` there by someone unaware of the deeper subproject, or (more
+realistically) `a/b` was always an independent, not-yet-absorbed nested
+repo. Both `git-nest init --sure` run directly inside `a/b`, and
+`git-nest absorb-all` run from inside `a/b` (which auto-inits a nest via
+`absorb_all_ensure_nest`, an exact mirror of `cmd_init`'s own checks, see
+section 2), reach this gap.
 
-**Proposed direction (not decided -- needs design):** an `--adopt` flag
-(exact name open) on `init` that, when this conflict is detected, moves the
-conflicting subproject registration(s) out of the outer nest's manifest and
-into the newly created inner nest's manifest, rewriting each moved entry's
-path relative to the new root (e.g. `a/b/c/d` in the outer manifest becomes
-`c/d` in the inner manifest). Open questions to resolve before building this:
+`absorb` itself is already fully protected against swallowing a deeper repo
+in every form: `absorb_files`/`absorb_subrepo`/`absorb_subtree` call
+`assert_path_not_containing_nested_project` (refuses if the target contains
+any registered subproject or nested `.gitnest`), and `absorb_existing_repo`
+(the auto-detected nested-repo/submodule path) calls `assert_no_deeper_repos`
+(refuses if any `.git` exists deeper than the immediate level, managed or
+not). The gap is narrowly in `cmd_init` and `absorb_all_ensure_nest`: both
+check *upward* (`nearest_parent_manifest_root`, refuse unless `--sure`) but
+never check *downward* for a path already owned by an ancestor.
 
-- Multiple conflicting subprojects under the new root must all be handled in
-  one pass, not just the first one found.
-- What happens if a conflicting subproject's working tree is dirty, or its
-  checkout is missing/stale, at adoption time -- refuse, warn, or proceed
-  anyway?
-- The outer nest's `.gitignore` managed-block entry and the new inner nest's
-  managed-block entry both need updating (remove from outer, add to inner)
-  as part of the same atomic operation.
-- Needs its own recovery-backup/rollback story if the move fails partway,
-  consistent with how `absorb`/`inline`/`move` already protect against
-  partial failure.
-- Must support `--dry-run` and report exactly what would move.
-- Needs a dedicated test replicating the exact scenario above (outer nest,
-  deep subproject, nested `init --sure --adopt` at an intermediate path).
+**Required behavior:** `init`/`init --sure` and `absorb_all_ensure_nest`
+must detect this conflict before creating anything -- walk the new root's
+subtree for any path already registered as a subproject by an ancestor
+nest -- and refuse with a specific error identifying which ancestor nest
+owns the conflicting subproject(s) and their path(s). The check must walk
+the *full* ancestor manifest chain, not just the nearest one (unlike
+`nearest_parent_manifest_root`, which stops at the first match): the whole
+premise of this bug is a broken invariant (a retroactively inserted repo
+boundary), so a second such insertion stacked on top of the first could
+place the conflicting registration two ancestors up instead of one, and
+checking only the nearest ancestor would silently miss it.
+
+**Options considered:**
+
+- **A -- Detect and refuse only.** Minimal, safe, matches the project's
+  established "refuse rather than guess" pattern. Con: no path forward for
+  a user who legitimately wants to split a subtree into its own nest.
+- **B -- Detect and refuse, backed by a documented manual recipe.** Same
+  refusal as A, but the error message and docs spell out the exact
+  already-existing-commands sequence: `git-nest detach <path>` from the
+  ancestor nest (keeps the checkout, drops the manifest entry), `git-nest
+  init --sure` at the now-unblocked location, then `git-nest absorb
+  <relative-path>` from the new nest (auto-detected nested-repo). Zero new
+  mutating code; `detach` and `absorb` already compose to do exactly this.
+  **Decision: this is the option that was built** (see `todo.md`).
+- **C -- `init --adopt`: automate the detach+init+absorb dance in one
+  command.** Would be the first git-nest command to atomically rewrite two
+  separate manifests in one operation. Requires: multi-conflict handling in
+  one pass, a dirty/missing-checkout policy, atomic updates to both nests'
+  `.gitignore` managed blocks, and its own recovery-backup/rollback story
+  matching `absorb`/`inline`/`move` (a half-completed cross-manifest adopt
+  left by a crash mid-way is a harder-to-diagnose mess than a plain refusal
+  ever produces). Disproportionate complexity given how rare the triggering
+  scenario is. **Decision: postponed** (see `todo.md`'s Postponed section);
+  revisit only if the Option B manual recipe proves painful in practice.
+- **D -- A general ancestor-aware primitive used by every nest command.**
+  Rejected as over-engineering: nest creation is the only moment this
+  overlap can be introduced, so a point-of-creation check (B) closes the
+  whole class of bug for far less new surface area than a codebase-wide
+  generalization would.
+
+**Implementation notes for Option B (delivered):**
+
+- One reusable check function, `assert_new_nest_excludes_ancestor_subprojects`
+  (`bin/lib/git-nest-manifest.sh`, walking the full ancestor chain as
+  above), called from both `cmd_init` (after the existing
+  `nearest_parent_manifest_root` check) and `absorb_all_ensure_nest`
+  (including its `--dry-run` path).
+- The refusal message names the conflicting ancestor nest's location, the
+  specific conflicting subproject path, and the exact three-step recipe to
+  resolve it manually (same "print the fix-it command" style `pull`'s
+  diverged-subproject reporting already uses).
+- Documented the refusal and recipe in `docs/command-behavior-contract.md`,
+  `docs/technical_docs.md`, `docs/examples.md`, and `skills/git-nest/SKILL.md`.
+- `tests/test_2110_contract_init_nested_nest_overlap.sh` replicates the
+  exact scenario (outer nest, deep subproject, then an ancestor of that
+  path becomes its own repo, then `init --sure`/`absorb-all` there
+  triggers the refusal in both plain and `--dry-run` form), and confirms
+  the documented manual recipe fully resolves it end-to-end.
 
 This is relevant to `absorb-all` because it can invoke `init` on the
-caller's behalf (section 2, edge case 2): if `absorb-all` is ever run from a
-directory that would create this overlap, it must surface the same refusal
-(and, once built, the same `--adopt` option) rather than silently creating
-an inconsistent nested nest.
+caller's behalf (section 2, edge case 2): `absorb-all` now surfaces the
+same refusal rather than silently creating an inconsistent nested nest.
 
 ## 5. Worktree compatibility
 
@@ -516,25 +571,25 @@ git-nest pull [--recursive] [--sure] [--no-fetch] [--dry-run] [--json | --json-p
 ## Implementation status (verified against files on disk)
 
 - **Done, tested, documented:** `absorb --subrepo`, `absorb --subtree` (see
-  section 6); worktree compatibility deliverables W1-W4 (see section 5).
-- **Done (base implementation), needs edge-case tests:** `pull` (see
-  section 7's status note).
-- **Not started:** `cmd_survey` and `cmd_absorb_all` in
-  `bin/lib/git-nest-doctor.sh` (`discover` is still the live command,
-  unchanged). Remaining work:
-  - Merge `discover_scan`/`discover_classify_row` logic into `survey`'s
-    detection mode, adding the `G` (subrepo) code, `--include`, and the
-    boundary-stop rule from section 1a.
-  - Implement `absorb-all` as its own command: its own option parsing,
-    reusing `survey`'s scan, `--sure`/`--force-partial`/rollback per
-    section 2.
-  - Wire dispatch and help/completions for both new commands: `survey` ->
-    `cmd_survey` (Inspection group); `absorb-all` -> `cmd_absorb_all`
-    (Export and nest membership group); `discover` -> usage error with
-    migration guidance.
-  - Update `docs/command-behavior-contract.md`, `docs/technical_docs.md`,
-    `skills/git-nest/SKILL.md`, and `schemas/git-nest-output-v1.schema.json`.
-  - Rewrite `tests/test_0080_command_discover_unmanaged.sh` to test `survey`
-    instead (and add a case asserting `discover` now errors with migration
-    guidance).
-  - Add the boundary-enforcement test described in section 1a.
+  section 6); worktree compatibility deliverables W1-W4 (see section 5);
+  `git-nest survey` (`cmd_survey` in `bin/lib/git-nest-doctor.sh`, replacing
+  the retired `discover`), including the `G` (subrepo) code, repeatable
+  `--include`, and the boundary-stop rule from section 1a, covered by
+  `tests/test_0080_command_survey_unmanaged.sh` and
+  `tests/test_2100_contract_survey_boundary_enforcement.sh`; `git-nest
+  absorb-all` (`cmd_absorb_all` in `bin/lib/git-nest-conversion.sh`),
+  including `--sure`/`--force-partial`/rollback per section 2, covered by
+  `tests/test_0280_command_absorb_all.sh`; `git-nest pull`, including its
+  JSON output and edge cases (detached HEAD, no upstream, diverged, dirty,
+  failed, `--sure`, `--recursive`, `--dry-run`), covered by
+  `tests/test_0290_command_pull_edge_cases.sh`; the `init`/`init --sure`
+  and `absorb-all` auto-init nested-nest-overlap refusal in section 4
+  (Option B there), covered by
+  `tests/test_2110_contract_init_nested_nest_overlap.sh`. Dispatch, help,
+  completions, `docs/command-behavior-contract.md`,
+  `docs/technical_docs.md`, `docs/examples.md`, `skills/git-nest/SKILL.md`,
+  and `schemas/git-nest-output-v1.schema.json` are all updated for these
+  four commands/behaviors.
+- **Postponed (analyzed, decision made not to build now):** the `--adopt`
+  automation for section 4 (Option C there) -- see `todo.md`'s Postponed
+  section. This is the only remaining open item from this design doc.
