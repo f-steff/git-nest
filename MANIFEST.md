@@ -29,13 +29,14 @@ revision=<sha>
 Common keys:
 
 - `repo=<url-or-path>` is required.
-- `clone=<full|partial>` is optional.
+- `clone=<full|partial|shallow>` is optional; `shallow` creates a shallow clone (depth defaults to 1).
 - `target_branch=<branch>` records the upstream branch used for comparisons.
 
 Recorded state:
 
 - `revision=<sha>` pins a commit.
 - `tag=<tag>` may be present only with `revision=<sha>`.
+- `depth=<n>` sets the shallow clone depth when `clone=shallow`.
 
 Obsolete keys from earlier unreleased workflows are invalid:
 

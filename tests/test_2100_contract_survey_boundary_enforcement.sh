@@ -8,7 +8,7 @@ test_begin contract_survey_boundary_enforcement
 # Nested-repository, submodule, subrepo, and subtree boundaries are impossible
 # to cross by design: once a path is inside one of these, it belongs to that
 # inner repository exclusively. This is a critical, dedicated test (not just
-# incidental coverage elsewhere) per survey_pull_feature.md section 1a.
+# incidental coverage elsewhere).
 test_step "Exercise boundary enforcement across submodule, subrepo, and subtree shapes" "A nested repo inside a submodule or subrepo must never be reported by survey as an independent top-level finding; a subtree has no detectable marker, so the actual protection there is absorb's own untracked-files guard refusing to swallow it."
 
 root=$(test_workspace contract_survey_boundary_enforcement)

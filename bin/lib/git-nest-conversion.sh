@@ -909,7 +909,7 @@ cmd_absorb() {
 			shift 2
 			;;
 		--clone-mode)
-			[ $# -ge 2 ] || usage_error "--clone-mode requires full or partial"
+			[ $# -ge 2 ] || usage_error "--clone-mode requires full, partial, or shallow"
 			clone_mode=$2
 			validate_clone_mode "$clone_mode" "--clone-mode"
 			shift 2
@@ -1004,7 +1004,7 @@ cmd_absorb() {
 
 # Make sure a nest exists at the current Git root before absorb-all scans and
 # absorbs, mirroring cmd_init's own nested-nest-conflict handling exactly (see
-# survey_pull_feature.md section 2) rather than reimplementing it differently.
+# docs/command-behavior-contract.md) rather than reimplementing it differently.
 # Already a nest: return immediately. Not yet a nest, but nested inside an
 # ancestor one: refuse unless --sure, exactly like init --sure. Otherwise:
 # initialize here, the same as plain init would.
@@ -1048,7 +1048,7 @@ absorb_all_ensure_nest() {
 # nested repo into the nest in one step. It never absorbs git-subrepos or
 # subtrees (always a conscious absorb --subrepo/--subtree action) and never
 # absorbs anything found underneath a boundary the scan already classified
-# (survey's boundary rule -- see survey_pull_feature.md section 1a).
+# (survey's boundary rule -- see docs/technical_docs.md).
 cmd_absorb_all() {
 	sure=0
 	force_partial=0

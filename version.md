@@ -1,3 +1,10 @@
+## 0.8.7 - 2026-07-23
+
+### Enriched tree output
+  * Added root line showing the project name/nest root in tree output.
+  * Added repository URLs, type labels (managed/unmanaged/composite), and checkout state markers.
+  * Added --plain mode for minimal output without state annotation.
+
 ## 0.8.6 - 2026-07-22
 
 ### Tree command

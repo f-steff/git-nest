@@ -31,7 +31,8 @@ revision=<sha>
 Allowed subproject keys are:
 
 - `repo=<url>`: required.
-- `clone=full|partial`: optional missing-checkout clone preference.
+- `clone=full|partial|shallow`: optional missing-checkout clone preference; `shallow` creates a shallow clone.
+- `depth=<n>`: shallow clone depth when `clone=shallow`; defaults to 1.
 - `target_branch=<name>`: branch used by `outdated`, `update --target-head`, and normal tracking.
 - `revision=<sha>`: exact reproducible commit.
 - `tag=<name>`: optional tag name; requires `revision`.
