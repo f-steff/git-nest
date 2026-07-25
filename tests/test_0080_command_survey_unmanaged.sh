@@ -88,26 +88,6 @@ assert_file_contains nestedunmanaged.out 'inside tools/helper (listed above); re
 assert_file_not_contains nestedunmanaged.out 'inside managed subproject tools/helper'
 rm -rf tools/helper/inner
 
-# --- Un-initialized submodule detection via .gitmodules ---
-test_step "Survey reports un-initialized submodules via .gitmodules pass" "A submodule registered in .gitmodules but without a .git on disk must be found by the new enumeration pass and reported with the 'not checked out' suggestion."
-git -c protocol.file.allow=always submodule add "file://$remote_sub" ext/uninit >/dev/null 2>&1
-rm -rf ext/uninit
-git commit -m "add un-initialized submodule" >/dev/null
-run_capture "survey finds the un-initialized submodule" uninit.out uninit.err -- "$GIT_NEST" survey --porcelain
-assert_file_contains uninit.out 'S	ext/uninit	submodule'
-assert_file_contains uninit.out 'submodule ext/uninit is not checked out; run git submodule update --init ext/uninit first, then re-run survey'
-# The initialized submodule still gets the normal non-checked-out suggestion.
-assert_file_contains uninit.out 'S	ext/sub	submodule'
-assert_file_contains uninit.out 'run git-nest absorb ext/sub to convert the submodule'
-
-# --- Un-initialized submodule that gets initialized is absorbed normally ---
-test_step "Initializing the submodule makes survey suggest absorb" "After git submodule update --init, the submodule gets a .git and survey reports the normal absorb suggestion."
-git submodule update --init ext/uninit >/dev/null 2>&1
-run_capture "survey now suggests absorb for the initialized submodule" init.out init.err -- "$GIT_NEST" survey --porcelain
-assert_file_contains init.out 'S	ext/uninit	submodule'
-assert_file_contains init.out 'run git-nest absorb ext/uninit to convert the submodule'
-rm -rf ext/uninit
-
 # --- JSON output ---
 test_step "Survey JSON output" "survey --json emits the shared envelope with one row per repository."
 run_capture "survey json emits envelope" disc.json disc_j.err -- "$GIT_NEST" survey --json

@@ -5,7 +5,7 @@ set -eu
 . "$(dirname "$0")/helper.sh"
 test_begin contract_init_nested_nest_overlap
 
-# init/init --sure and absorb-all's
+# See survey_pull_feature.md section 4: init/init --sure and absorb-all's
 # auto-init must refuse creating a new nest whose subtree would contain a
 # path already registered as a subproject by an ancestor nest. This can only
 # happen if a directory that is an ancestor of an already-registered deep

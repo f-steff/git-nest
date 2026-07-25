@@ -126,9 +126,8 @@ Subprojects are ignored by the outer Git repository so their files do not get ac
 | `repo` | Yes | The subproject's remote URL, used by `restore`/`clone` to (re-)materialize the checkout. |
 | `target_branch` | Usually | The branch `restore` checks out and `snapshot` records revisions against. |
 | `revision` | Usually | The exact pinned commit SHA; this is the reproducibility contract (see Workspace Model above). |
-| `clone` | No | `full`, `partial`, or `shallow`; overrides the configured default clone mode for this one subproject. |
+| `clone` | No | `full` or `partial`; overrides the configured default clone mode for this one subproject. |
 | `tag` | No | An optional human-readable tag alongside `revision` (requires `revision` to also be set). |
-| `depth` | No | Shallow clone depth for `clone=shallow` subprojects; defaults to 1 if unset. |
 
 Rules enforced by `validate_manifest_schema` before any command reads or writes the manifest:
 
@@ -287,7 +286,7 @@ This is a working-tree convenience, not a manifest authority. It does not replac
 | --- | --- |
 | `init [--rc] [--sure]` | Create a new `.gitnest`; `--sure` confirms an intentional nested nest inside an existing nest. |
 | `repair [--rc]` | Refresh managed support files such as `.gitattributes`, `.gitignore`, and optional `.gitnest-rc`. |
-| `add [--clone <full\|partial\|shallow>] [--depth <n>] <repo> <path>` | Add and clone a subproject at a path relative to the current nest root; `.` is not valid. `--clone` records future `restore` clone mode; `--depth` sets shallow clone depth (default 1). |
+| `add [--clone <full\|partial>] <repo> <path>` | Add and clone a subproject at a path relative to the current nest root; `.` is not valid. `--clone` records future `restore` clone mode and is unrelated to the `clone` command. |
 | `remove` / `rm <path>` | Remove a managed subproject from the current nest and delete its checkout on disk; the remote is untouched. |
 | `detach <path>` | Remove a managed subproject from the nest but keep its checkout as a standalone, ignored repository. |
 | `move` / `mv <old-path> <new-path>` | Move a managed subproject path inside the current nest; `.` is not valid. |
@@ -301,9 +300,8 @@ This is a working-tree convenience, not a manifest authority. It does not replac
 | `list [--porcelain\|--json\|--json-pretty] [--redact]` | List managed subprojects in a stable order with URL, target branch, revision, tag, checkout state, and reproducibility; `--redact` strips URL credentials and home paths. |
 | `discover [--max-depth <n>] [--exclude <name>]...` | Scan the current nest for unmanaged nested repositories and submodules and suggest a next step; discovery only. |
 | `snapshot [<path>]` | Record clean, reproducible checked-out subproject commits. No path means all subprojects; `.` means all subprojects at the nest root and only the owning subproject inside one. |
-| `restore [--depth <n>]` | Clone, fetch, and check out all subprojects in the current nest from `.gitnest`; `--depth` overrides per-project shallow clone depth. |
+| `restore` | Clone, fetch, and check out all subprojects in the current nest from `.gitnest`; it does not accept a path. |
 | `freeze` | Pin tracked subprojects in the current nest to their current checkout commits. |
-| `gc` | Run git gc in the nest root and every checked-out subproject. |
 | `hooks-install` | Install managed local hooks in all checked-out repositories in the current nest. |
 | `hooks-uninstall` | Remove managed local hooks from all checked-out repositories in the current nest. |
 | `branch-mark [name]` | Remember a branch name for the current repository. |
@@ -425,61 +423,9 @@ sh tests/run-all-tests.sh help                 # commands and examples
 
 Options: `--verbose` (`-v`) streams everything (full raw output with a shell trace) instead of the curated narrative; `--stop-on-fail` stops at the first failure; `--no-log` skips the full-run log and `--log FILE` writes it elsewhere. An unknown command, option, or test ID prints the help and stops. All commands and options work through `tests\run-all-tests.bat` too.
 
-See [`tests/tests.md`](tests/tests.md) for the full test guide: how to write new tests, the helper API, ID allocation, and debugging tips.
-
-## Troubleshooting
-
-### "Could not acquire manifest lock" error
-
-Another `git-nest` process is holding the `.gitnest.lock` directory. Wait for it to finish, or if no `git-nest` process is running, remove the stale lock:
-
-```sh
-rm -rf .gitnest.lock
-```
-
-### "fetch failed" during restore or snapshot
-
-Check network access and authentication for the subproject remote. Run `git-nest doctor` for a health report:
-
-```sh
-git-nest doctor
-```
-
-If the remote is unreachable, use `--no-fetch` or `--offline` for commands that support it.
-
-### .gitnest schema error after manual edit
-
-If you hand-edited `.gitnest` and `git-nest` rejects it, check for:
-- Missing `[project]` section with `version=1`
-- Duplicate section names
-- Trailing whitespace or malformed `key=value` lines
-- Backslashes in paths instead of forward slashes
-
-Run `git-nest doctor` for a schema validation report.
-
-### "Recovery backup" leftover after interrupted conversion
-
-If a conversion (`inline`, `absorb --preserve-history`, `absorb-all`) was interrupted, a `.gitnest-recovery-*` directory remains. Open its `RECOVERY.txt` for restore instructions. Clean up with:
-
-```sh
-rm -rf .gitnest-recovery-*
-```
-
-Run `git-nest doctor` to check for leftover recovery backups.
-
-### Test suite hangs
-
-The test runner has a watchdog (default 180 seconds per test without output). If a test hangs, increase the timeout:
-
-```sh
-TEST_WATCHDOG_SECONDS=300 sh tests/run-all-tests.sh
-```
-
 ## Contributing And Maintenance
 
 See `docs/maintainer.md` for maintainer-facing guidance: coding conventions, the ASCII-only rule, release steps, and other project-specific rules not needed just to use the tool.
-
-See [`version.md`](version.md) for the full version history and changelog.
 
 ## AI User Skill
 

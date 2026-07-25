@@ -1,3 +1,11 @@
+## 0.8.8 - 2026-07-25
+
+### Bug fixes and hardening
+  * Fixed variable-collision bugs in path/repo handling across commands, manifest, hooks, and conversion.
+  * Implemented init/absorb-all nested-nest-overlap refusal: init inside a managed subproject requires --sure.
+  * Added docs/examples.md with comprehensive usage recipes.
+  * Fixed No URI descriptions and non-ASCII characters in examples.
+
 ## 0.8.7 - 2026-07-23
 
 ### Enriched tree output

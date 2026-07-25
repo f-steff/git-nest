@@ -637,7 +637,7 @@ assert_path_not_containing_nested_project() {
 # contain a path already registered as a subproject by an ancestor nest. This
 # can only happen if a directory that is an ancestor of an already-registered
 # deep subproject is later, retroactively, given its own Git repository and
-# becomes a valid new nest root -- see todo.md (postponed `--adopt`) for
+# becomes a valid new nest root -- see survey_pull_feature.md section 4 for
 # the full scenario and why absorb itself cannot hit this (assert_no_deeper_repos
 # and assert_path_not_containing_nested_project already guard every absorb
 # path; only nest creation itself was missing this check). Called from
@@ -857,7 +857,7 @@ validate_manifest_schema() {
                     sub(/"$/, "", path)
                     add_error("subproject " path " is missing repo")
                 }
-                if (clone != "" && clone != "full" && clone != "partial" && clone != "shallow") add_error("invalid clone mode in [" section "]: " clone)
+                if (clone != "" && clone != "full" && clone != "partial") add_error("invalid clone mode in [" section "]: " clone)
                 if (pending != "") add_error("pending_branch is no longer supported in [" section "]; use git-nest snapshot after pushing the subproject commit")
                 if (base != "") add_error("base_revision is no longer supported in [" section "]")
                 if (pushed != "") add_error("pushed_commit is no longer supported in [" section "]")
@@ -1086,8 +1086,8 @@ validate_clone_mode() {
 	value=$1
 	context=$2
 	case "$value" in
-	"" | full | partial | shallow) ;;
-	*) die "$context must be full, partial, or shallow, got '$value'" ;;
+	"" | full | partial) ;;
+	*) die "$context must be full or partial, got '$value'" ;;
 	esac
 }
 
@@ -1096,8 +1096,8 @@ configured_clone_mode() {
 	mode=$(config_get clone mode || true)
 	[ -n "$mode" ] || mode=manifest
 	case "$mode" in
-	manifest | full | partial | shallow) printf '%s\n' "$mode" ;;
-	*) die "$CONFIG_FILE [clone] mode must be manifest, full, partial, or shallow, got '$mode'" ;;
+	manifest | full | partial) printf '%s\n' "$mode" ;;
+	*) die "$CONFIG_FILE [clone] mode must be manifest, full, or partial, got '$mode'" ;;
 	esac
 }
 
@@ -1116,7 +1116,7 @@ effective_clone_mode() {
 	configured=$(configured_clone_mode)
 	case "$configured" in
 	manifest) subproject_clone_mode "$path" ;;
-	full | partial | shallow) printf '%s\n' "$configured" ;;
+	full | partial) printf '%s\n' "$configured" ;;
 	esac
 }
 
@@ -1166,25 +1166,10 @@ clone_subproject() {
 	cs_path=$2
 	mode=$3
 	no_checkout=${4:-0}
-	cs_depth=${5:-}
 	case "$mode" in
 	full)
-		if [ -n "$cs_depth" ]; then
-			git clone --depth "$cs_depth" "$cs_repo" "$cs_path" ||
-				git_error "failed to shallow-clone subproject $cs_repo into $cs_path (depth $cs_depth); verify the repository URL and network access"
-		else
-			git clone "$cs_repo" "$cs_path" ||
-				git_error "failed to clone subproject $cs_repo into $cs_path; verify the repository URL and network access"
-		fi
-		;;
-	shallow)
-		if [ -n "$cs_depth" ]; then
-			git clone --depth "$cs_depth" "$cs_repo" "$cs_path" ||
-				git_error "failed to shallow-clone subproject $cs_repo into $cs_path (depth $cs_depth); verify the repository URL and network access"
-		else
-			git clone --depth 1 "$cs_repo" "$cs_path" ||
-				git_error "failed to shallow-clone subproject $cs_repo into $cs_path (depth 1); verify the repository URL and network access"
-		fi
+		git clone "$cs_repo" "$cs_path" ||
+			git_error "failed to clone subproject $cs_repo into $cs_path; verify the repository URL and network access"
 		;;
 	partial)
 		if [ "$no_checkout" -eq 1 ]; then

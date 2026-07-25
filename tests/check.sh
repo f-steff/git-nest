@@ -189,8 +189,11 @@ check_bashisms() {
 # help_setup_colors for optional, TTY-only, NO_COLOR-respecting colored help
 # output) are plain ASCII bytes and are unaffected by this check.
 #
+# survey_pull_feature__backup.md is excluded: it is a verbatim historical
+# backup of an earlier design draft, preserved for provenance, not shipped
+# documentation, so it is not held to the project's style rule.
 check_ascii() {
-	matches=$(cd "$REPO_ROOT" && grep -rPln "[^\x00-\x7F]" bin tests docs skills ./*.md 2>/dev/null | sed 's#^\./##')
+	matches=$(cd "$REPO_ROOT" && grep -rPln "[^\x00-\x7F]" bin tests docs skills ./*.md 2>/dev/null | sed 's#^\./##' | grep -vx 'survey_pull_feature__backup.md')
 	if [ -n "$matches" ]; then
 		printf '%s\n' "$matches" | while IFS= read -r f; do
 			fail_ "$f"
