@@ -49,3 +49,17 @@ assert_file_contains freeze_clean.out 'Freeze summary'
 assert_file_not_contains freeze_clean.err 'rerun with --force'
 
 describe_result "freeze dry-run, refusal, forced pinning, and clean no-force handling all report clear outcomes."
+
+test_step "gc --dry-run lists planned gc actions without running" "gc with --dry-run should report planned git gc operations without executing them."
+run_ok "gc --dry-run succeeds" -- "$GIT_NEST" gc --dry-run
+
+test_step "gc runs git gc in the nest root and clean subprojects" "gc should run git gc in every repository without errors."
+run_ok "gc runs in the workspace" -- "$GIT_NEST" gc
+
+test_step "gc --aggressive runs with aggressive flag" "The --aggressive flag should pass --aggressive to git gc."
+run_ok "gc --aggressive runs" -- "$GIT_NEST" gc --aggressive
+
+test_step "gc --json emits the shared row schema" "gc with --json should produce valid JSON with command 'gc'."
+run_capture "gc json output" gc.json gc.err -- "$GIT_NEST" gc --json
+assert_file_contains gc.json '"command":"gc"'
+assert_file_contains gc.json '"code":"P"'

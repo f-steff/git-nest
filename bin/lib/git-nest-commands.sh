@@ -90,7 +90,7 @@ usage() {
 	help_usage "clone" "<nest-repo-url> [target-dir] [--no-restore] [--depth <n>] [--branch <branch>] [--single-branch]"
 
 	help_usage_group "Subprojects"
-	help_usage "add" "[--clone <full|partial>] <repo> <path>"
+	help_usage "add" "[--clone <full|partial|shallow>] [--depth <n>] <repo> <path>"
 	help_usage "remove|rm" "<path> [--force] [--dry-run] [--json|--json-pretty]"
 	help_usage "detach" "<path> [--dry-run] [--json|--json-pretty]"
 	help_usage "move|mv" "<old-path> <new-path> [--force]"
@@ -99,10 +99,11 @@ usage() {
 	help_usage "update" "<subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
 
 	help_usage_group "Workspace state"
-	help_usage "restore" "[--recursive] [--prune] [--force] [--dry-run]"
+	help_usage "restore" "[--recursive] [--prune] [--force] [--dry-run] [--depth <n>]"
 	help_usage "pull" "[--recursive] [--sure] [--no-fetch] [--dry-run] [--json | --json-pretty]"
 	help_usage "snapshot" "[<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
 	help_usage "freeze" "[--force] [--only <path>[,<path>...]] [--dry-run]"
+	help_usage "gc" "[--aggressive] [--dry-run] [--json | --json-pretty]"
 
 	help_usage_group "Inspection"
 	help_usage "status" "[--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
@@ -111,7 +112,7 @@ usage() {
 	help_usage "diff" "[--since <ref>] [--stat] [--json | --json-pretty]"
 	help_usage "log" "[--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]"
 	help_usage "list" "[--porcelain | --json | --json-pretty] [--redact]"
-	help_usage "tree" "[--all] [--recursive] [--json | --json-pretty]"
+	help_usage "tree" "[--all] [--recursive] [--plain] [--json | --json-pretty]"
 	help_usage "survey" "[--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
 	help_usage "doctor" "[--json | --json-pretty] [--online | --offline] [--timeout <seconds>] [--exit-code] [--redact]"
 
@@ -126,7 +127,7 @@ usage() {
 	help_usage "hooks-uninstall"
 
 	help_usage_group "Iteration"
-	help_usage "foreach" "[--] <command> [args...]"
+	help_usage "foreach" "[--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
 	help_usage "foreach-modified" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 	help_usage "foreach-clean" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 
@@ -160,11 +161,12 @@ usage() {
 	help_detail "--no-restore skips the automatic restore."
 
 	help_command_group "Subprojects"
-	help_command "add [--clone <full|partial>] <repo> <path>"
+	help_command "add [--clone <full|partial|shallow>] [--depth <n>] <repo> <path>"
 	help_text "Add and clone a subproject, ignore its path in the outer repo, and"
 	help_text "record its current target branch and revision."
 	help_detail "<path> is relative to the current nest root; . is not valid here."
-	help_detail "--clone selects full or partial clone storage for this subproject."
+	help_detail "--clone selects full, partial (blobless), or shallow clone storage for this subproject."
+	help_detail "--depth specifies the clone depth (default 1 for shallow; ignored for full/partial)."
 	help_detail "This clone mode is used by restore and is unrelated to the clone command."
 	help_command "remove|rm <path> [--force] [--dry-run] [--json|--json-pretty]"
 	help_text "Remove a subproject from the nest and delete its checkout on disk."
@@ -185,7 +187,7 @@ usage() {
 	help_command "config <get|set|list|unset> ..."
 	help_text "Read or update allowlisted manifest settings."
 	help_detail "Subproject paths are relative to the current nest root."
-	help_detail "Only clone-mode is currently configurable; values are full or partial."
+	help_detail "Only clone-mode is currently configurable; values are full, partial, or shallow."
 	help_detail "clone-mode controls future restore clones, not the clone command."
 	help_detail "config list shows explicitly set config values only."
 	help_command "update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
@@ -198,12 +200,13 @@ usage() {
 	help_detail "--no-fetch resolves only local refs."
 
 	help_command_group "Workspace state"
-	help_command "restore [--recursive] [--prune] [--force] [--dry-run]"
+	help_command "restore [--recursive] [--prune] [--force] [--dry-run] [--depth <n>]"
 	help_text "Clone/fetch subprojects and restore the manifest state on disk."
 	help_detail "Operates on the whole current nest; it does not accept a path."
 	help_detail "--recursive includes nested projects."
 	help_detail "--prune removes stale local-state paths after review when suggested."
 	help_detail "--force proceeds when a tag moved away from the recorded revision."
+	help_detail "--depth overrides per-project clone depth for shallow subprojects."
 	help_detail "--dry-run prints planned clone/fetch/checkout/prune actions without writing."
 	help_command "pull [--recursive] [--sure] [--no-fetch] [--dry-run] [--json|--json-pretty]"
 	help_text "Fast-forward clean subprojects to their upstream branch heads and snapshot."
@@ -227,9 +230,14 @@ usage() {
 	help_command "freeze [--force] [--only <path>[,<path>...]] [--dry-run]"
 	help_text "Pin tracked subprojects to their current checkout commits."
 	help_detail "Without --only, freezes every tracked subproject in the current nest."
-	help_detail "--force freezes dirty subprojects with warnings."
 	help_detail "--only limits freezing to a comma-separated path list."
+	help_detail "--force freezes dirty subprojects with warnings."
 	help_detail "--dry-run prints what would change without writing."
+	help_command "gc [--aggressive] [--dry-run] [--json | --json-pretty]"
+	help_text "Run git gc in the nest root and every checked-out subproject."
+	help_detail "--aggressive passes --aggressive to git gc."
+	help_detail "--dry-run prints planned gc actions without running."
+	help_detail "--json and --json-pretty print machine-readable output."
 
 	help_command_group "Inspection"
 	help_command "status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
@@ -262,10 +270,11 @@ usage() {
 	help_command "list [--porcelain | --json | --json-pretty] [--redact]"
 	help_text "List managed subprojects with URL, target branch, revision, tag, state, and reproducibility."
 	help_detail "Stable order for scripts; --porcelain and --json/--json-pretty print machine-readable output."
-	help_command "tree [--all] [--recursive] [--json | --json-pretty]"
+	help_command "tree [--all] [--recursive] [--plain] [--json | --json-pretty]"
 	help_text "Display an ASCII-art tree of the nest, grouped by shared path prefixes."
 	help_detail "--all also shows survey's own detected-but-unmanaged findings, marked with their code."
 	help_detail "--recursive also descends into nested nests, rendering their subprojects nested under that branch."
+	help_detail "--plain omits the URL and type columns, showing only the tree structure with [code] markers."
 	help_command "survey [--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
 	help_text "Scan for nested Git repositories, submodules, and git-subrepos not managed by .gitnest."
 	help_detail "Bounded by --max-depth (default 4) and pruned by default and extra --exclude directory names."
@@ -292,7 +301,7 @@ usage() {
 	help_text "Remove managed local Git hooks from all checked-out repositories in the current nest."
 
 	help_command_group "Iteration"
-	help_command "foreach [--] <command> [args...]"
+	help_command "foreach [--include-root-first|--include-root-last] [--] <command> [args...]"
 	help_text "Run a command in every checked-out subproject in the current nest."
 	help_command "foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 	help_text "Run a command in dirty subprojects, or list them with machine output."
@@ -418,15 +427,17 @@ command_help() {
 		help_opposite "restore materializes subprojects after an ordinary git clone."
 		;;
 	add)
-		help_command "add [--clone <full|partial>] <repo> <path>"
+		help_command "add [--clone <full|partial|shallow>] [--depth <n>] <repo> <path>"
 		help_text "Add and clone a subproject into the current nest."
 		help_detail "<path> is relative to the current nest root; . is not valid."
 		help_detail "The path is ignored by the outer repository so files stay owned by the subproject."
-		help_detail "--clone records full or partial clone preference for future restore."
+		help_detail "--clone records full, partial (blobless), or shallow clone preference for future restore."
+		help_detail "--depth specifies the clone depth (default 1 for shallow; ignored for full/partial)."
 		help_detail "This clone mode is unrelated to the clone command."
 		help_heading "Examples:"
 		help_example "git-nest add https://example.invalid/libs/foo.git libs/foo"
 		help_example "git-nest add --clone partial https://example.invalid/libs/big.git libs/big"
+		help_example "git-nest add --clone shallow --depth 5 https://example.invalid/tip-only.git libs/tip"
 		help_opposite "remove/rm removes a managed subproject from the nest."
 		;;
 	remove)
@@ -470,7 +481,7 @@ command_help() {
 		help_text "Read or update allowlisted manifest settings."
 		help_detail "Subproject paths are relative to the current nest root."
 		help_detail "Only clone-mode is currently configurable."
-		help_detail "clone-mode values are full or partial."
+		help_detail "clone-mode values are full, partial, or shallow."
 		help_detail "clone-mode controls future restore clones, not the clone command."
 		help_detail "config list shows explicitly set config values only."
 		help_detail "Unknown keys such as repo are rejected for get, set, and unset."
@@ -499,12 +510,13 @@ command_help() {
 		help_opposite "restore returns subprojects to the manifest state instead of advancing one."
 		;;
 	restore)
-		help_command "restore [--recursive] [--prune] [--force] [--dry-run]"
+		help_command "restore [--recursive] [--prune] [--force] [--dry-run] [--depth <n>]"
 		help_text "Clone, fetch, and check out the manifest state on disk."
 		help_detail "Operates on the whole current nest; it does not accept a path."
 		help_detail "--recursive includes nested nests."
 		help_detail "--prune removes reviewed stale local-state paths."
 		help_detail "--force proceeds when a tag moved away from the recorded revision."
+		help_detail "--depth overrides per-project clone depth for shallow subprojects."
 		help_detail "--dry-run shows planned clone/fetch/checkout/prune actions."
 		help_heading "Examples:"
 		help_example "git-nest restore"
@@ -557,6 +569,18 @@ command_help() {
 		help_example "git-nest freeze --only libs/foo,libs/bar"
 		help_example "git-nest freeze --dry-run"
 		help_opposite "update moves one subproject to a selected remote/tag/revision."
+		;;
+	gc)
+		help_command "gc [--aggressive] [--dry-run] [--json | --json-pretty]"
+		help_text "Run git gc in the nest root and every checked-out subproject."
+		help_detail "Without --aggressive, runs plain git gc."
+		help_detail "--aggressive passes --aggressive to git gc."
+		help_detail "--dry-run prints planned gc actions without running."
+		help_detail "--json and --json-pretty print machine-readable output."
+		help_heading "Examples:"
+		help_example "git-nest gc"
+		help_example "git-nest gc --aggressive"
+		help_example "git-nest gc --dry-run"
 		;;
 	status)
 		help_command "status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
@@ -638,17 +662,21 @@ command_help() {
 		help_detail "status stays focused on workspace health; use list for a scriptable inventory."
 		;;
 	tree)
-		help_command "tree [--all] [--recursive] [--json | --json-pretty]"
+		help_command "tree [--all] [--recursive] [--plain] [--porcelain | --json | --json-pretty]"
 		help_text "Display an ASCII-art tree of the current nest, grouped by shared path prefixes."
 		help_detail "Plain: every managed subproject, as a branch from the nest root."
 		help_detail "--all also shows survey's own detected-but-unmanaged findings (submodules, nested repos, git-subrepos, nest roots, detached former subprojects), each marked with its code."
 		help_detail "--recursive also descends into nested nests, rendering their own subprojects nested under that branch."
-		help_detail "Uses ASCII connectors only (|--, \`--, |); no Unicode box-drawing characters."
+		help_detail "--plain omits URL and type columns, showing only path and [code] marker."
+		help_detail "Uses a single +-- connector for every branch and a trailing / on every entry; no Unicode box-drawing characters."
+		help_detail "--porcelain prints stable fixed-column records for scripts."
 		help_detail "--json/--json-pretty print the same shared row schema other inspection commands use."
 		help_heading "Examples:"
 		help_example "git-nest tree"
 		help_example "git-nest tree --all"
 		help_example "git-nest tree --all --recursive"
+		help_example "git-nest tree --plain"
+		help_example "git-nest tree --porcelain"
 		help_opposite "list prints the same managed subprojects as a flat, scriptable table."
 		;;
 	survey)
@@ -657,7 +685,7 @@ command_help() {
 		help_detail "--max-depth bounds the scan depth (default 4)."
 		help_detail "--exclude adds directory names to the default prune list; it may be repeated."
 		help_detail "--include narrows the scan to one or more paths instead of the whole tree; it may be repeated."
-		help_detail "The leading code is the kind: S submodule, R nested repo, N nested nest root, D detached, G git-subrepo."
+		help_detail "The leading code is the kind: S submodule, R nested repo, U unmanaged nested nest root, D detached, G git-subrepo."
 		help_detail "A path found inside a boundary this same scan already classified (a submodule, subrepo, nested repo, or nested nest) is never reported again on its own."
 		help_detail "Detection only; it never adds, syncs, or registers repositories. Symlinked directories are not followed."
 		help_heading "Examples:"
@@ -707,14 +735,20 @@ command_help() {
 		help_opposite "hooks-install installs the managed local hooks."
 		;;
 	foreach)
-		help_command "foreach [--] <command> [args...]"
-		help_text "Run a command in every checked-out subproject in the current nest."
-		help_detail "The command runs inside each subproject checkout."
-		help_detail "The -- separator is optional. Omit it for ordinary commands: git-nest foreach git status."
-		help_detail "Use -- when the command starts with a word that could be confused with an option."
-		help_heading "Examples:"
-		help_example "git-nest foreach git status --short"
-		help_example "git-nest foreach -- sh -c 'git rev-parse --show-toplevel'"
+	help_command "foreach [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
+	help_text "Run a command in every checked-out subproject in the current nest."
+	help_detail "The command runs inside each subproject checkout."
+	help_detail "--include-root-first runs the command on the nest root before subprojects."
+	help_detail "--include-root-last runs the command on the nest root after subprojects."
+	help_detail "--only-nested limits execution to subprojects that are themselves git-nest workspaces."
+	help_detail "--no-nested excludes nested nests, running only in plain subproject checkouts."
+	help_detail "The -- separator is optional. Omit it for ordinary commands: git-nest foreach git status."
+	help_detail "Use -- when the command starts with a word that could be confused with an option."
+	help_heading "Examples:"
+	help_example "git-nest foreach git status --short"
+	help_example "git-nest foreach -- sh -c 'git rev-parse --show-toplevel'"
+	help_example "git-nest foreach --include-root-last -- git add -A && git commit -m 'batch commit'"
+	help_example "git-nest foreach --only-nested -- git status"
 		;;
 	foreach-modified)
 		help_command "foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
@@ -902,6 +936,10 @@ git_nest_main() {
 	freeze)
 		enter_project_root_required
 		cmd_freeze "$@"
+		;;
+	gc)
+		enter_project_root_required
+		cmd_gc "$@"
 		;;
 	hooks-install)
 		enter_project_root_required
@@ -1365,20 +1403,27 @@ cmd_init() {
 # Add a subproject checkout and record its repo, target branch, and current revision.
 cmd_add() {
 	clone_mode=
+	add_depth=
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--clone)
-			[ $# -ge 2 ] || die "--clone requires full or partial"
+			[ $# -ge 2 ] || die "--clone requires full, partial, or shallow"
 			clone_mode=$2
 			validate_clone_mode "$clone_mode" "add --clone"
-			[ -n "$clone_mode" ] || die "--clone requires full or partial"
+			[ -n "$clone_mode" ] || die "--clone requires full, partial, or shallow"
+			shift 2
+			;;
+		--depth)
+			[ $# -ge 2 ] || die "--depth requires a positive integer"
+			add_depth=$2
+			validate_positive_integer "$add_depth" "--depth"
 			shift 2
 			;;
 		--*) die "unknown add option: $1" ;;
 		*) break ;;
 		esac
 	done
-	[ $# -eq 2 ] || die "usage: git-nest add [--clone <full|partial>] <repo> <path>"
+	[ $# -eq 2 ] || die "usage: git-nest add [--clone <full|partial|shallow>] [--depth <n>] <repo> <path>"
 	repo=$1
 	reject_backslash_path "$2"
 	path=$(normalize_path "$2")
@@ -1393,11 +1438,14 @@ cmd_add() {
 	if [ ! -d "$path/.git" ]; then
 		[ ! -e "$path" ] || die "$path exists but is not a Git repository"
 		mode=$clone_mode
-		if [ -z "$mode" ] && [ "$(configured_clone_mode)" = partial ]; then
-			mode=partial
+		if [ -z "$mode" ]; then
+			configured=$(configured_clone_mode)
+			[ "$configured" = partial ] && mode=partial
+			[ "$configured" = shallow ] && mode=shallow
 		fi
 		[ -n "$mode" ] || mode=full
-		clone_subproject "$repo" "$path" "$mode" 0
+		cs_depth=${add_depth:-}
+		clone_subproject "$repo" "$path" "$mode" 0 "$cs_depth"
 	fi
 
 	ensure_gitignore_hygiene
@@ -1407,6 +1455,9 @@ cmd_add() {
 	target=$(default_target_branch "$path")
 	revision=$(resolve_head_commit "$path" "cannot add subproject $path")
 	manifest_write_subproject "$path" "$repo" tracked "$target" "$revision" "$clone_mode"
+	if [ -n "$add_depth" ]; then
+		manifest_set_subproject_key "$path" depth "$add_depth"
+	fi
 	install_hooks_in_repo_if_project_managed "$path"
 	write_materialized_state
 	printf 'Added subproject %s.\n' "$path"
@@ -1683,9 +1734,9 @@ cmd_clone() {
 		set -- "$@" --single-branch
 	fi
 	if [ -n "$target_dir" ]; then
-		"$@" "$outer_repo" "$target_dir" || git_error "failed to clone outer repository $outer_repo"
+		"$@" "$outer_repo" "$target_dir" || git_error "failed to clone outer repository $outer_repo into $target_dir; verify the URL and network access"
 	else
-		"$@" "$outer_repo" || git_error "failed to clone outer repository $outer_repo"
+		"$@" "$outer_repo" || git_error "failed to clone outer repository $outer_repo; verify the URL and network access"
 		target_dir=$(basename -- "$outer_repo")
 		target_dir=${target_dir%.git}
 	fi
@@ -2750,7 +2801,7 @@ snapshot_one_subproject() {
 	strict=$4
 	check_only=$5
 	[ -d "$path/.git" ] || {
-		[ "$quiet" -eq 1 ] || warn "skipping missing subproject $path during snapshot"
+		[ "$quiet" -eq 1 ] || warn "skipping missing subproject $path during snapshot; run git-nest restore first"
 		[ "$strict" -eq 1 ] && return "$EXIT_PRECONDITION"
 		return 0
 	}
@@ -2765,7 +2816,7 @@ snapshot_one_subproject() {
 	target=$(subproject_key "$path" target_branch || true)
 	[ -n "$target" ] || target=$(default_target_branch "$path")
 	if ! subproject_head_is_reproducible "$path" "$head"; then
-		[ "$quiet" -eq 1 ] || warn "cannot snapshot $path at $(printf '%s' "$head" | cut -c1-12): commit is not reachable from origin or a local tag"
+		[ "$quiet" -eq 1 ] || warn "cannot snapshot $path at $(printf '%s' "$head" | cut -c1-12): commit is not reachable from origin or a local tag; push the subproject first"
 		[ "$strict" -eq 1 ] && return "$EXIT_ISSUES"
 		return 0
 	fi
@@ -3300,11 +3351,38 @@ cmd_config() {
 run_foreach() {
 	mode=$1
 	shift
-	[ $# -gt 0 ] || die "usage: git-nest $mode [--] <command> [args...]"
-	if [ "$1" = "--" ]; then
-		shift
-	fi
-	[ $# -gt 0 ] || die "usage: git-nest $mode [--] <command> [args...]"
+	include_root_first=0
+	include_root_last=0
+	only_nested=0
+	no_nested=0
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--include-root-first)
+			include_root_first=1
+			shift
+			;;
+		--include-root-last)
+			include_root_last=1
+			shift
+			;;
+		--only-nested)
+			only_nested=1
+			shift
+			;;
+		--no-nested)
+			no_nested=1
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		--*) usage_error "unknown $mode option: $1" ;;
+		*) break ;;
+		esac
+	done
+	[ "$only_nested" -eq 0 ] || [ "$no_nested" -eq 0 ] || usage_error "$mode cannot combine --only-nested with --no-nested"
+	[ $# -gt 0 ] || die "usage: git-nest $mode [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
 
 	root=$(repo_root)
 	root=$(CDPATH='' cd -- "$root" && pwd)
@@ -3312,11 +3390,33 @@ run_foreach() {
 	manifest_subprojects >"$subprojects_tmp"
 
 	rc=0
+
+	run_foreach_in_root() {
+		child_rc=0
+		(
+			cd "$root" || exit 1
+			GIT_NEST_ROOT=$root \
+				GIT_NEST_SUBPROJECT_PATH=. \
+				"$@"
+		) || child_rc=$?
+		return "$child_rc"
+	}
+
+	if [ "$include_root_first" -eq 1 ]; then
+		run_foreach_in_root "$@" || rc=$?
+	fi
+
 	while IFS= read -r path; do
 		[ -n "$path" ] || continue
 		pending=$(subproject_key "$path" pending_branch || true)
 		if [ "$mode" = "foreach-pending" ] && [ -z "$pending" ]; then
 			continue
+		fi
+		if { [ "$only_nested" -eq 1 ] || [ "$no_nested" -eq 1 ]; }; then
+			is_nested=0
+			[ -f "$path/$MANIFEST_FILE" ] && is_nested=1
+			[ "$only_nested" -eq 0 ] || [ "$is_nested" -eq 1 ] || continue
+			[ "$no_nested" -eq 0 ] || [ "$is_nested" -eq 0 ] || continue
 		fi
 		if [ ! -d "$path/.git" ]; then
 			warn "skipping missing subproject $path"
@@ -3334,7 +3434,6 @@ run_foreach() {
 
 		# Run in a subshell so each subproject gets its own working directory and
 		# exported context without leaking changes into the next iteration.
-		child_rc=0
 		(
 			cd "$path" || exit 1
 			GIT_NEST_ROOT=$root \
@@ -3351,10 +3450,12 @@ run_foreach() {
 				REPO_PATH=$path \
 				REPO_PROJECT=$path \
 				"$@"
-		) || rc=$?
-
-		[ "$rc" -eq 0 ] || break
+		) || { rc=$?; [ "$include_root_last" -eq 1 ] || break; }
 	done <"$subprojects_tmp"
+
+	if [ "$include_root_last" -eq 1 ]; then
+		run_foreach_in_root "$@" || rc=$?
+	fi
 
 	rm -f "$subprojects_tmp"
 	return "$rc"
@@ -3373,10 +3474,18 @@ cmd_foreach_pending() {
 foreach_filtered_rows() {
 	mode=$1
 	rows=$2
+	ffr_only_nested=${3:-0}
+	ffr_no_nested=${4:-0}
 	: >"$rows"
 	manifest_subprojects | while IFS= read -r path; do
 		[ -n "$path" ] || continue
 		[ -d "$path/.git" ] || continue
+		if { [ "$ffr_only_nested" -eq 1 ] || [ "$ffr_no_nested" -eq 1 ]; }; then
+			ffr_is_nested=0
+			[ -f "$path/$MANIFEST_FILE" ] && ffr_is_nested=1
+			[ "$ffr_only_nested" -eq 0 ] || [ "$ffr_is_nested" -eq 1 ] || continue
+			[ "$ffr_no_nested" -eq 0 ] || [ "$ffr_is_nested" -eq 0 ] || continue
+		fi
 		dirty=0
 		repo_has_dirty "$path" && dirty=1
 		case "$mode:$dirty" in
@@ -3447,6 +3556,8 @@ run_foreach_filtered() {
 	mode=$1
 	shift
 	continue_on_error=0
+	only_nested=0
+	no_nested=0
 	porcelain=0
 	json=0
 	json_pretty=0
@@ -3454,6 +3565,14 @@ run_foreach_filtered() {
 		case "$1" in
 		--continue-on-error)
 			continue_on_error=1
+			shift
+			;;
+		--only-nested)
+			only_nested=1
+			shift
+			;;
+		--no-nested)
+			no_nested=1
 			shift
 			;;
 		--porcelain)
@@ -3483,13 +3602,14 @@ run_foreach_filtered() {
 	if { [ "$porcelain" -eq 1 ] || [ "$json" -eq 1 ]; } && [ $# -gt 0 ]; then
 		usage_error "$mode machine-readable output cannot be combined with a command"
 	fi
+	[ "$only_nested" -eq 0 ] || [ "$no_nested" -eq 0 ] || usage_error "$mode cannot combine --only-nested with --no-nested"
 
 	rows=$(tmp_for "$MANIFEST_FILE.$mode")
 	errors=$(tmp_for "$MANIFEST_FILE.$mode.errors")
 	warnings=$(tmp_for "$MANIFEST_FILE.$mode.warnings")
 	: >"$errors"
 	: >"$warnings"
-	foreach_filtered_rows "$mode" "$rows"
+	foreach_filtered_rows "$mode" "$rows" "$only_nested" "$no_nested"
 
 	if [ "$porcelain" -eq 1 ]; then
 		cat "$rows"
@@ -4049,7 +4169,8 @@ restore_current() {
 				exit 0
 			fi
 			if [ ! -d "$path/.git" ]; then
-				clone_subproject "$repo" "$path" "$clone_mode" 1
+				sp_depth=${restore_depth:-$(subproject_key "$path" depth || true)}
+				clone_subproject "$repo" "$path" "$clone_mode" 1 "$sp_depth"
 				created=1
 			fi
 			if [ "$created" -eq 1 ]; then
@@ -4143,6 +4264,7 @@ cmd_restore() {
 	prune=0
 	force=0
 	dry_run=0
+	restore_depth=
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--recursive)
@@ -4156,6 +4278,12 @@ cmd_restore() {
 		--force)
 			force=1
 			shift
+			;;
+		--depth)
+			[ $# -ge 2 ] || usage_error "--depth requires a positive integer"
+			restore_depth=$2
+			validate_positive_integer "$restore_depth" "--depth"
+			shift 2
 			;;
 		--dry-run)
 			dry_run=1
@@ -4477,8 +4605,86 @@ cmd_pull() {
 	[ "$json" -eq 1 ] || notice_nested_projects
 }
 
+# Run git gc in the nest root and every checked-out subproject.
+cmd_gc() {
+	aggressive=0
+	dry_run=0
+	json=0
+	json_pretty=0
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--aggressive)
+			aggressive=1
+			shift
+			;;
+		--dry-run)
+			dry_run=1
+			shift
+			;;
+		--json)
+			json=1
+			shift
+			;;
+		--json-pretty)
+			json=1
+			json_pretty=1
+			shift
+			;;
+		*) usage_error "unknown gc option: $1" ;;
+		esac
+	done
+
+	gc_opts=
+	[ "$aggressive" -eq 1 ] && gc_opts="--aggressive"
+
+	gc_rows=$(mktemp)
+	gc_errors=$(mktemp)
+	gc_warnings=$(mktemp)
+	: >"$gc_errors"
+	: >"$gc_warnings"
+
+	gc_run() {
+		gc_repo=$1
+		gc_label=${2:-$1}
+		if [ "$dry_run" -eq 1 ]; then
+			[ "$json" -eq 1 ] || printf '[dry-run] would run git gc %s in %s\n' "$gc_opts" "$gc_label"
+			printf 'W\t%s\tgc\t-\t-\t-\twould run git gc %s\n' "$gc_label" "$gc_opts" >>"$gc_rows"
+		else
+			if git -C "$gc_repo" gc $gc_opts >/dev/null 2>&1; then
+				printf 'P\t%s\tgc\t-\t-\t-\trun git gc\n' "$gc_label" >>"$gc_rows"
+			else
+				printf 'F\t%s\tgc\t-\t-\t-\tgit gc failed\n' "$gc_label" >>"$gc_warnings"
+			fi
+		fi
+	}
+
+	gc_run "." "."
+
+	manifest_subprojects | while IFS= read -r gc_path; do
+		[ -n "$gc_path" ] || continue
+		[ -d "$gc_path/.git" ] || continue
+		gc_run "$gc_path" "$gc_path"
+	done
+
+	if [ "$json" -eq 1 ]; then
+		emit_json_result gc 0 1 "$gc_rows" "$gc_errors" "$gc_warnings" "$json_pretty"
+	else
+		label="Nest root"
+		while IFS='	' read -r gc_code gc_path gc_state gc_target gc_current gc_expected gc_detail; do
+			[ -n "$gc_code" ] || continue
+			case "$gc_code" in
+			P) printf 'Ran git gc in %s.\n' "$gc_path" ;;
+			W) printf '[dry-run] %s: would run git gc\n' "$gc_path" ;;
+			F) printf 'Warning: git gc failed in %s.\n' "$gc_path" ;;
+			esac
+		done <"$gc_rows"
+	fi
+
+	rm -f "$gc_rows" "$gc_errors" "$gc_warnings"
+}
+
 GIT_NEST_command_names() {
-	printf '%s\n' "init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
+	printf '%s\n' "init repair add remove rm move mv clone status outdated verify diff log snapshot restore pull gc freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
 }
 
 # Internal completion data endpoint used by generated shell completion scripts.
@@ -4558,7 +4764,7 @@ _git_nest_complete()
             COMPREPLY=( $(compgen -W "--porcelain --json --json-pretty --redact" -- "$cur") )
             ;;
         tree)
-            COMPREPLY=( $(compgen -W "--all --recursive --json --json-pretty" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--all --recursive --porcelain --json --json-pretty" -- "$cur") )
             ;;
         diff)
             COMPREPLY=( $(compgen -W "--since --stat --json --json-pretty" -- "$cur") )
@@ -4575,6 +4781,9 @@ _git_nest_complete()
             ;;
         freeze)
             COMPREPLY=( $(compgen -W "--force --only --dry-run" -- "$cur") )
+            ;;
+        gc)
+            COMPREPLY=( $(compgen -W "--aggressive --dry-run --json --json-pretty" -- "$cur") )
             ;;
         foreach-modified|foreach-clean)
             COMPREPLY=( $(compgen -W "--continue-on-error --porcelain --json --json-pretty --" -- "$cur") )
@@ -4662,7 +4871,7 @@ _git_nest()
             _arguments '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]' '--redact[strip credentials and home paths]'
             ;;
         tree)
-            _arguments '--all[also show unmanaged findings]' '--recursive[also descend into nested nests]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
+            _arguments '--all[also show unmanaged findings]' '--recursive[also descend into nested nests]' '--porcelain[stable fixed-column records]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
             ;;
         diff)
             _arguments '--since[read manifest from ref]:ref:' '--stat[include file statistics]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
@@ -4678,6 +4887,9 @@ _git_nest()
             ;;
         freeze)
             _arguments '--force[freeze dirty subprojects]' '--only[limit paths]:paths:' '--dry-run[show changes without writing]'
+            ;;
+        gc)
+            _arguments '--aggressive[pass --aggressive to git gc]' '--dry-run[show planned actions without running]' '--json[print JSON]' '--json-pretty[print pretty JSON]'
             ;;
         foreach-modified|foreach-clean)
             _arguments '--continue-on-error[keep iterating after failures]' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]'

@@ -1,3 +1,11 @@
+## 0.8.9 - 2026-07-27
+
+### Documentation and survey improvements
+  * Removed superseded survey_pull_feature design documents from the repository.
+  * Added survey detection of un-initialized submodules with actionable next-step suggestions.
+  * Added CI setup guide (docs/ci-setup.md).
+  * Fixed non-ASCII em-dash in docs/examples.md.
+
 ## 0.8.8 - 2026-07-25
 
 ### Bug fixes and hardening

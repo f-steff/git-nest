@@ -330,7 +330,7 @@ survey_scan() {
 
 # Classify one discovered repository and append a porcelain row describing it.
 # Rows reuse the shared 7-column layout: code, path, state, target, current,
-# expected, detail. code is S(ubmodule)/R(nested-repo)/N(est root)/D(etached)/
+# expected, detail. code is S(ubmodule)/R(nested-repo)/U(nmanaged nested nest root)/D(etached)/
 # G(it-subrepo); target carries the managing boundary when the path sits
 # inside one; detail is a next-step hint.
 #
@@ -369,7 +369,7 @@ survey_classify_row() {
 		dcr_code=S
 		dcr_state=submodule
 	elif [ -f "$dcr_path/$MANIFEST_FILE" ]; then
-		dcr_code=N
+		dcr_code=U
 		dcr_state=nest-root
 	elif gitignore_block_paths | grep -Fxq "$dcr_path"; then
 		dcr_code=D
@@ -396,7 +396,11 @@ survey_classify_row() {
 	elif [ "$dcr_state" = nest-root ]; then
 		dcr_detail="nested nest; run git-nest inside it or use --recursive commands"
 	elif [ "$dcr_state" = submodule ]; then
-		dcr_detail="run git-nest absorb $dcr_path_q to convert the submodule"
+		if [ -e "$dcr_path/.git" ]; then
+			dcr_detail="run git-nest absorb $dcr_path_q to convert the submodule"
+		else
+			dcr_detail="submodule $dcr_path_q is not checked out; run git submodule update --init $dcr_path_q first, then re-run survey"
+		fi
 	elif [ "$dcr_state" = detached ]; then
 		dcr_detail="detached former subproject; git-nest absorb $dcr_path_q to re-manage, or move/remove it and run git-nest repair"
 	elif [ "$dcr_state" = subrepo ]; then
@@ -437,6 +441,30 @@ survey_collect_rows() {
 		[ -n "$repo" ] || continue
 		survey_classify_row "$repo" "$scr_rows" "$scr_boundaries"
 	done <"$scr_raw"
+
+	# Enumerate .gitmodules entries to find submodules registered in the
+	# manifest but not checked out on disk. The find-based scan above only
+	# finds paths that have a .git file/directory, so an un-initialized
+	# submodule (registered via .gitmodules but never checked out) would
+	# be invisible without this pass.
+	if [ -f .gitmodules ]; then
+		git config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null |
+		while IFS=' ' read -r scr_key scr_subm_path; do
+			[ -n "$scr_subm_path" ] || continue
+			# Already classified by the filesystem scan -- skip to avoid
+			# duplicates.
+			if grep -qxF "$scr_subm_path" "$scr_boundaries" >/dev/null 2>&1; then
+				continue
+			fi
+			# Only report un-initialized submodules (no .git on disk).
+			if [ ! -e "$scr_subm_path/.git" ]; then
+				scr_subm_q=$(shell_quote "$scr_subm_path")
+				printf 'S\t%s\tsubmodule\t-\t-\t-\tsubmodule %s is not checked out; run git submodule update --init %s first, then re-run survey\n' \
+					"$scr_subm_path" "$scr_subm_q" "$scr_subm_q" >>"$scr_rows"
+				printf '%s\n' "$scr_subm_path" >>"$scr_boundaries"
+			fi
+		done
+	fi
 
 	rm -f "$scr_raw" "$scr_boundaries"
 }
@@ -563,21 +591,75 @@ list_rows() {
 	done
 }
 
-# Collect rows for tree: one per managed subproject (code M, no annotation),
-# plus (with tcr_all=1) survey's own unmanaged findings, reusing
-# survey_collect_rows so tree never disagrees with survey about what is out
-# there. tcr_prefix is prepended to every path so a recursive call from
-# inside a nested nest reports paths relative to the outermost root; pass
-# "." for the top-level call. With tcr_recursive=1, a managed subproject
-# that is itself a nested nest (has its own .gitnest) is also descended
-# into, in its own subshell (isolating that recursive call's own variables
-# from this loop, the same pattern pull_recursive already uses), so a
-# mid-recursion path never corrupts an in-progress sibling iteration here.
+# Resolve the repository URL for a survey-discovered path given its state code.
+# Returns the URL or "No URI" if none can be determined.
+tree_survey_url() {
+	tsu_code=$1
+	tsu_path=$2
+	tsu_state=$3
+	case "$tsu_code" in
+	S)
+		tsu_url=$(git config -f .gitmodules --get "submodule.$(outer_submodule_name_for_path "$tsu_path" 2>/dev/null || true).url" 2>/dev/null || true)
+		[ -n "$tsu_url" ] || tsu_url="No URI"
+		printf '%s\n' "$tsu_url"
+		;;
+	G)
+		if [ -f "$tsu_path/.gitrepo" ]; then
+			tsu_url=$(awk -v key='remote' '/^\[subrepo\]/ { ins=1 } ins && index($0, key "=") == 1 { v=substr($0, index($0, "=")+1); gsub(/^[ \t]+|[ \t]+$/, "", v); print v; exit }' "$tsu_path/.gitrepo")
+		fi
+		[ -n "${tsu_url:-}" ] || tsu_url="No URI"
+		printf '%s\n' "$tsu_url"
+		;;
+	U)
+		tsu_url=$(subproject_repo "$tsu_path" 2>/dev/null || true)
+		if [ -z "$tsu_url" ] && [ -f "$tsu_path/$MANIFEST_FILE" ]; then
+			tsu_url=$(awk -F= '/^repo=/ { print $2; exit }' "$tsu_path/$MANIFEST_FILE" 2>/dev/null || true)
+		fi
+		[ -n "${tsu_url:-}" ] || tsu_url="No URI"
+		printf '%s\n' "$tsu_url"
+		;;
+	R | D)
+		tsu_url=$(git -C "$tsu_path" remote get-url origin 2>/dev/null || true)
+		[ -n "$tsu_url" ] || tsu_url="No URI"
+		printf '%s\n' "$tsu_url"
+		;;
+	*) printf 'No URI\n' ;;
+	esac
+}
+
+# Map survey state value to human-readable typelabel.
+tree_survey_typelabel() {
+	case "$1" in
+	submodule) printf 'Unmanaged Submodule\n' ;;
+	nested-repo) printf 'Unmanaged Repo\n' ;;
+	subrepo) printf 'Unmanaged Subrepo\n' ;;
+	detached) printf 'Unmanaged Detached\n' ;;
+	nest-root) printf 'Unmanaged Nested Nest Root\n' ;;
+	*) printf 'Unmanaged\n' ;;
+	esac
+}
+
+# Collect rows for tree: root line, one per managed subproject, plus (with
+# tcr_all=1) survey's own unmanaged findings reusing survey_collect_rows so
+# tree never disagrees with survey about what is out there. Output is 4
+# tab-separated columns: code, path, url, typelabel.
+# tcr_prefix is prepended to every path so a recursive call from inside a
+# nested nest reports paths relative to the outermost root; pass "." for the
+# top-level call. With tcr_recursive=1, a managed subproject that is itself
+# a nested nest (has its own .gitnest) is also descended into, in its own
+# subshell (isolating that recursive call's own variables from this loop,
+# the same pattern pull_recursive already uses), so a mid-recursion path
+# never corrupts an in-progress sibling iteration here.
 tree_collect_rows() {
 	tcr_all=$1
 	tcr_recursive=$2
 	tcr_prefix=$3
 	tcr_rows=$4
+
+	# Root line: the nest root with its origin URL.
+	tcr_root_url=$(git remote get-url origin 2>/dev/null || true)
+	[ -n "$tcr_root_url" ] || tcr_root_url="No URI"
+	printf 'N\t.\t%s\tNest Root\n' "$tcr_root_url" >>"$tcr_rows"
 
 	tcr_managed=$(mktemp)
 	manifest_subprojects >"$tcr_managed"
@@ -585,13 +667,15 @@ tree_collect_rows() {
 		[ -n "$tcr_path" ] || continue
 		tcr_full=$tcr_path
 		[ "$tcr_prefix" = "." ] || tcr_full="$tcr_prefix/$tcr_path"
+		tcr_url=$(subproject_repo "$tcr_path" || true)
+		[ -n "$tcr_url" ] || tcr_url="No URI"
 		if [ -f "$tcr_path/$MANIFEST_FILE" ]; then
-			printf 'M\t%s\t(nested nest)\n' "$tcr_full" >>"$tcr_rows"
+			printf 'C\t%s\t%s\tComposite\n' "$tcr_full" "$tcr_url" >>"$tcr_rows"
 			if [ "$tcr_recursive" -eq 1 ] && [ -d "$tcr_path/.git" ]; then
 				(cd "$tcr_path" && tree_collect_rows "$tcr_all" "$tcr_recursive" "$tcr_full" "$tcr_rows")
 			fi
 		else
-			printf 'M\t%s\t\n' "$tcr_full" >>"$tcr_rows"
+			printf 'M\t%s\t%s\tManaged\n' "$tcr_full" "$tcr_url" >>"$tcr_rows"
 		fi
 	done <"$tcr_managed"
 	rm -f "$tcr_managed"
@@ -606,7 +690,9 @@ tree_collect_rows() {
 			[ -n "$tcr_code" ] || continue
 			tcr_full=$tcr_path
 			[ "$tcr_prefix" = "." ] || tcr_full="$tcr_prefix/$tcr_path"
-			printf '%s\t%s\t%s\n' "$tcr_code" "$tcr_full" "$tcr_state" >>"$tcr_rows"
+			tcr_surl=$(tree_survey_url "$tcr_code" "$tcr_path" "$tcr_state")
+			tcr_stype=$(tree_survey_typelabel "$tcr_state")
+			printf '%s\t%s\t%s\t%s\n' "$tcr_code" "$tcr_full" "$tcr_surl" "$tcr_stype" >>"$tcr_rows"
 		done <"$tcr_scan_rows"
 		rm -f "$tcr_scan_rows"
 	fi
@@ -621,6 +707,8 @@ tree_collect_rows() {
 cmd_tree() {
 	show_all=0
 	recursive=0
+	plain=0
+	porcelain=0
 	json=0
 	pretty=0
 	while [ $# -gt 0 ]; do
@@ -631,6 +719,14 @@ cmd_tree() {
 			;;
 		--recursive)
 			recursive=1
+			shift
+			;;
+		--plain)
+			plain=1
+			shift
+			;;
+		--porcelain)
+			porcelain=1
 			shift
 			;;
 		--json)
@@ -646,26 +742,40 @@ cmd_tree() {
 		*) usage_error "tree takes no positional arguments" ;;
 		esac
 	done
+	[ "$porcelain" -eq 0 ] || [ "$json" -eq 0 ] || usage_error "tree cannot combine --porcelain with --json/--json-pretty"
+	[ "$plain" -eq 0 ] || [ "$porcelain" -eq 0 ] || usage_error "tree --plain cannot be combined with --porcelain"
+	[ "$plain" -eq 0 ] || [ "$json" -eq 0 ] || usage_error "tree --plain cannot be combined with --json/--json-pretty"
 	ensure_manifest
 	validate_manifest_schema
 
 	tree_rows=$(mktemp)
 	tree_collect_rows "$show_all" "$recursive" "." "$tree_rows"
 
-	if [ "$json" -eq 1 ]; then
-		tree_json_rows=$(mktemp)
-		tree_empty=$(mktemp)
-		while IFS='	' read -r tj_code tj_path tj_annot; do
-			[ -n "$tj_code" ] || continue
-			printf '%s\t%s\t%s\t-\t-\t-\t%s\n' "$tj_code" "$tj_path" "${tj_annot:--}" "$tj_annot" >>"$tree_json_rows"
+	if [ "$json" -eq 1 ] || [ "$porcelain" -eq 1 ]; then
+		# Expand 4-column (code/path/url/typelabel) rows into the shared 7-column
+		# porcelain schema. state receives the typelabel, detail receives the url.
+		tree_full=$(mktemp)
+		while IFS='	' read -r tf_code tf_path tf_url tf_typelabel; do
+			[ -n "$tf_code" ] || continue
+			[ -n "$tf_typelabel" ] || tf_typelabel=-
+			printf '%s\t%s\t%s\t-\t-\t-\t%s\n' "$tf_code" "$tf_path" "$tf_typelabel" "$tf_url" >>"$tree_full"
 		done <"$tree_rows"
-		emit_json_result tree 0 1 "$tree_json_rows" "$tree_empty" "$tree_empty" "$pretty"
-		rm -f "$tree_json_rows" "$tree_empty"
+		rm -f "$tree_rows"
+
+		if [ "$json" -eq 1 ]; then
+			tree_empty=$(mktemp)
+			emit_json_result tree 0 1 "$tree_full" "$tree_empty" "$tree_empty" "$pretty"
+			rm -f "$tree_empty"
+		else
+			cat "$tree_full"
+		fi
+		rm -f "$tree_full"
 	else
+		# Feed the raw 4-column rows directly to the awk renderer for human output.
 		tree_tab=$(printf '\t')
-		sort -t "$tree_tab" -k2,2 "$tree_rows" | awk -f "$SCRIPT_DIR/lib/tree-render.awk"
+		sort -t "$tree_tab" -k2,2 "$tree_rows" | awk -v plain="$plain" -f "$SCRIPT_DIR/lib/tree-render.awk"
+		rm -f "$tree_rows"
 	fi
-	rm -f "$tree_rows"
 }
 
 # list prints the managed subprojects in a stable order with their URL, target
