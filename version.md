@@ -1,3 +1,11 @@
+## 0.8.10 - 2026-07-28
+
+### Nest codes and foreach filters
+  * Added unmanaged (U) and composite (C) nest root codes in tree and survey output.
+  * Added foreach --only-nested/--no-nested filters for targeted subproject iteration.
+  * Linked version.md from README for release traceability.
+  * Improved error messages with actionable context.
+
 ## 0.8.9 - 2026-07-27
 
 ### Documentation and survey improvements

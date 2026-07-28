@@ -361,7 +361,7 @@ $ git-nest tree --all
     +-- ui-kit/                   [M] https://example.invalid/ui-kit.git     [Managed]
 ```
 
-Unmanaged findings discovered by `survey` use their own codes: `[R]` for a nested repo, `[S]` for a submodule, `[G]` for a git-subrepo, `[D]` for a detached former subproject, and `[U]` for an unmanaged nested nest root. Each carries the appropriate type label like `[Unmanaged Repo]`, `[Unmanaged Submodule]`, or `[Unmanaged Subrepo]`. `No URI` can appear on these (or on the `[N]` nest root) when no remote is discoverable -- for example, a detached former subproject whose checkout still exists but whose remote is gone.
+Unmanaged findings discovered by `survey` use their own codes: `[R]` for a nested repo, `[S]` for a submodule, `[G]` for a git-subrepo, `[D]` for a detached former subproject, and `[U]` for an unmanaged nested nest root. Each carries the appropriate type label like `[Unmanaged Repo]`, `[Unmanaged Submodule]`, or `[Unmanaged Subrepo]`. `No URI` can appear on these (or on the `[N]` nest root) when no remote is discoverable — for example, a detached former subproject whose checkout still exists but whose remote is gone.
 
 Use `--plain` to show only the directory structure with `[code]` markers, omitting URLs and type labels:
 
