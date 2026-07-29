@@ -310,7 +310,7 @@ This is a working-tree convenience, not a manifest authority. It does not replac
 | `branch-unmark <name>` | Remove a branch mark for the current repository. |
 | `branch-list` | List remembered branch names and their repository paths. |
 | `branch-cleanup` | Remove branch marks whose local branches no longer exist. |
-| `foreach [--include-root-first\|--include-root-last] [--only-nested\|--no-nested] -- <command>` | Run a command in every checked-out subproject in the current nest. |
+| `foreach -- <command>` | Run a command in every checked-out subproject in the current nest. |
 | `foreach-modified` | Run a command in dirty checked-out subprojects in the current nest or list them. |
 | `foreach-clean` | Run a command in clean checked-out subprojects in the current nest or list them. |
 | `config` | Read or update allowlisted manifest settings such as `clone-mode`, which controls future `restore` clones rather than the `clone` command. |
@@ -424,56 +424,6 @@ sh tests/run-all-tests.sh help                 # commands and examples
 ```
 
 Options: `--verbose` (`-v`) streams everything (full raw output with a shell trace) instead of the curated narrative; `--stop-on-fail` stops at the first failure; `--no-log` skips the full-run log and `--log FILE` writes it elsewhere. An unknown command, option, or test ID prints the help and stops. All commands and options work through `tests\run-all-tests.bat` too.
-
-See [`tests/tests.md`](tests/tests.md) for the full test guide: how to write new tests, the helper API, ID allocation, and debugging tips.
-
-## Troubleshooting
-
-### "Could not acquire manifest lock" error
-
-Another `git-nest` process is holding the `.gitnest.lock` directory. Wait for it to finish, or if no `git-nest` process is running, remove the stale lock:
-
-```sh
-rm -rf .gitnest.lock
-```
-
-### "fetch failed" during restore or snapshot
-
-Check network access and authentication for the subproject remote. Run `git-nest doctor` for a health report:
-
-```sh
-git-nest doctor
-```
-
-If the remote is unreachable, use `--no-fetch` or `--offline` for commands that support it.
-
-### .gitnest schema error after manual edit
-
-If you hand-edited `.gitnest` and `git-nest` rejects it, check for:
-- Missing `[project]` section with `version=1`
-- Duplicate section names
-- Trailing whitespace or malformed `key=value` lines
-- Backslashes in paths instead of forward slashes
-
-Run `git-nest doctor` for a schema validation report.
-
-### "Recovery backup" leftover after interrupted conversion
-
-If a conversion (`inline`, `absorb --preserve-history`, `absorb-all`) was interrupted, a `.gitnest-recovery-*` directory remains. Open its `RECOVERY.txt` for restore instructions. Clean up with:
-
-```sh
-rm -rf .gitnest-recovery-*
-```
-
-Run `git-nest doctor` to check for leftover recovery backups.
-
-### Test suite hangs
-
-The test runner has a watchdog (default 180 seconds per test without output). If a test hangs, increase the timeout:
-
-```sh
-TEST_WATCHDOG_SECONDS=300 sh tests/run-all-tests.sh
-```
 
 ## Contributing And Maintenance
 

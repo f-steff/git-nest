@@ -41,8 +41,6 @@ sh tests/run-all-tests.sh
 
 Tests should create local bare Git repositories as remotes under `TEST_ROOT`, identify themselves through `test_begin` for standalone runs, and leave numbered workspaces for inspection. The default `TEST_ROOT` is outside the repository so startup tests are not affected by the tool repository's own Git root. The suite owns formatted headings and the final status/time summary table.
 
-See `tests/tests.md` for the complete test writing guide (helper API, ID allocation, debugging).
-
 Name tests by feature, not development phase, and give each a globally unique four-digit ID prefix: `test_<NNNN>_<category>_<behavior>.sh`. ID blocks step by 10 so tests can be inserted: `command_*` from 0010, `contract_*` from 2000, `platform_*` from 3000, `symmetry_*` from 4000, `workflow_*` from 5000. Categories are `test_<NNNN>_command_<command>_<behavior>.sh`, `test_<NNNN>_command_option_<command>_<option>_<behavior>.sh`, `test_<NNNN>_symmetry_<command_a>_<command_b>.sh`, `test_<NNNN>_workflow_<scenario>.sh`, `test_<NNNN>_contract_<area>.sh`, or `test_<NNNN>_platform_<area>.sh`. Put a `# Test: <one-line description>` header on the second line; `run-all-tests.sh list` shows it. Do not add milestone names such as `wave`, `vawe`, or phase labels. Prefer command-specific tests first, symmetry tests second, and workflow tests only when the scenario genuinely depends on several commands.
 
 The runner supports commands: `list` (every test as `ID  description`), `only <ids>` and `except <ids>` (comma-separated four-digit IDs), and `help`. `--stop-on-fail` stops at the first failure. An unknown command, option, or ID prints help and stops.

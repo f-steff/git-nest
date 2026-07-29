@@ -312,75 +312,41 @@ Once the submodule is initialized (`git submodule update --init vendor/ui-kit`),
 
 **Scenario:** after all of the above, get a quick overview instead of reading `.gitnest` by hand.
 
-**Code legend:**
-
-| Code | Meaning | Typelabel |
-|------|---------|-----------|
-| `[N]` | Current nest root (`.`) | `Nest Root` |
-| `[M]` | Managed subproject | `Managed` |
-| `[C]` | Composite subproject (managed + nested nest) | `Composite` |
-| `[R]` | Unmanaged nested repo | `Unmanaged Repo` |
-| `[S]` | Unmanaged submodule | `Unmanaged Submodule` |
-| `[G]` | Unmanaged git-subrepo | `Unmanaged Subrepo` |
-| `[D]` | Unmanaged detached former subproject | `Unmanaged Detached` |
-| `[U]` | Unmanaged nested nest root | `Unmanaged Nested Nest Root` |
-
 ```console
 $ git-nest tree
-.                                 [N] https://example.invalid/acme-app.git    [Nest Root]
+.
 +-- libs/
-|   +-- reporting/                [M] https://example.invalid/reporting.git  [Managed]
-|   +-- widgets/                  [M] https://example.invalid/widgets.git    [Managed]
+|   +-- reporting/
+|   +-- widgets/
 +-- services/
-|   +-- billing/                  [C] https://example.invalid/billing.git    [Composite]
+|   +-- billing/
 +-- vendor/
-    +-- analytics-sdk/            [M] https://example.invalid/analytics.git  [Managed]
-    +-- legacy-tool/              [M] https://example.invalid/legacy-tool.git [Managed]
-    +-- theme/                    [M] https://example.invalid/theme.git      [Managed]
-    +-- ui-kit/                   [M] https://example.invalid/ui-kit.git     [Managed]
+    +-- analytics-sdk/
+    +-- legacy-tool/
+    +-- theme/
+    +-- ui-kit/
 ```
 
-Every entry shows its type, the repository URL, and a human-readable type label. A managed subproject always has a URL recorded in `.gitnest` -- that is the reproducibility contract. `No URI` can only appear on `[N]` nest root entries (when no `origin` remote is configured), or on unmanaged findings (`[D]`, `[R]`, `[G]`, `[U]`) that have no discoverable remote. A nested nest (a subproject that is itself a `git-nest` workspace) is marked as `[C] Composite`.
-
-Add `--all` to also see `survey`'s own unmanaged findings alongside the managed ones:
+Managed subprojects sharing a path prefix (`libs/widgets`, `libs/reporting`) group under one branch. Add `--all` to also see `survey`'s own unmanaged findings, each marked with its code so managed and unmanaged entries are never ambiguous:
 
 ```console
 $ git-nest tree --all
-.                                 [N] https://example.invalid/acme-app.git    [Nest Root]
+.
 +-- external/
-|   +-- other/                    [R] https://example.invalid/other.git      [Unmanaged Repo]
+|   +-- other/  [R] nested-repo
 +-- libs/
-|   +-- reporting/                [M] https://example.invalid/reporting.git  [Managed]
-|   +-- widgets/                  [M] https://example.invalid/widgets.git    [Managed]
+|   +-- reporting/
+|   +-- widgets/
 +-- services/
-|   +-- billing/                  [C] https://example.invalid/billing.git    [Composite]
+|   +-- billing/
 +-- vendor/
-    +-- analytics-sdk/            [M] https://example.invalid/analytics.git  [Managed]
-    +-- legacy-tool/              [M] https://example.invalid/legacy-tool.git [Managed]
-    +-- theme/                    [M] https://example.invalid/theme.git      [Managed]
-    +-- ui-kit/                   [M] https://example.invalid/ui-kit.git     [Managed]
+    +-- analytics-sdk/
+    +-- legacy-tool/
+    +-- theme/
+    +-- ui-kit/
 ```
 
-Unmanaged findings discovered by `survey` use their own codes: `[R]` for a nested repo, `[S]` for a submodule, `[G]` for a git-subrepo, `[D]` for a detached former subproject, and `[U]` for an unmanaged nested nest root. Each carries the appropriate type label like `[Unmanaged Repo]`, `[Unmanaged Submodule]`, or `[Unmanaged Subrepo]`. `No URI` can appear on these (or on the `[N]` nest root) when no remote is discoverable — for example, a detached former subproject whose checkout still exists but whose remote is gone.
-
-Use `--plain` to show only the directory structure with `[code]` markers, omitting URLs and type labels:
-
-```console
-$ git-nest tree --plain
-.                                 [N]
-+-- libs/
-|   +-- reporting/                [M]
-|   +-- widgets/                  [M]
-+-- services/
-|   +-- billing/                  [M]
-+-- vendor/
-    +-- analytics-sdk/            [M]
-    +-- legacy-tool/              [M]
-    +-- theme/                    [M]
-    +-- ui-kit/                   [M]
-```
-
-`tree` uses a single `+--` connector for every branch (never a different glyph for the last child of a level) and a trailing `/` on every entry, since everything a git-nest tree shows is a directory; no Unicode box-drawing characters, so its output renders identically -- and pastes cleanly -- in any terminal, editor, or chat. For structured output, `--porcelain` and `--json` emit the same shared 7-column row schema as other inspection commands, with the type label in the state column and the URL (or `No URI`) in the detail column.
+`tree` uses a single `+--` connector for every branch (never a different glyph for the last child of a level) and a trailing `/` on every entry, since everything a git-nest tree shows is a directory; no Unicode box-drawing characters, so its output renders identically -- and pastes cleanly -- in any terminal, editor, or chat.
 
 ## 10. Nest A Nest Inside A Nest
 
@@ -413,17 +379,17 @@ $ git commit -m "Turn services/billing into its own nested nest"
 $ cd ../..
 
 $ git-nest tree --recursive
-.                                 [N] https://example.invalid/acme-app.git    [Nest Root]
+.
 +-- libs/
-|   +-- reporting/                [M] https://example.invalid/reporting.git  [Managed]
-|   +-- widgets/                  [M] https://example.invalid/widgets.git    [Managed]
+|   +-- reporting/
+|   +-- widgets/
 +-- services/
-|   +-- billing/                  [C] https://example.invalid/billing.git    [Composite]
+|   +-- billing/
 |       +-- libs/
-|           +-- billing-db/       [M] https://example.invalid/billing-db.git [Managed]
+|           +-- billing-db/
 +-- vendor/
-    +-- analytics-sdk/            [M] https://example.invalid/analytics.git  [Managed]
-    +-- ui-kit/                   [M] https://example.invalid/ui-kit.git     [Managed]
+    +-- analytics-sdk/
+    +-- ui-kit/
 ```
 
 `init --sure` is required here on purpose: creating a nest inside a directory that is already part of another nest is exactly the kind of accident git-nest tries to prevent, so it must be a conscious, explicit choice. Plain `git-nest tree` (without `--recursive`) would show `services/billing` as an ordinary leaf; only `--recursive` descends into it and renders its own subprojects nested underneath.
@@ -553,8 +519,6 @@ F	packages/widgets	modified	-	-	-	dirty
 ```
 
 `foreach` never touches the nest root itself -- only checked-out subprojects. `foreach-modified`/`foreach-clean` narrow the same iteration to dirty or clean subprojects respectively, and are the building blocks for the cross-repository feature-branch recipe documented in the main README (branch, commit, and push every dirty subproject in one pass, then `git-nest snapshot` to pin the result).
-
-Use `--only-nested` to limit iteration to subprojects that are themselves git-nest workspaces, or `--no-nested` to exclude them and run only in plain subproject checkouts. Both flags compose with `--include-root-first`/`--include-root-last` and with `--continue-on-error`.
 
 ## 16. Machine-Readable Output For Scripts
 

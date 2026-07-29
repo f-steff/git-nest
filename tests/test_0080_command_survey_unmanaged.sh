@@ -62,7 +62,7 @@ test_step "Survey classifies each repository kind" "Standalone repos, submodules
 run_capture "survey porcelain lists repositories" disc.out disc.err -- "$GIT_NEST" survey --porcelain
 assert_file_contains disc.out 'R	tools/helper	nested-repo'
 assert_file_contains disc.out 'S	ext/sub	submodule'
-assert_file_contains disc.out 'U	apps/inner	nest-root'
+assert_file_contains disc.out 'N	apps/inner	nest-root'
 assert_file_contains disc.out 'G	external/thing	subrepo'
 # A repo inside a managed subproject is reported with the managing parent.
 assert_file_contains disc.out 'libs/foo/inner	nested-repo	libs/foo'

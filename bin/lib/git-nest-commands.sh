@@ -112,7 +112,7 @@ usage() {
 	help_usage "diff" "[--since <ref>] [--stat] [--json | --json-pretty]"
 	help_usage "log" "[--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]"
 	help_usage "list" "[--porcelain | --json | --json-pretty] [--redact]"
-	help_usage "tree" "[--all] [--recursive] [--plain] [--json | --json-pretty]"
+	help_usage "tree" "[--all] [--recursive] [--json | --json-pretty]"
 	help_usage "survey" "[--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
 	help_usage "doctor" "[--json | --json-pretty] [--online | --offline] [--timeout <seconds>] [--exit-code] [--redact]"
 
@@ -127,7 +127,7 @@ usage() {
 	help_usage "hooks-uninstall"
 
 	help_usage_group "Iteration"
-	help_usage "foreach" "[--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
+	help_usage "foreach" "[--include-root-first|--include-root-last] [--] <command> [args...]"
 	help_usage "foreach-modified" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 	help_usage "foreach-clean" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 
@@ -270,11 +270,10 @@ usage() {
 	help_command "list [--porcelain | --json | --json-pretty] [--redact]"
 	help_text "List managed subprojects with URL, target branch, revision, tag, state, and reproducibility."
 	help_detail "Stable order for scripts; --porcelain and --json/--json-pretty print machine-readable output."
-	help_command "tree [--all] [--recursive] [--plain] [--json | --json-pretty]"
+	help_command "tree [--all] [--recursive] [--json | --json-pretty]"
 	help_text "Display an ASCII-art tree of the nest, grouped by shared path prefixes."
 	help_detail "--all also shows survey's own detected-but-unmanaged findings, marked with their code."
 	help_detail "--recursive also descends into nested nests, rendering their subprojects nested under that branch."
-	help_detail "--plain omits the URL and type columns, showing only the tree structure with [code] markers."
 	help_command "survey [--exclude <name>]... [--include <path>]... [--max-depth <n>] [--porcelain | --json | --json-pretty]"
 	help_text "Scan for nested Git repositories, submodules, and git-subrepos not managed by .gitnest."
 	help_detail "Bounded by --max-depth (default 4) and pruned by default and extra --exclude directory names."
@@ -662,12 +661,11 @@ command_help() {
 		help_detail "status stays focused on workspace health; use list for a scriptable inventory."
 		;;
 	tree)
-		help_command "tree [--all] [--recursive] [--plain] [--porcelain | --json | --json-pretty]"
+		help_command "tree [--all] [--recursive] [--porcelain | --json | --json-pretty]"
 		help_text "Display an ASCII-art tree of the current nest, grouped by shared path prefixes."
 		help_detail "Plain: every managed subproject, as a branch from the nest root."
 		help_detail "--all also shows survey's own detected-but-unmanaged findings (submodules, nested repos, git-subrepos, nest roots, detached former subprojects), each marked with its code."
 		help_detail "--recursive also descends into nested nests, rendering their own subprojects nested under that branch."
-		help_detail "--plain omits URL and type columns, showing only path and [code] marker."
 		help_detail "Uses a single +-- connector for every branch and a trailing / on every entry; no Unicode box-drawing characters."
 		help_detail "--porcelain prints stable fixed-column records for scripts."
 		help_detail "--json/--json-pretty print the same shared row schema other inspection commands use."
@@ -675,7 +673,6 @@ command_help() {
 		help_example "git-nest tree"
 		help_example "git-nest tree --all"
 		help_example "git-nest tree --all --recursive"
-		help_example "git-nest tree --plain"
 		help_example "git-nest tree --porcelain"
 		help_opposite "list prints the same managed subprojects as a flat, scriptable table."
 		;;
@@ -685,7 +682,7 @@ command_help() {
 		help_detail "--max-depth bounds the scan depth (default 4)."
 		help_detail "--exclude adds directory names to the default prune list; it may be repeated."
 		help_detail "--include narrows the scan to one or more paths instead of the whole tree; it may be repeated."
-		help_detail "The leading code is the kind: S submodule, R nested repo, U unmanaged nested nest root, D detached, G git-subrepo."
+		help_detail "The leading code is the kind: S submodule, R nested repo, N nested nest root, D detached, G git-subrepo."
 		help_detail "A path found inside a boundary this same scan already classified (a submodule, subrepo, nested repo, or nested nest) is never reported again on its own."
 		help_detail "Detection only; it never adds, syncs, or registers repositories. Symlinked directories are not followed."
 		help_heading "Examples:"
@@ -735,20 +732,17 @@ command_help() {
 		help_opposite "hooks-install installs the managed local hooks."
 		;;
 	foreach)
-	help_command "foreach [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
+	help_command "foreach [--include-root-first|--include-root-last] [--] <command> [args...]"
 	help_text "Run a command in every checked-out subproject in the current nest."
 	help_detail "The command runs inside each subproject checkout."
 	help_detail "--include-root-first runs the command on the nest root before subprojects."
 	help_detail "--include-root-last runs the command on the nest root after subprojects."
-	help_detail "--only-nested limits execution to subprojects that are themselves git-nest workspaces."
-	help_detail "--no-nested excludes nested nests, running only in plain subproject checkouts."
 	help_detail "The -- separator is optional. Omit it for ordinary commands: git-nest foreach git status."
 	help_detail "Use -- when the command starts with a word that could be confused with an option."
 	help_heading "Examples:"
 	help_example "git-nest foreach git status --short"
 	help_example "git-nest foreach -- sh -c 'git rev-parse --show-toplevel'"
 	help_example "git-nest foreach --include-root-last -- git add -A && git commit -m 'batch commit'"
-	help_example "git-nest foreach --only-nested -- git status"
 		;;
 	foreach-modified)
 		help_command "foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
@@ -3353,8 +3347,6 @@ run_foreach() {
 	shift
 	include_root_first=0
 	include_root_last=0
-	only_nested=0
-	no_nested=0
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--include-root-first)
@@ -3365,14 +3357,6 @@ run_foreach() {
 			include_root_last=1
 			shift
 			;;
-		--only-nested)
-			only_nested=1
-			shift
-			;;
-		--no-nested)
-			no_nested=1
-			shift
-			;;
 		--)
 			shift
 			break
@@ -3381,8 +3365,7 @@ run_foreach() {
 		*) break ;;
 		esac
 	done
-	[ "$only_nested" -eq 0 ] || [ "$no_nested" -eq 0 ] || usage_error "$mode cannot combine --only-nested with --no-nested"
-	[ $# -gt 0 ] || die "usage: git-nest $mode [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
+	[ $# -gt 0 ] || die "usage: git-nest $mode [--include-root-first] [--include-root-last] [--] <command> [args...]"
 
 	root=$(repo_root)
 	root=$(CDPATH='' cd -- "$root" && pwd)
@@ -3411,12 +3394,6 @@ run_foreach() {
 		pending=$(subproject_key "$path" pending_branch || true)
 		if [ "$mode" = "foreach-pending" ] && [ -z "$pending" ]; then
 			continue
-		fi
-		if { [ "$only_nested" -eq 1 ] || [ "$no_nested" -eq 1 ]; }; then
-			is_nested=0
-			[ -f "$path/$MANIFEST_FILE" ] && is_nested=1
-			[ "$only_nested" -eq 0 ] || [ "$is_nested" -eq 1 ] || continue
-			[ "$no_nested" -eq 0 ] || [ "$is_nested" -eq 0 ] || continue
 		fi
 		if [ ! -d "$path/.git" ]; then
 			warn "skipping missing subproject $path"
@@ -3474,18 +3451,10 @@ cmd_foreach_pending() {
 foreach_filtered_rows() {
 	mode=$1
 	rows=$2
-	ffr_only_nested=${3:-0}
-	ffr_no_nested=${4:-0}
 	: >"$rows"
 	manifest_subprojects | while IFS= read -r path; do
 		[ -n "$path" ] || continue
 		[ -d "$path/.git" ] || continue
-		if { [ "$ffr_only_nested" -eq 1 ] || [ "$ffr_no_nested" -eq 1 ]; }; then
-			ffr_is_nested=0
-			[ -f "$path/$MANIFEST_FILE" ] && ffr_is_nested=1
-			[ "$ffr_only_nested" -eq 0 ] || [ "$ffr_is_nested" -eq 1 ] || continue
-			[ "$ffr_no_nested" -eq 0 ] || [ "$ffr_is_nested" -eq 0 ] || continue
-		fi
 		dirty=0
 		repo_has_dirty "$path" && dirty=1
 		case "$mode:$dirty" in
@@ -3556,8 +3525,6 @@ run_foreach_filtered() {
 	mode=$1
 	shift
 	continue_on_error=0
-	only_nested=0
-	no_nested=0
 	porcelain=0
 	json=0
 	json_pretty=0
@@ -3565,14 +3532,6 @@ run_foreach_filtered() {
 		case "$1" in
 		--continue-on-error)
 			continue_on_error=1
-			shift
-			;;
-		--only-nested)
-			only_nested=1
-			shift
-			;;
-		--no-nested)
-			no_nested=1
 			shift
 			;;
 		--porcelain)
@@ -3602,14 +3561,13 @@ run_foreach_filtered() {
 	if { [ "$porcelain" -eq 1 ] || [ "$json" -eq 1 ]; } && [ $# -gt 0 ]; then
 		usage_error "$mode machine-readable output cannot be combined with a command"
 	fi
-	[ "$only_nested" -eq 0 ] || [ "$no_nested" -eq 0 ] || usage_error "$mode cannot combine --only-nested with --no-nested"
 
 	rows=$(tmp_for "$MANIFEST_FILE.$mode")
 	errors=$(tmp_for "$MANIFEST_FILE.$mode.errors")
 	warnings=$(tmp_for "$MANIFEST_FILE.$mode.warnings")
 	: >"$errors"
 	: >"$warnings"
-	foreach_filtered_rows "$mode" "$rows" "$only_nested" "$no_nested"
+	foreach_filtered_rows "$mode" "$rows"
 
 	if [ "$porcelain" -eq 1 ]; then
 		cat "$rows"

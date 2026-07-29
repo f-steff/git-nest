@@ -1,3 +1,10 @@
+## 0.8.11 - 2026-07-29
+
+### GC, foreach, and shallow clone
+  * Added git-nest gc: prune unreferenced objects across all subproject repositories.
+  * Added foreach --include-root-first/--include-root-last for nest-root-inclusive iteration.
+  * Added shallow clone mode (clone-mode=partial) for bandwidth-efficient restores.
+
 ## 0.8.10 - 2026-07-28
 
 ### Nest codes and foreach filters

@@ -94,7 +94,7 @@ case_dir invalid_clone '[project]
 version=1
 [subproject "libs/foo"]
 repo=file:///tmp/foo.git
-clone=nonexistent'
+clone=shallow'
 assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "invalid clone mode"
 
