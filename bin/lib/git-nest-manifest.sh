@@ -474,7 +474,7 @@ ensure_gitattributes_guard() {
 
 warn_missing_gitattributes_guard() {
 	gitattributes_has_guard && return 0
-	warn "missing or stale git-nest .gitattributes guard; run git-nest repair to refresh it"
+	warn "missing or stale git-nest .gitattributes guard; run git-nest tidy to refresh it"
 }
 
 warn_old_managed_hooks() {
@@ -1846,7 +1846,7 @@ ensure_gitignore_hygiene() {
 }
 
 # Report bare paths in the managed ignore block that are neither managed nor
-# present on disk, i.e. stale orphans that repair would prune. Read-only.
+# present on disk, i.e. stale orphans that tidy would prune. Read-only.
 stale_gitignore_orphans() {
 	rg_managed=$(mktemp)
 	manifest_subprojects | sed 's#/*$##' | sort -u >"$rg_managed"

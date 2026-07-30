@@ -35,5 +35,7 @@ assert_removed foreach-pending "pending manifest state is no longer supported" -
 assert_removed cleanup-branches "git-nest no longer deletes Git branches"
 # extract was renamed: absorb now covers files, repositories, and submodules.
 assert_removed extract "use git-nest absorb" src/lib "file:///tmp/none.git"
+# repair was renamed to tidy.
+assert_removed repair "use git-nest tidy"
 
 describe_result "Removed workflow commands failed with migration guidance."

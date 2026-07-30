@@ -1,3 +1,11 @@
+## 0.8.12 - 2026-07-30
+
+### Tests and rename
+  * Added comprehensive test documentation (tests/tests.md) with troubleshooting guide.
+  * Deepened test coverage for gc, foreach --include-root, shallow clone, and freeze.
+  * Renamed repair command to tidy throughout the codebase and documentation.
+  * Removed deprecated repair command handler completely.
+
 ## 0.8.11 - 2026-07-29
 
 ### GC, foreach, and shallow clone

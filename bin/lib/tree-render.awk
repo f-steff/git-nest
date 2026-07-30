@@ -1,18 +1,20 @@
 # git-nest: record and restore reproducible nests of independent Git repositories.
 # https://github.com/f-steff/git-nest
 #
-# Renders a flat list of paths (one code<TAB>path<TAB>annotation triple per
-# line on stdin, pre-sorted by path) as an ASCII-art tree grouped by shared
-# directory prefixes. Every branch uses a single "+-- " connector (never a
-# different glyph for the last child of a level) and every entry gets a
-# trailing "/" (everything git-nest's tree shows is a directory: a managed
-# subproject checkout or an ordinary path-grouping directory above one).
-# Continuation columns still use "|" for an ancestor level that has further
-# siblings below it and blank spaces once it does not, the same convention
-# GNU tree's --charset=ascii mode uses -- no Unicode box-drawing characters,
-# per the project's ASCII-only rule. This single-glyph style is deliberately
-# simpler to paste and share (e.g. in an issue or chat) than alternating
-# connectors, since every line looks the same regardless of position.
+# Renders a flat list of paths (tab-separated records on stdin) as an ASCII-art
+# tree grouped by shared directory prefixes. Input is 4 columns:
+#   code \t path \t url \t typelabel
+# where path "." is the nest root line (not rendered as a tree branch).
+#
+# In full mode (plain=0) each leaf shows:
+#   +-- name/    [code] url    [typelabel]
+#
+# In plain mode (plain=1) each leaf shows only:
+#   +-- name/    [code]
+#
+# Every branch uses a single "+-- " connector, every entry gets a trailing "/",
+# continuation columns use "|" for levels with further siblings and blank spaces
+# once they do not. No Unicode box-drawing characters.
 #
 # Copyright (c) 2026 Flemming Steffensen.
 # License: MIT
@@ -27,7 +29,7 @@ function shownode(key, prefix,    kids, n, i, childkey, name, is_last, line, chi
 		is_last = (i == n)
 		line = prefix "+-- " name "/"
 		if (childkey in leafannot && leafannot[childkey] != "") {
-			line = line "  " leafannot[childkey]
+			line = line " " leafannot[childkey]
 		}
 		print line
 		childprefix = prefix (is_last ? "    " : "|   ")
@@ -40,8 +42,19 @@ BEGIN { FS = "\t" }
 {
 	code = $1
 	path = $2
-	annot = $3
+	url = $3
+	typelabel = $4
+
 	if (path == "") next
+
+	# Root line: store and skip tree building.
+	if (path == ".") {
+		root_code = code
+		root_url = url
+		root_typelabel = typelabel
+		next
+	}
+
 	n = split(path, parts, "/")
 	key = ""
 	for (i = 1; i <= n; i++) {
@@ -52,10 +65,40 @@ BEGIN { FS = "\t" }
 			order[parentkey] = order[parentkey] (order[parentkey] == "" ? "" : "\x1f") key
 		}
 	}
-	leafannot[path] = (code == "M" ? "" : "[" code "] " annot)
+
+	if (plain) {
+		if (code != "") {
+			leafannot[path] = "[" code "]"
+		}
+	} else {
+		annot = ""
+		if (code != "") {
+			annot = "[" code "]"
+		}
+		if (url != "") {
+			annot = annot (annot == "" ? "" : " ") url
+		}
+		if (typelabel != "") {
+			annot = annot "    [" typelabel "]"
+		}
+		leafannot[path] = annot
+	}
 }
 
 END {
-	print "."
+	# Root line
+	root_line = "."
+	if (root_code != "") {
+		root_line = root_line "    [" root_code "]"
+		if (!plain) {
+			if (root_url != "") {
+				root_line = root_line " " root_url
+			}
+			if (root_typelabel != "") {
+				root_line = root_line "    [" root_typelabel "]"
+			}
+		}
+	}
+	print root_line
 	shownode("", "")
 }

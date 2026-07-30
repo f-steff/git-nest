@@ -50,4 +50,19 @@ test "$(git -C "$root/cloned-branch" rev-parse --abbrev-ref HEAD)" = "dev"
 run_ok "shallow clone the outer repository" -- "$GIT_NEST" clone --no-restore --depth 1 --single-branch --branch main "file://$outer_remote" "$root/cloned-depth"
 test "$(git -C "$root/cloned-depth" rev-parse --is-shallow-repository)" = "true"
 
-describe_result "clone respected --no-restore, restored by default, and passed outer-clone options (--branch/--depth/--single-branch) through to git."
+test_step "add --clone shallow --depth creates a subproject with recorded depth" "A subproject added with --clone shallow and --depth should store depth in the manifest."
+add_shallow_target="$root/add-shallow"
+mkdir -p "$add_shallow_target" && cd "$add_shallow_target"
+"$GIT_NEST" init >/dev/null
+run_ok "add shallow subproject with depth 3" -- "$GIT_NEST" add --clone shallow --depth 3 "$url_one" libs/shallow
+test -d libs/shallow/.git
+assert_file_contains .gitnest "clone=shallow"
+assert_file_contains .gitnest "depth=3"
+
+test_step "restore --depth overrides manifest clone depth" "restore with --depth should override the depth for shallow clones and re-clone correctly."
+"$GIT_NEST" add --clone shallow --depth 2 "$url_two" libs/shallow2 >/dev/null
+rm -rf libs/shallow2
+run_ok "restore with depth override" -- "$GIT_NEST" restore --depth 5
+test -d libs/shallow2/.git
+
+describe_result "clone respected --no-restore, restored by default, passed outer-clone options through to git, and shallow clone modes work for add --clone shallow --depth and restore --depth override."

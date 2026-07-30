@@ -61,3 +61,47 @@ run_ok "foreach with -- runs command" -- "$GIT_NEST" foreach -- sh -c 'printf "%
 run_ok "foreach-modified without -- runs command in dirty subproject" -- "$GIT_NEST" foreach-modified sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH"'
 run_ok "foreach-clean without -- runs command in clean subprojects" -- "$GIT_NEST" foreach-clean sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH"'
 describe_result "All foreach variants accepted commands without -- separator."
+
+test_step "foreach --include-root-first runs the command on the nest root before subprojects" "The root's GIT_NEST_SUBPROJECT_PATH should be '.' and it should appear before subproject entries."
+rm -f foreach_root.out
+"$GIT_NEST" foreach --include-root-first -- sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH" >>"$GIT_NEST_ROOT/foreach_root.out"'
+head -1 foreach_root.out >first_line.out
+assert_file_contains first_line.out "."
+assert_file_contains foreach_root.out "libs/one"
+assert_file_contains foreach_root.out "libs/two"
+assert_file_contains foreach_root.out "libs/three"
+
+test_step "foreach --include-root-last runs the command on the nest root after subprojects" "The root entry should be the last line."
+rm -f foreach_root.out
+"$GIT_NEST" foreach --include-root-last -- sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH" >>"$GIT_NEST_ROOT/foreach_root.out"'
+tail -1 foreach_root.out >last_line.out
+assert_file_contains last_line.out "."
+
+test_step "foreach --only-nested runs only in subprojects that are themselves nests" "Create a nested nest, then verify --only-nested selects only it and --no-nested excludes it."
+# Clone a remote and absorb it as a subproject, then turn it into a nested nest
+remote_nested="$work/remotes/nested.git"
+make_bare_remote "$remote_nested" "$work/seed/nested-seed"
+git clone "$remote_nested" nested >/dev/null 2>&1
+"$GIT_NEST" absorb nested >/dev/null
+(
+    cd nested
+    "$GIT_NEST" init --sure >/dev/null
+    "$GIT_NEST" add "$remote_one" nested-inner >/dev/null
+    git add .gitnest .gitignore .gitattributes
+    git commit -qm "nested nest init"
+)
+rm -f foreach_nested.out
+"$GIT_NEST" foreach --only-nested -- sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH" >>"$GIT_NEST_ROOT/foreach_nested.out"'
+assert_file_contains foreach_nested.out "nested"
+grep -c "nested" foreach_nested.out | grep -q "^1$"
+for f in libs/one libs/two libs/three; do
+    assert_file_not_contains foreach_nested.out "$f"
+done
+
+test_step "foreach --no-nested skips subprojects that are themselves nests" "Plain subprojects should still run, but the nested one should not appear."
+rm -f foreach_nonested.out
+"$GIT_NEST" foreach --no-nested -- sh -c 'printf "%s\n" "$GIT_NEST_SUBPROJECT_PATH" >>"$GIT_NEST_ROOT/foreach_nonested.out"'
+assert_file_not_contains foreach_nonested.out "nested"
+for f in libs/one libs/two libs/three; do
+    assert_file_contains foreach_nonested.out "$f"
+done

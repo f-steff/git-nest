@@ -53,7 +53,7 @@ expected_version=$("$GIT_NEST_REAL" version)
     test -f .gitnest
     test ! -f .gitnest-rc
     test -f .gitignore
-    "$2" repair --rc >/dev/null
+    "$2" tidy --rc >/dev/null
     test -f .gitnest-rc
 ' busybox-test "$outer_dir" "$script" "$expected_version"
 

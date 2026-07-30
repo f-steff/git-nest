@@ -50,7 +50,7 @@ git nest absorb-all --dry-run
 git nest absorb-all
 ```
 
-git-nest keeps its ignore rules in a managed `# BEGIN git-nest ignores` block in `.gitignore`. If the user reports leftover ignore rules for directories they deleted, run `git nest repair`, which reconciles the block and prunes stale nest-owned entries; `git nest doctor` warns when stale entries exist. Do not hand-edit the managed block; edit via git-nest commands or `repair`.
+git-nest keeps its ignore rules in a managed `# BEGIN git-nest ignores` block in `.gitignore`. If the user reports leftover ignore rules for directories they deleted, run `git nest tidy`, which reconciles the block and prunes stale nest-owned entries; `git nest doctor` warns when stale entries exist. Do not hand-edit the managed block; edit via git-nest commands or `tidy`.
 
 If you find a `.gitnest-recovery-<op>-<name>-<timestamp>/` directory, a previous `inline` or `absorb --preserve-history` was interrupted. Open its `RECOVERY.txt` for exact restore and cleanup steps; `git nest doctor` also reports these leftovers. git-nest removes such backups automatically when a conversion succeeds, so one that remains means the earlier command did not finish.
 

@@ -7,7 +7,7 @@ test_begin contract_gitignore_hygiene
 
 # git-nest keeps its ignore rules in a self-healing managed block so it can own,
 # canonicalize, and prune them without disturbing user-authored ignore lines.
-test_step "Exercise the managed .gitignore block" "init/add/repair must maintain a # BEGIN/# END git-nest ignores block, canonicalize subproject paths into it, heal stray entries, prune stale ones, and preserve user lines."
+test_step "Exercise the managed .gitignore block" "init/add/tidy must maintain a # BEGIN/# END git-nest ignores block, canonicalize subproject paths into it, heal stray entries, prune stale ones, and preserve user lines."
 
 root=$(test_workspace contract_gitignore_hygiene)
 remote="$root/remotes/foo.git"
@@ -48,13 +48,13 @@ printf 'libs/foo\n' >>.gitignore
 test "$(grep -c 'libs/foo' .gitignore)" = "1"
 grep -q '^libs/foo/$' .gitignore || { printf 'UNEXPECTED RESULT: canonical libs/foo/ not present\n' >&2; exit 1; }
 
-# --- repair heals a nest-owned line a user pastes outside the block ---
+# --- tidy heals a nest-owned line a user pastes outside the block ---
 printf 'libs/foo\n' >>.gitignore
-"$GIT_NEST" repair >/dev/null
+"$GIT_NEST" tidy >/dev/null
 test "$(grep -c 'libs/foo' .gitignore)" = "1"
-grep -q '^libs/foo/$' .gitignore || { printf 'UNEXPECTED RESULT: repair did not canonicalize libs/foo/\n' >&2; exit 1; }
+grep -q '^libs/foo/$' .gitignore || { printf 'UNEXPECTED RESULT: tidy did not canonicalize libs/foo/\n' >&2; exit 1; }
 
-# --- detach keeps the ignore entry; repair prunes it after physical removal ---
+# --- detach keeps the ignore entry; tidy prunes it after physical removal ---
 detachwork="$root/detach"
 make_repo "$detachwork"
 cd "$detachwork"
@@ -71,9 +71,9 @@ grep -q '^libs/bar/$' .gitignore || { printf 'UNEXPECTED RESULT: detach dropped 
 rm -rf libs/bar
 "$GIT_NEST" doctor --offline >doctor.out 2>doctor.err || true
 assert_file_contains doctor.out 'gitignore-stale'
-# repair prunes the stale entry, reports it, and keeps user lines.
-"$GIT_NEST" repair >repair.out
-assert_file_contains repair.out 'Pruned stale ignore entry: libs/bar/'
+# tidy prunes the stale entry, reports it, and keeps user lines.
+"$GIT_NEST" tidy >tidy.out
+assert_file_contains tidy.out 'Pruned stale ignore entry: libs/bar/'
 assert_file_not_contains .gitignore 'libs/bar'
 assert_file_contains .gitignore 'keep-me/'
 # The managed block and constants survive pruning.

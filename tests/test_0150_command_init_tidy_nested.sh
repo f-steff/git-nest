@@ -1,13 +1,13 @@
 #!/bin/sh
-# Test: init creates a nest, repair refreshes support files, and nested init requires --sure
+# Test: init creates a nest, tidy refreshes support files, and nested init requires --sure
 
 set -eu
 . "$(dirname "$0")/helper.sh"
-test_begin command_init_repair_nested
+test_begin command_init_tidy_nested
 
-test_step "Exercise init, repair, and nested init confirmation" "Init should create only, repair should fix managed files, and nested nests should require explicit confirmation."
+test_step "Exercise init, tidy, and nested init confirmation" "Init should create only, tidy should fix managed files, and nested nests should require explicit confirmation."
 
-root=$(test_workspace command_init_repair_nested)
+root=$(test_workspace command_init_tidy_nested)
 remote="$root/remotes/foo.git"
 seed="$root/seed/foo"
 outer="$root/outer"
@@ -25,9 +25,9 @@ cp .gitattributes expected.gitattributes
 printf 'broken\n' >.gitattributes
 "$GIT_NEST" init >init_again.out
 assert_file_contains init_again.out "already initialized"
-assert_file_contains init_again.out "git-nest repair"
+assert_file_contains init_again.out "git-nest tidy"
 assert_file_contains .gitattributes "broken"
-"$GIT_NEST" repair >/dev/null
+"$GIT_NEST" tidy >/dev/null
 assert_file_contains .gitattributes ".gitnest text eol=lf"
 assert_file_contains .gitattributes "bin/git_nest.sh text eol=lf"
 
@@ -44,4 +44,4 @@ assert_file_contains libs/foo/nested_init.err "rerun git-nest init --sure to cre
 assert_file_contains libs/foo/nested_sure.out "Initialized git-nest workspace."
 test -f libs/foo/.gitnest
 
-describe_result "Init creates only, repair refreshes managed files, and nested init requires --sure."
+describe_result "Init creates only, tidy refreshes managed files, and nested init requires --sure."
