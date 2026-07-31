@@ -39,9 +39,17 @@ sh tests/run-all-tests.sh
 
 ## Testing Expectations
 
+The project has two test suites. **Integration tests** (`tests/`) verify that commands work end-to-end by creating real Git repositories. **Unit tests** (`unit-tests/`) verify individual functions in isolation using a mock Git shim. See `tests/tests.md` and `unit-tests/unit-tests.md` for the respective writing guides.
+
+A function is considered tested if it is covered by either suite. Running `sh unit-tests/run-all-tests.sh --coverage` reports which source functions are covered by unit tests; the integration suite covers the `cmd_*` entry points and end-to-end flows. Combined target as close to 100% as practical. Functions that are deliberately not unit-tested are catalogued in `unit-tests/unit-tests.ini [untested]` with a reason; test 1990 enforces that new code must be either covered or explained.
+
+Unit tests follow the same naming convention but use ID block 1000-1999 and live in `unit-tests/`. Every test file must have `# Coverage: <function>` headers. Use the mock shim (`unit-tests/mocks.sh`) instead of calling real Git.
+
 Tests should create local bare Git repositories as remotes under `TEST_ROOT`, identify themselves through `test_begin` for standalone runs, and leave numbered workspaces for inspection. The default `TEST_ROOT` is outside the repository so startup tests are not affected by the tool repository's own Git root. The suite owns formatted headings and the final status/time summary table.
 
-See `tests/tests.md` for the complete test writing guide (helper API, ID allocation, debugging).
+See `tests/tests.md` for the complete integration test writing guide (helper API, ID allocation, debugging).
+
+See `unit-tests/unit-tests.md` for the unit test guide (pure function testing, mock Git, assertions, coverage tracking).
 
 Name tests by feature, not development phase, and give each a globally unique four-digit ID prefix: `test_<NNNN>_<category>_<behavior>.sh`. ID blocks step by 10 so tests can be inserted: `command_*` from 0010, `contract_*` from 2000, `platform_*` from 3000, `symmetry_*` from 4000, `workflow_*` from 5000. Categories are `test_<NNNN>_command_<command>_<behavior>.sh`, `test_<NNNN>_command_option_<command>_<option>_<behavior>.sh`, `test_<NNNN>_symmetry_<command_a>_<command_b>.sh`, `test_<NNNN>_workflow_<scenario>.sh`, `test_<NNNN>_contract_<area>.sh`, or `test_<NNNN>_platform_<area>.sh`. Put a `# Test: <one-line description>` header on the second line; `run-all-tests.sh list` shows it. Do not add milestone names such as `wave`, `vawe`, or phase labels. Prefer command-specific tests first, symmetry tests second, and workflow tests only when the scenario genuinely depends on several commands.
 

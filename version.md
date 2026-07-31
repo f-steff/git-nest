@@ -1,3 +1,12 @@
+## 0.8.13 - 2026-07-31
+
+### Unit test framework
+  * Added unit test framework with mock Git shim (arg-diff mock, response files).
+  * Expanded from 9 to 31 test files covering 86+ functions.
+  * Added coverage ini (unit-tests.ini) and test 1990 for function coverage enforcement.
+  * Fixed runner: mktemp for temp files, else-fi block structure.
+  * Concise console runner output with per-test narrative and timing.
+
 ## 0.8.12 - 2026-07-30
 
 ### Tests and rename

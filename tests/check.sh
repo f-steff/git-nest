@@ -17,12 +17,12 @@ NO_INSTALL=0
 BIN_DIR="${HOME:-~}/bin"
 
 # Count shell source files once for stats in pass/fail messages.
+# Use absolute glob relative to REPO_ROOT so checks work from any cwd.
 FILE_COUNT=0; LINE_COUNT=0
-for _f in $FILES; do
-    _fp="$REPO_ROOT/$_f"
-    [ -f "$_fp" ] || continue
+for _f in "$REPO_ROOT"/bin/git_nest.sh "$REPO_ROOT"/bin/lib/*.sh; do
+    [ -f "$_f" ] || continue
     FILE_COUNT=$((FILE_COUNT + 1))
-    _l=$(wc -l < "$_fp")
+    _l=$(wc -l < "$_f")
     LINE_COUNT=$((LINE_COUNT + _l))
 done
 
@@ -136,8 +136,9 @@ tool_check() {
 
 check_syntax() {
     rc=0
-    for f in $FILES; do
-        sh -n "$REPO_ROOT/$f" 2>/dev/null || { fail_ "$f"; rc=1; }
+    for f in "$REPO_ROOT"/bin/git_nest.sh "$REPO_ROOT"/bin/lib/*.sh; do
+        [ -f "$f" ] || continue
+        sh -n "$f" 2>/dev/null || { fail_ "${f##*/}" ; rc=1; }
     done
     [ "$rc" -eq 0 ] && pass_ "${FILE_COUNT} files, ${LINE_COUNT} lines"
     return "$rc"
@@ -154,9 +155,10 @@ check_shellcheck() {
 check_shfmt() {
     if tool_check shfmt shfmt --version 2>/dev/null; then
         issues=0
-        for f in $FILES; do
-            if shfmt -d -ln posix "$REPO_ROOT/$f" 2>/dev/null | grep . >/dev/null 2>&1; then
-                fail_ "$f (run: shfmt -w -ln posix $f)"
+        for f in "$REPO_ROOT"/bin/git_nest.sh "$REPO_ROOT"/bin/lib/*.sh; do
+            [ -f "$f" ] || continue
+            if shfmt -d -ln posix "$f" 2>/dev/null | grep . >/dev/null 2>&1; then
+                fail_ "${f##*/} (run: shfmt -w -ln posix ${f##*/})"
                 issues=$((issues + 1))
             fi
         done
@@ -169,9 +171,10 @@ check_shfmt() {
 check_bashisms() {
 	if tool_check checkbashisms checkbashisms --version >/dev/null 2>&1; then
 		issues=0
-		for f in $FILES; do
-			if checkbashisms "$REPO_ROOT/$f" 2>/dev/null | grep . >/dev/null 2>&1; then
-				fail_ "$f"
+		for f in "$REPO_ROOT"/bin/git_nest.sh "$REPO_ROOT"/bin/lib/*.sh; do
+		    [ -f "$f" ] || continue
+			if checkbashisms "$f" 2>/dev/null | grep . >/dev/null 2>&1; then
+				fail_ "${f##*/}"
 				issues=$((issues + 1))
 			fi
 		done
