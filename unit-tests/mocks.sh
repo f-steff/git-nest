@@ -89,6 +89,9 @@ MOCK_GIT_SCRIPT
     PATH="$MOCK_BIN:$PATH"
     export PATH
     export MOCK_RESPONSE_FILE
+    # zsh caches command paths at function definition time; after PATH is
+    # modified, rehash so subsequent calls (awk, git, cksum, etc.) are found.
+    hash -r 2>/dev/null || rehash 2>/dev/null || true
 }
 
 # Record (or override) a mock response for a git subcommand.

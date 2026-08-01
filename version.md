@@ -1,3 +1,12 @@
+## 0.8.14 - 2026-08-01
+
+### POSIX compatibility and cross-shell testing
+  * Fixed non-ASCII characters in unit tests for POSIX scanners.
+  * Added POSIX compatibility testing documentation with shell syntax tables.
+  * Added Docker-based cross-shell test runner covering bash, dash, ash, zsh, ksh, mksh, yash, and posh.
+  * Fixed zsh cksum portability with fallback chain.
+  * Added fish and pwsh to the Docker test matrix; all shells pass syntax, unit tests, and completions.
+
 ## 0.8.13 - 2026-07-31
 
 ### Unit test framework

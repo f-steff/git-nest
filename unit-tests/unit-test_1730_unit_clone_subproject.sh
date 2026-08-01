@@ -10,7 +10,7 @@ load_lib "git-nest-manifest.sh"
 
 # clone_subproject: clones a repo in full, partial, or shallow mode.
 # The mock git handles clone by creating the target directory (it's an
-# actual git clone, not a mock — the mock handles config/rev-parse calls).
+# actual git clone, not a mock -- the mock handles config/rev-parse calls).
 # We verify the function is callable and handles its options.
 
 # Ensure manifest for subproject_clone_mode.

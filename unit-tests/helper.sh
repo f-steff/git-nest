@@ -7,6 +7,8 @@
 
 set -eu
 
+# zsh: stay in native zsh mode for reliable hash table management.
+
 # Resolve the repository and unit test roots.
 # Use BASH_SOURCE or $0 depending on the shell; both work for our purposes.
 _UNIT_HELPER_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE:-$0}")" && pwd)
@@ -125,6 +127,9 @@ setup_unit_test() {
     UNIT_TEST_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/gn-unit-test.XXXXXX")
     cd "$UNIT_TEST_TEMP" || exit 1
     install_mock_git
+    # Clear zsh command hash table after PATH modification so external
+    # commands called from library functions (awk, cksum, etc.) are found.
+    hash -r 2>/dev/null || rehash 2>/dev/null || true
 }
 
 # Removes the temporary directory and its contents.
@@ -145,5 +150,13 @@ load_lib() {
         printf 'FATAL: library not found: bin/lib/%s\n' "$_ul_lib" >&2
         exit 1
     }
+    # zsh caches command paths per-function at definition time. Rehash
+    # before sourcing so that paths resolved during definition are fresh.
+    hash -r 2>/dev/null || rehash 2>/dev/null || true
     . "$REPO_ROOT/bin/lib/$_ul_lib"
 }
+
+# zsh pre-resolves command paths inside function bodies at definition time.
+# If PATH changes after a function is defined, zsh may still hold stale
+# paths or "not found" entries. Clear the hash table after all sourcing.
+hash -r 2>/dev/null || rehash 2>/dev/null || true

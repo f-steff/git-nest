@@ -88,7 +88,7 @@ Unclassified: 0
 
 Functions listed in `unit-tests.ini` under the `[untested]` section are considered
 deliberately untested (see below). The report also shows any unclassified functions
-that are neither covered nor listed — these are newly added code that needs attention.
+that are neither covered nor listed -- these are newly added code that needs attention.
 
 Use `--no-coverage` to skip the coverage scan for faster iteration during test development.
 
@@ -139,13 +139,13 @@ sh tests/run-all-tests.sh --unit-tests only 1000,1010
 
 ## Test ID allocation
 
-Unit tests use block 1000–1999. Within the block, sub-ranges by source module:
+Unit tests use block 1000--1999. Within the block, sub-ranges by source module:
 
 | Range | Category | What it covers |
 |-------|----------|---------------|
-| 1000–1099 | unit_manifest | `path_is_relative_safe`, `normalize_path`, `validate_clone_mode` |
-| 1100–1199 | unit_path | Path safety functions |
-| 1200–1299 | unit_helper | `shell_quote`, `json_escape`, `config_get` |
-| 1300–1399 | unit_clone | Clone mode functions |
-| 1400–1499 | unit_commands | Command helper functions |
-| 1500–1999 | unit_* | Extended coverage |
+| 1000--1099 | unit_manifest | `path_is_relative_safe`, `normalize_path`, `validate_clone_mode` |
+| 1100--1199 | unit_path | Path safety functions |
+| 1200--1299 | unit_helper | `shell_quote`, `json_escape`, `config_get` |
+| 1300--1399 | unit_clone | Clone mode functions |
+| 1400--1499 | unit_commands | Command helper functions |
+| 1500--1999 | unit_* | Extended coverage |

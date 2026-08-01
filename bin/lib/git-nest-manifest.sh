@@ -147,7 +147,7 @@ acquire_manifest_lock() {
 }
 
 json_escape() {
-	awk '
+    command awk '
         BEGIN { ORS="" }
         {
             for (i = 1; i <= length($0); i++) {
@@ -729,9 +729,9 @@ manifest_varname() {
 	subproject\ \"*\")
 		path=${section#subproject \"}
 		path=${path%\"}
-		hash=$(printf '%s' "$path" | cksum)
-		hash=${hash%% *}
-		printf '_mnf_sp_%s_%s\n' "$hash" "$kee"
+		cksum_out=$(printf '%s' "$path" | cksum 2>/dev/null || printf '%s' "$path" | /usr/bin/cksum 2>/dev/null || printf '%s' "$path" | /bin/cksum 2>/dev/null)
+		cksum_out=${cksum_out%% *}
+		printf '_mnf_sp_%s_%s\n' "$cksum_out" "$kee"
 		;;
 	esac
 }

@@ -192,16 +192,26 @@ check_bashisms() {
 # help_setup_colors for optional, TTY-only, NO_COLOR-respecting colored help
 # output) are plain ASCII bytes and are unaffected by this check.
 #
+# Unlike grep -P "[^\x00-\x7F]" (which requires Perl-compatible regex and
+# may miss some bytes on certain platforms), this uses od (octal dump) for
+# accurate byte-level detection of non-ASCII content (bytes 0x80-0xFF).
 check_ascii() {
-	matches=$(cd "$REPO_ROOT" && grep -rPln "[^\x00-\x7F]" bin tests docs skills ./*.md 2>/dev/null | sed 's#^\./##')
-	if [ -n "$matches" ]; then
-		printf '%s\n' "$matches" | while IFS= read -r f; do
+	found=0
+	_temp=$(mktemp /tmp/ascii-scan-XXXXXX)
+	git ls-files >"$_temp"
+	while IFS= read -r f; do
+		case "$f" in
+			*.ico|*.png|*.jpg|*.gif|*.woff2|*.eot|*.ttf|*.svg) continue ;;
+			*.bat) continue ;;
+		esac
+		if od -An -tx1 "$f" 2>/dev/null | tr ' ' '\n' | grep -q '^[89a-f][0-9a-f]$' 2>/dev/null; then
 			fail_ "$f"
-		done
-		return 1
-	fi
-	pass_ "no non-ASCII characters in bin, tests, docs, skills, or root markdown"
-	return 0
+			found=$((found + 1))
+		fi
+	done <"$_temp"
+	rm -f "$_temp"
+	[ "$found" -eq 0 ] && pass_ "no non-ASCII characters in bin, tests, docs, skills, or root markdown"
+	return "$found"
 }
 
 # --- Stats ---

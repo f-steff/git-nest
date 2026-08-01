@@ -21,7 +21,7 @@ printf 'bin/git-nest.bat text eol=crlf\n' >>.gitattributes
 assert_ok "guard detected with all five entries" -- gitattributes_has_guard
 
 # ensure_gitattributes_guard: creates or refreshes the guard block.
-# Start fresh — no .gitattributes file.
+# Start fresh -- no .gitattributes file.
 rm -f .gitattributes
 assert_fail "no guard after removal" -- gitattributes_has_guard
 
