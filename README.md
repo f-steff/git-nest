@@ -60,6 +60,12 @@ git-nest version
 git nest version
 ```
 
+From PowerShell 7+ (`pwsh`), use the `.ps1` launcher:
+
+```powershell
+pwsh bin/git-nest.ps1 version
+```
+
 ### Linux And macOS
 
 Add the checkout's `bin/` directory to your shell startup file:
@@ -80,6 +86,19 @@ sh bin/git-nest version
 git-nest completion bash > ~/.local/share/bash-completion/completions/git-nest
 git-nest completion zsh  > ~/.zfunc/_git-nest
 git-nest completion fish > ~/.config/fish/completions/git-nest.fish
+```
+
+From PowerShell 7+ (dot-source the generated script):
+
+```powershell
+git-nest completion powershell | Out-File -Encoding utf8 ~/git-nest-completion.ps1
+. ~/git-nest-completion.ps1
+```
+
+For yash, place the generated file in your completion load path:
+
+```sh
+git-nest completion yash > ~/.yash/completion/git-nest
 ```
 
 ## Workspace Model
@@ -380,6 +399,7 @@ git-nest ships as plain POSIX shell, split by responsibility rather than as one 
 | Path | Role |
 |------|------|
 | `bin/git-nest` | Thin POSIX entrypoint. Locates and sources `git_nest.sh`, then dispatches into it. Keep this file small; put real behavior in the library modules below. |
+| `bin/git-nest.ps1` | PowerShell 7+ launcher. On Windows finds Git Bash then forwards; on Linux/macOS runs via `/bin/sh`. |
 | `bin/git-nest.bat` | Polyglot Windows launcher: runs from `cmd.exe` and from sh/bash contexts alike, then forwards to `bin/git-nest` through Git Bash. |
 | `bin/git_nest.sh` | Main shared implementation entrypoint. Defines shared constants, sources every module in `bin/lib/`, and holds `git_nest_main`, the top-level command dispatch table. |
 | `bin/lib/git-nest-manifest.sh` | Core manifest reading/writing, the manifest cache, path-safety and boundary guards, `.gitignore`/`.gitattributes` hygiene, locking, and other helpers shared across every command. |

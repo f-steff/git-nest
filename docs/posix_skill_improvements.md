@@ -1,4 +1,4 @@
-# POSIX Shell Skill — Improvement Suggestions
+# POSIX Shell Skill -- Improvement Suggestions
 
 Based on integrating the [POSIX Shell Skill](https://github.com/f-steff/POSIX_Shell_Skill)
 into git-nest's test suite, the following improvements would make it more

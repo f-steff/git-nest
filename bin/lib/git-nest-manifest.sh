@@ -426,8 +426,9 @@ gitattributes_has_guard() {
         /^[[:space:]]*\.gitnest-rc[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { rc=1 }
         /^[[:space:]]*bin\/git-nest[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { entrypoint=1 }
         /^[[:space:]]*bin\/git_nest\.sh[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { shell=1 }
+        /^[[:space:]]*bin\/git-nest\.ps1[[:space:]]+text[[:space:]]+eol=lf[[:space:]]*$/ { ps=1 }
         /^[[:space:]]*bin\/git-nest\.bat[[:space:]]+text[[:space:]]+eol=crlf[[:space:]]*$/ { batch=1 }
-        END { exit !(gitnest && rc && entrypoint && shell && batch) }
+        END { exit !(gitnest && rc && entrypoint && shell && ps && batch) }
     ' .gitattributes
 }
 
@@ -437,6 +438,7 @@ print_gitattributes_guard() {
 	printf '.gitnest-rc text eol=lf\n'
 	printf 'bin/git-nest text eol=lf\n'
 	printf 'bin/git_nest.sh text eol=lf\n'
+	printf 'bin/git-nest.ps1 text eol=lf\n'
 	printf 'bin/git-nest.bat text eol=crlf\n'
 	printf '%s\n' "$GITATTRIBUTES_END"
 }
@@ -464,6 +466,7 @@ ensure_gitattributes_guard() {
                 if (trimmed ~ /^\.gitnest-rc([[:space:]]|$)/) next
                 if (trimmed ~ /^bin\/git-nest([[:space:]]|$)/) next
                 if (trimmed ~ /^bin\/git_nest\.sh([[:space:]]|$)/) next
+                if (trimmed ~ /^bin\/git-nest\.ps1([[:space:]]|$)/) next
                 if (trimmed ~ /^bin\/git-nest\.bat([[:space:]]|$)/) next
                 print
             }

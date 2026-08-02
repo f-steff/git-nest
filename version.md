@@ -1,3 +1,11 @@
+## 0.8.15 - 2026-08-02
+
+### PowerShell launcher and completions
+  * Added git-nest.ps1 PowerShell launcher with walk-up Git Bash detection.
+  * Added shell-neutral __complete engine with TSV protocol and 5 shell adapters (bash/zsh/fish/yash/powershell).
+  * Fixed cursor_index off-by-one errors across all adapters.
+  * Added __complete engine test for fish in the cross-shell runner.
+
 ## 0.8.14 - 2026-08-01
 
 ### POSIX compatibility and cross-shell testing

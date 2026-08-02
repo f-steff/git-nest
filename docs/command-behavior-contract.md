@@ -74,6 +74,16 @@ Manifest lock acquisition waits up to `GIT_NEST_LOCK_TIMEOUT_SECONDS`, defaultin
 
 Removed public workflow commands are rejected with usage errors: `start`, `upload`, `finalize`, `no-pending`, `foreach-pending`, `cleanup-branches`, `install-hooks`, `remove-hooks`, and `sync`. The renamed `extract` command is rejected with guidance to use `absorb`; the renamed `discover` command is rejected with guidance to use `survey`.
 
+## Generator Internals
+
+`git-nest __complete CURSOR_INDEX [--] ARG...` is an internal endpoint used by all generated completion scripts (bash, zsh, fish, yash, powershell). It returns pipe-separated completion candidates as TSV records in the format:
+
+`C<TAB>value<TAB>description<TAB>type`
+
+Directives (`D<TAB>directive`) control shell-specific behavior: `no-file`, `file`, `directory`, `no-space`.
+
+The engine shares a single case table of all commands and their options, avoiding duplication across shell adapters. Each adapter (a generated script) is a thin translator that calls `__complete` and converts the TSV output to the shell's native completion API.
+
 ## Hooks
 
 Root hooks:

@@ -17,8 +17,9 @@ printf '.gitnest text eol=lf\n' >.gitattributes
 printf '.gitnest-rc text eol=lf\n' >>.gitattributes
 printf 'bin/git-nest text eol=lf\n' >>.gitattributes
 printf 'bin/git_nest.sh text eol=lf\n' >>.gitattributes
+printf 'bin/git-nest.ps1 text eol=lf\n' >>.gitattributes
 printf 'bin/git-nest.bat text eol=crlf\n' >>.gitattributes
-assert_ok "guard detected with all five entries" -- gitattributes_has_guard
+assert_ok "guard detected with all six entries" -- gitattributes_has_guard
 
 # ensure_gitattributes_guard: creates or refreshes the guard block.
 # Start fresh -- no .gitattributes file.

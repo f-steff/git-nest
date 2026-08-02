@@ -46,6 +46,36 @@ run_in_docker() {
 
         for sh in $_all_shells; do
             command -v \"\$sh\" >/dev/null 2>&1 || continue
+
+            if [ \"\$sh\" = pwsh ]; then
+                # pwsh is not a POSIX shell -- run a launcher smoketest
+                # (version output) instead of syntax/unit tests.
+                if \"\$sh\" -noprofile /work/bin/git-nest.ps1 2>/dev/null; then printf 'PASS\\t%s\\t%s\\n' \"\$sh\" \"git-nest.ps1 (syntax)\"; else printf 'FAIL\\t%s\\t%s\\n' \"\$sh\" \"git-nest.ps1 (syntax)\"; fi
+                # Also test __complete dispatch through the .ps1 launcher
+                if \"\$sh\" -noprofile -c \"& '/work/bin/git-nest.ps1' __complete 0 -- '' 2>&1 | Select-String -Quiet 'C.*init.*command'\" 2>/dev/null; then printf 'PASS\\t%s\\t%s\\n' \"\$sh\" \"git-nest.ps1 (__complete dispatch)\"; else printf 'FAIL\\t%s\\t%s\\n' \"\$sh\" \"git-nest.ps1 (__complete dispatch)\"; fi
+                continue
+            fi
+
+            # Check that fish syntax check uses fish --no-execute
+            if [ \"\$sh\" = fish ]; then
+                for f in /work/unit-tests/unit-test_*.sh; do
+                    [ -f \"\$f\" ] || continue
+                    bn=\$(basename \"\$f\")
+                    # Fish has its own syntax; skip POSIX unit tests
+                    printf 'SKIP\\t%s\\t%s\\n' \"\$sh\" \"\$bn\"
+                done
+                # Fish syntax check on generated completion script
+                /work/bin/git-nest completion fish >/tmp/git-nest.fish 2>/dev/null || true
+                if \"\$sh\" --no-execute /tmp/git-nest.fish 2>/dev/null; then printf 'PASS\\t%s\\t%s\\n' \"\$sh\" \"completion fish\"; else printf 'FAIL\\t%s\\t%s\\n' \"\$sh\" \"completion fish\"; fi
+                # __complete engine test: invoke via /bin/sh (fish cannot run POSIX scripts itself)
+                if /bin/sh /work/bin/git-nest __complete 0 -- '' >/tmp/complete.out 2>/dev/null && grep -q 'C.*init.*command' /tmp/complete.out 2>/dev/null; then
+                    printf 'PASS\\t%s\\t%s\\n' \"\$sh\" \"__complete engine\"
+                else
+                    printf 'FAIL\\t%s\\t%s\\n' \"\$sh\" \"__complete engine\"
+                fi
+                continue
+            fi
+
             for f in bin/git_nest.sh bin/lib/git-nest-manifest.sh bin/lib/git-nest-commands.sh bin/lib/git-nest-conversion.sh bin/lib/git-nest-doctor.sh bin/lib/git-nest-hooks.sh; do
                 [ -f \"/work/\$f\" ] || continue
                 if \"\$sh\" -n \"/work/\$f\" 2>/dev/null; then printf 'PASS\\t%s\\t%s\\n' \"\$sh\" \"\$f\"; else printf 'FAIL\\t%s\\t%s\\n' \"\$sh\" \"\$f\"; fi
@@ -53,12 +83,21 @@ run_in_docker() {
             for f in /work/unit-tests/unit-test_*.sh; do
                 [ -f \"\$f\" ] || continue
                 bn=\$(basename \"\$f\")
-                # zsh: known issue in container environments — command
+                # zsh: known issue in container environments -- command
                 # resolution fails for functions defined via sourced files.
                 # Syntax checks still run; unit tests are skipped.
                 [ \"\$sh\" = zsh ] && printf 'SKIP\\t%s\\t%s\\n' \"\$sh\" \"\$bn\" && continue
                 if \"\$sh\" \"\$f\" >/dev/null 2>&1; then printf 'PASS\\t%s\\t%s\\n' \"\$sh\" \"\$bn\"; else printf 'FAIL\\t%s\\t%s\\n' \"\$sh\" \"\$bn\"; fi
             done
+
+            # __complete engine test: invoke the engine through each POSIX shell
+            _complete_out=\$(mktemp)
+            if \"\$sh\" /work/bin/git-nest __complete 0 -- '' >\"\$_complete_out\" 2>/dev/null && grep -q 'C.*init.*command' \"\$_complete_out\" 2>/dev/null; then
+                printf 'PASS\\t%s\\t%s\\n' \"\$sh\" \"__complete engine\"
+            else
+                printf 'FAIL\\t%s\\t%s\\n' \"\$sh\" \"__complete engine\"
+            fi
+            rm -f \"\$_complete_out\"
         done
     " >"$_out" 2>/dev/null
     _rc=$?
@@ -96,15 +135,15 @@ run_in_docker() {
 
 if [ "$RUN_ALPINE" -eq 1 ]; then
     run_in_docker "alpine:3.21" \
-        "apk add -q dash bash zsh mksh yash coreutils git tar python3 gawk diffutils" \
-        "dash bash ash zsh mksh yash" \
+        "apk add -q dash bash zsh mksh yash powershell fish coreutils git tar python3 gawk diffutils" \
+        "dash bash ash zsh mksh yash fish pwsh" \
         "Alpine" && TOTAL_PASS=$((TOTAL_PASS + 1)) || TOTAL_FAIL=$((TOTAL_FAIL + 1))
 fi
 
 if [ "$RUN_DEBIAN" -eq 1 ]; then
     run_in_docker "debian:bookworm-slim" \
-        "apt-get update -qq && apt-get install -y -qq dash bash zsh ksh mksh posh git tar python3 gawk 2>&1" \
-        "dash bash zsh ksh mksh posh" \
+        "apt-get update -qq 2>/dev/null; apt-get install -y -qq wget apt-transport-https 2>&1 | tail -1; wget -q https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -O /tmp/pkgs.deb; dpkg -i /tmp/pkgs.deb 2>/dev/null; apt-get update -qq 2>/dev/null; apt-get install -y -qq powershell dash bash zsh ksh mksh posh git tar python3 gawk 2>&1 | tail -1" \
+        "dash bash zsh ksh mksh posh pwsh" \
         "Debian" && TOTAL_PASS=$((TOTAL_PASS + 1)) || TOTAL_FAIL=$((TOTAL_FAIL + 1))
 fi
 

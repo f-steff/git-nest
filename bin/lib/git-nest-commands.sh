@@ -4690,271 +4690,495 @@ GIT_NEST_command_names() {
 
 # Internal completion data endpoint used by generated shell completion scripts.
 cmd_internal_complete() {
-	[ $# -eq 1 ] || usage_error "usage: git-nest __complete <commands|subprojects>"
+	# Legacy interface: __complete commands | __complete subprojects
+	if [ $# -eq 1 ]; then
+		case "$1" in
+		commands) GIT_NEST_command_names ;;
+		subprojects) _GIT_NEST_emit_subprojects ;;
+		*) usage_error "unknown completion data: $1" ;;
+		esac
+		return
+	fi
+	# New interface: __complete CURSOR_INDEX [--] ARG...
+	[ $# -ge 2 ] || return 1
+	_GIT_NEST_complete "$@"
+}
+
+# --- TSV protocol helpers ---
+
+_GIT_NEST_emit_commands() {
+	for _c in $(GIT_NEST_command_names); do
+		printf 'C\t%s\t\tcommand\n' "$_c"
+	done
+}
+
+_GIT_NEST_emit_option() {
+	printf 'C\t%s\t%s\toption\n' "$1" "${2:-}"
+}
+
+_GIT_NEST_emit_value() {
+	printf 'C\t%s\t%s\tvalue\n' "$1" "${2:-}"
+}
+
+_GIT_NEST_emit_subprojects() {
+	_root=$(find_project_root 2>/dev/null) || return 0
+	(cd "$_root" && manifest_subprojects) 2>/dev/null | while IFS= read -r _sp; do
+		printf 'C\t%s\t\tsubproject\n' "$_sp"
+	done
+}
+
+_GIT_NEST_emit_directive() {
+	printf 'D\t%s\n' "$1"
+}
+
+# Return 0 if argument is a flag that takes a value.
+_GIT_NEST_opt_takes_arg() {
 	case "$1" in
-	commands)
-		GIT_NEST_command_names
-		;;
-	subprojects)
-		if root=$(find_project_root 2>/dev/null); then
-			(cd "$root" && manifest_subprojects)
-		fi
-		;;
-	*) usage_error "unknown completion data: $1" ;;
+	--output|--format|--clone-mode|--max-depth|--exclude|--include|--timeout|--since|--until|--max-count|--subproject|--branch|--url|--remote|--target-head|--revision|--tag|--message|--only|--depth) return 0 ;;
+	esac
+	return 1
+}
+
+# Complete a value for the given flag.
+_GIT_NEST_complete_opt_value() {
+	case "$1" in
+	--format)     _GIT_NEST_emit_value tar.gz "gzip tar archive"; _GIT_NEST_emit_value zip "zip archive"; _GIT_NEST_emit_value dir "directory"; _GIT_NEST_emit_directive no-file ;;
+	--clone-mode) _GIT_NEST_emit_value full  "full clone"; _GIT_NEST_emit_value partial "partial clone"; _GIT_NEST_emit_value shallow "shallow clone"; _GIT_NEST_emit_directive no-file ;;
+	--max-depth|--depth) _GIT_NEST_emit_directive no-file ;;
+	--exclude)    _GIT_NEST_emit_directive no-file ;;
+	--include|--output) _GIT_NEST_emit_directive file ;;
+	--timeout)    _GIT_NEST_emit_directive no-file ;;
+	--since|--until|--branch|--target-head|--revision|--tag) _GIT_NEST_emit_directive no-file ;;
+	--url|--remote) _GIT_NEST_emit_directive no-file ;;
+	--message|--only) _GIT_NEST_emit_directive no-file ;;
+	--subproject) _GIT_NEST_emit_subprojects; _GIT_NEST_emit_directive no-file ;;
 	esac
 }
 
-completion_bash() {
-	cat <<'EOF'
-_git_nest_complete()
-{
-    local cur cmd commands subprojects
-    COMPREPLY=()
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    commands="init tidy add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
+# Main dispatch: parse cursor_index and args, delegate to case table.
+_GIT_NEST_complete() {
+	_cursor_index="$1"
+	shift
+	[ "$1" = "--" ] && shift
 
-    if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
-        return 0
-    fi
+	# Position 0: completing command name
+	if [ "$_cursor_index" -eq 0 ]; then
+		_GIT_NEST_emit_commands
+		_GIT_NEST_emit_directive no-file
+		return
+	fi
 
-    cmd="${COMP_WORDS[1]}"
-    case "$cmd" in
-        completion)
-            COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
-            ;;
-        help)
-            COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
-            ;;
-        export)
-            COMPREPLY=( $(compgen -W "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir" -- "$cur") )
-            ;;
-        absorb)
-            subprojects="$(git-nest __complete subprojects 2>/dev/null)"
-			COMPREPLY=( $(compgen -W "$subprojects --branch --clone-mode --preserve-history --push --message --force --dry-run --json --json-pretty --subrepo --subtree full partial" -- "$cur") )
-            ;;
-        inline)
-            subprojects="$(git-nest __complete subprojects 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "$subprojects --commit --message --dry-run --json --json-pretty" -- "$cur") )
-            ;;
-        status)
-            COMPREPLY=( $(compgen -W "--recursive --porcelain --json --json-pretty --exit-code" -- "$cur") )
-            ;;
-        outdated)
-            COMPREPLY=( $(compgen -W "--recursive --porcelain --json --json-pretty" -- "$cur") )
-            ;;
-        verify)
-            COMPREPLY=( $(compgen -W "--recursive --json --json-pretty" -- "$cur") )
-            ;;
-        restore)
-            COMPREPLY=( $(compgen -W "--recursive --prune --force --dry-run" -- "$cur") )
-            ;;
-        pull)
-            COMPREPLY=( $(compgen -W "--recursive --sure --no-fetch --dry-run --json --json-pretty" -- "$cur") )
-            ;;
-        doctor)
-            COMPREPLY=( $(compgen -W "--json --json-pretty --online --offline --timeout --exit-code --redact" -- "$cur") )
-            ;;
-        survey)
-            COMPREPLY=( $(compgen -W "--max-depth --exclude --include --porcelain --json --json-pretty" -- "$cur") )
-            ;;
-        absorb-all)
-            COMPREPLY=( $(compgen -W "--sure --force-partial --dry-run --max-depth --exclude --include --json --json-pretty" -- "$cur") )
-            ;;
-        list)
-            COMPREPLY=( $(compgen -W "--porcelain --json --json-pretty --redact" -- "$cur") )
-            ;;
-        tree)
-            COMPREPLY=( $(compgen -W "--all --recursive --porcelain --json --json-pretty" -- "$cur") )
-            ;;
-        diff)
-            COMPREPLY=( $(compgen -W "--since --stat --json --json-pretty" -- "$cur") )
-            ;;
-        log)
-            COMPREPLY=( $(compgen -W "--max-count --since --until --subproject --oneline --recursive" -- "$cur") )
-            ;;
-        snapshot)
-            subprojects="$(git-nest __complete subprojects 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "$subprojects --recursive --quiet --dry-run --check --strict --no-fetch" -- "$cur") )
-            ;;
-        branch-list)
-            COMPREPLY=( $(compgen -W "--verbose --json" -- "$cur") )
-            ;;
-        freeze)
-            COMPREPLY=( $(compgen -W "--force --only --dry-run" -- "$cur") )
-            ;;
-        gc)
-            COMPREPLY=( $(compgen -W "--aggressive --dry-run --json --json-pretty" -- "$cur") )
-            ;;
-        foreach-modified|foreach-clean)
-            COMPREPLY=( $(compgen -W "--continue-on-error --porcelain --json --json-pretty --" -- "$cur") )
-            ;;
-        config)
-            if [ "$COMP_CWORD" -eq 2 ]; then
-                COMPREPLY=( $(compgen -W "get set list unset" -- "$cur") )
-            elif [ "$COMP_CWORD" -eq 3 ] || { [ "${COMP_WORDS[2]}" = "list" ] && [ "$COMP_CWORD" -eq 3 ]; }; then
-                subprojects="$(git-nest __complete subprojects 2>/dev/null)"
-                COMPREPLY=( $(compgen -W "$subprojects" -- "$cur") )
-            else
-                COMPREPLY=( $(compgen -W "clone-mode full partial" -- "$cur") )
-            fi
-            ;;
-        remove|rm|detach|move|mv|update)
-            subprojects="$(git-nest __complete subprojects 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "$subprojects --force --url --remote --target-head --revision --tag --branch --no-fetch --dry-run --json --json-pretty" -- "$cur") )
-            ;;
-    esac
+	_cmd="$1"
+	_cmd_ai=$((_cursor_index - 1))   # 0-based index within this command's args
+	_prev=""
+
+	# Determine previous word (the word just before the one being completed)
+	eval "_prev=\"\${$_cursor_index}\"" 2>/dev/null || true
+
+	# If previous word is a known value-taking flag, complete its value
+	if _GIT_NEST_opt_takes_arg "$_prev"; then
+		_GIT_NEST_complete_opt_value "$_prev"
+		return
+	fi
+
+	_GIT_NEST_complete_for "$_cmd" "$_cmd_ai"
 }
 
+# Per-command completion table -- single source of truth for all shells.
+_GIT_NEST_complete_for() {
+	_ai="$2"
+	case "$1" in
+	init)
+		_GIT_NEST_emit_option --rc "set up .gitnest-rc"
+		_GIT_NEST_emit_option --sure "confirm initialization"
+		_GIT_NEST_emit_directive no-file
+		;;
+	tidy)
+		_GIT_NEST_emit_option --rc "set up .gitnest-rc"
+		_GIT_NEST_emit_directive no-file
+		;;
+	completion)
+		for _s in bash zsh fish yash powershell; do
+			_GIT_NEST_emit_value "$_s" "generate $_s completion script"
+		done
+		_GIT_NEST_emit_directive no-file
+		;;
+	help)
+		_GIT_NEST_emit_commands
+		_GIT_NEST_emit_directive no-file
+		;;
+	version)
+		_GIT_NEST_emit_directive no-file
+		;;
+	status)
+		_GIT_NEST_emit_option --recursive "include nested projects"
+		_GIT_NEST_emit_option --porcelain "stable fixed-column records"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_option --exit-code "return nonzero for dirty or missing rows"
+		_GIT_NEST_emit_directive no-file
+		;;
+	outdated)
+		_GIT_NEST_emit_option --recursive "include nested projects"
+		_GIT_NEST_emit_option --porcelain "stable fixed-column records"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_directive no-file
+		;;
+	verify)
+		_GIT_NEST_emit_option --recursive "include nested projects"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_directive no-file
+		;;
+	diff)
+		_GIT_NEST_emit_option --since "read manifest from ref"
+		_GIT_NEST_emit_option --stat "include file statistics"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_directive no-file
+		;;
+	log)
+		_GIT_NEST_emit_option --max-count "number of commits"
+		_GIT_NEST_emit_option --since "start date"
+		_GIT_NEST_emit_option --until "end date"
+		_GIT_NEST_emit_option --subproject "filter by subproject"
+		_GIT_NEST_emit_option --oneline "compact output"
+		_GIT_NEST_emit_option --recursive "include nested projects"
+		_GIT_NEST_emit_directive no-file
+		;;
+	restore)
+		_GIT_NEST_emit_option --recursive "include nested projects"
+		_GIT_NEST_emit_option --prune "remove reviewed stale paths"
+		_GIT_NEST_emit_option --force "proceed past tag drift warnings"
+		_GIT_NEST_emit_option --dry-run "show planned actions without writing"
+		_GIT_NEST_emit_directive no-file
+		;;
+	pull)
+		_GIT_NEST_emit_option --recursive "include nested nests"
+		_GIT_NEST_emit_option --sure "also pull nest root"
+		_GIT_NEST_emit_option --no-fetch "use local refs only"
+		_GIT_NEST_emit_option --dry-run "show planned changes"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_directive no-file
+		;;
+	freeze)
+		_GIT_NEST_emit_option --force "freeze dirty subprojects"
+		_GIT_NEST_emit_option --only "limit paths"
+		_GIT_NEST_emit_option --dry-run "show changes without writing"
+		_GIT_NEST_emit_directive no-file
+		;;
+	gc)
+		_GIT_NEST_emit_option --aggressive "pass --aggressive to git gc"
+		_GIT_NEST_emit_option --dry-run "show planned actions"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_directive no-file
+		;;
+	doctor)
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_option --online "contact subproject remotes"
+		_GIT_NEST_emit_option --offline "skip remote checks"
+		_GIT_NEST_emit_option --timeout "remote timeout seconds"
+		_GIT_NEST_emit_option --exit-code "return nonzero for warnings or errors"
+		_GIT_NEST_emit_option --redact "strip credentials and home paths"
+		_GIT_NEST_emit_directive no-file
+		;;
+	survey)
+		_GIT_NEST_emit_option --max-depth "maximum scan depth"
+		_GIT_NEST_emit_option --exclude "exclude directory name"
+		_GIT_NEST_emit_option --include "narrow scan to path"
+		_GIT_NEST_emit_option --porcelain "stable fixed-column records"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_directive no-file
+		;;
+	list)
+		_GIT_NEST_emit_option --porcelain "stable fixed-column records"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_option --redact "strip credentials and home paths"
+		_GIT_NEST_emit_directive no-file
+		;;
+	tree)
+		_GIT_NEST_emit_option --all "also show unmanaged findings"
+		_GIT_NEST_emit_option --recursive "descend into nested nests"
+		_GIT_NEST_emit_option --porcelain "stable fixed-column records"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_directive no-file
+		;;
+	export)
+		_GIT_NEST_emit_option --output "write archive or directory"
+		_GIT_NEST_emit_option --format "archive format"
+		_GIT_NEST_emit_option --include-git "keep .git directories"
+		_GIT_NEST_emit_option --deterministic "normalize archive metadata"
+		_GIT_NEST_emit_option --allow-dirty "allow dirty subprojects"
+		_GIT_NEST_emit_directive no-file
+		;;
+	clone)
+		_GIT_NEST_emit_option --branch "initial branch"
+		_GIT_NEST_emit_option --no-restore "skip restore after clone"
+		_GIT_NEST_emit_directive no-file
+		;;
+	add)
+		_GIT_NEST_emit_option --force "bypass metadata conflicts"
+		_GIT_NEST_emit_option --url "repository URL"
+		_GIT_NEST_emit_option --remote "remote name"
+		_GIT_NEST_emit_option --target-head "branch for tracking"
+		_GIT_NEST_emit_option --revision "exact commit SHA"
+		_GIT_NEST_emit_option --tag "tag name"
+		_GIT_NEST_emit_option --branch "initial branch"
+		_GIT_NEST_emit_option --no-fetch "use local refs only"
+		_GIT_NEST_emit_option --dry-run "show planned changes"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_option --clone-mode "clone mode (full|partial|shallow)"
+		_GIT_NEST_emit_directive no-file
+		;;
+	snapshot)
+		if [ "$_ai" -eq 0 ]; then
+			_GIT_NEST_emit_subprojects
+			_GIT_NEST_emit_option --recursive "include nested projects"
+			_GIT_NEST_emit_option --quiet "suppress dirty skip warnings"
+			_GIT_NEST_emit_option --dry-run "show planned changes"
+			_GIT_NEST_emit_option --check "check without writing"
+			_GIT_NEST_emit_option --strict "fail on unreproducible state"
+			_GIT_NEST_emit_option --no-fetch "use local refs"
+		fi
+		_GIT_NEST_emit_directive no-file
+		;;
+	absorb)
+		if [ "$_ai" -eq 0 ]; then
+			_GIT_NEST_emit_option --branch "initial branch for source"
+			_GIT_NEST_emit_option --clone-mode "clone mode"
+			_GIT_NEST_emit_option --preserve-history "preserve path history"
+			_GIT_NEST_emit_option --push "push absorbed repository"
+			_GIT_NEST_emit_option --message "commit message"
+			_GIT_NEST_emit_option --force "bypass metadata conflicts"
+			_GIT_NEST_emit_option --dry-run "show planned changes"
+			_GIT_NEST_emit_option --json "print JSON"
+			_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+			_GIT_NEST_emit_option --subrepo "absorb a git-subrepo path"
+			_GIT_NEST_emit_option --subtree "absorb a git-subtree path"
+		fi
+		_GIT_NEST_emit_directive file
+		;;
+	absorb-all)
+		_GIT_NEST_emit_option --sure "confirm creating or extending a nest"
+		_GIT_NEST_emit_option --force-partial "skip rollback on failure"
+		_GIT_NEST_emit_option --dry-run "show planned actions"
+		_GIT_NEST_emit_option --max-depth "maximum scan depth"
+		_GIT_NEST_emit_option --exclude "exclude directory name"
+		_GIT_NEST_emit_option --include "narrow scan to path"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_directive no-file
+		;;
+	inline)
+		if [ "$_ai" -eq 0 ]; then
+			_GIT_NEST_emit_subprojects
+			_GIT_NEST_emit_option --commit "commit staged outer changes"
+			_GIT_NEST_emit_option --message "commit message"
+			_GIT_NEST_emit_option --dry-run "show planned changes"
+			_GIT_NEST_emit_option --json "print JSON"
+			_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		fi
+		_GIT_NEST_emit_directive no-file
+		;;
+	detach)
+		if [ "$_ai" -eq 0 ]; then
+			_GIT_NEST_emit_subprojects
+			_GIT_NEST_emit_option --dry-run "show planned changes"
+			_GIT_NEST_emit_option --json "print JSON"
+			_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		fi
+		_GIT_NEST_emit_directive no-file
+		;;
+	remove|rm)
+		if [ "$_ai" -eq 0 ]; then
+			_GIT_NEST_emit_subprojects
+			_GIT_NEST_emit_option --force "bypass metadata conflicts"
+			_GIT_NEST_emit_option --dry-run "show planned changes"
+			_GIT_NEST_emit_option --json "print JSON"
+			_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		fi
+		_GIT_NEST_emit_directive no-file
+		;;
+	move|mv)
+		if [ "$_ai" -eq 0 ]; then
+			_GIT_NEST_emit_subprojects
+			_GIT_NEST_emit_option --force "bypass metadata conflicts"
+			_GIT_NEST_emit_option --dry-run "show planned changes"
+			_GIT_NEST_emit_option --json "print JSON"
+			_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		fi
+		_GIT_NEST_emit_directive no-file
+		;;
+	update)
+		if [ "$_ai" -eq 0 ]; then
+			_GIT_NEST_emit_subprojects
+			_GIT_NEST_emit_option --force "proceed past conflicts"
+			_GIT_NEST_emit_option --dry-run "show planned changes"
+			_GIT_NEST_emit_option --json "print JSON"
+			_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		fi
+		_GIT_NEST_emit_directive no-file
+		;;
+	config)
+		case "$_ai" in
+		0) for _v in get set list unset; do _GIT_NEST_emit_value "$_v" "config action"; done ;;
+		1) _GIT_NEST_emit_subprojects ;;
+		2) _GIT_NEST_emit_value "clone-mode" "configuration key" ;;
+		3) _GIT_NEST_emit_value full "full clone"; _GIT_NEST_emit_value partial "partial clone"; _GIT_NEST_emit_value shallow "shallow clone" ;;
+		esac
+		_GIT_NEST_emit_directive no-file
+		;;
+	foreach)
+		_GIT_NEST_emit_option --include-root-first "run on nest root before subprojects"
+		_GIT_NEST_emit_option --include-root-last "run on nest root after subprojects"
+		_GIT_NEST_emit_option --only-nested "limit to nested nests"
+		_GIT_NEST_emit_option --no-nested "exclude nested nests"
+		_GIT_NEST_emit_value "--" "end of options"
+		_GIT_NEST_emit_directive no-file
+		;;
+	foreach-modified|foreach-clean)
+		_GIT_NEST_emit_option --continue-on-error "keep iterating after failures"
+		_GIT_NEST_emit_option --porcelain "stable fixed-column records"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_value "--" "end of options"
+		_GIT_NEST_emit_directive no-file
+		;;
+	branch-mark)
+		if [ "$_ai" -eq 0 ]; then
+			_GIT_NEST_emit_value "<branch>" "branch name to mark"
+		fi
+		_GIT_NEST_emit_directive no-file
+		;;
+	branch-unmark)
+		if [ "$_ai" -eq 0 ]; then
+			_GIT_NEST_emit_value "<branch>" "branch name to unmark"
+		fi
+		_GIT_NEST_emit_directive no-file
+		;;
+	branch-list)
+		_GIT_NEST_emit_option --verbose "include origin and timestamp"
+		_GIT_NEST_emit_option --json "print JSON"
+		_GIT_NEST_emit_directive no-file
+		;;
+	branch-cleanup)
+		_GIT_NEST_emit_option --dry-run "show branches that would be removed"
+		_GIT_NEST_emit_directive no-file
+		;;
+	hooks-install|hooks-uninstall)
+		_GIT_NEST_emit_directive no-file
+		;;
+	__complete|__owning-manifest|__hook)
+		_GIT_NEST_emit_directive no-file
+		;;
+	esac
+}
+
+# --- Shell adapter generators (thin translators) ---
+
+completion_bash() {
+	cat <<'GENEOF'
+_git_nest_complete()
+{
+    local cur="${COMP_WORDS[COMP_CWORD]}" words=("${COMP_WORDS[@]:1}")
+    COMPREPLY=()
+    while IFS=$'\t' read -r _t _v _d _k; do
+        [ "$_t" = "C" ] && [[ "$_v" == "$cur"* ]] && COMPREPLY+=("$_v")
+    done < <(git-nest __complete $((COMP_CWORD - 1)) -- "${words[@]}" 2>/dev/null)
+}
 complete -F _git_nest_complete git-nest
-EOF
+GENEOF
 }
 
 completion_zsh() {
-	cat <<'EOF'
+	cat <<'GENEOF'
 #compdef git-nest
-
 _git_nest()
 {
-    local -a commands subprojects
-    commands=(init tidy add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help)
-
-    if (( CURRENT == 2 )); then
-        _describe 'git-nest command' commands
-        return
-    fi
-
-    local cmd=${words[2]}
-    case "$cmd" in
-        completion)
-            _arguments '1:shell:(bash zsh fish)'
-            ;;
-        help)
-            _arguments '1:command:(init tidy add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help)'
-            ;;
-        export)
-            _arguments '--output[write archive or directory]:path:_files' '--format[archive format]:format:(tar.gz zip dir)' '--include-git[keep .git directories]' '--deterministic[normalize archive metadata]' '--allow-dirty[allow dirty subprojects]'
-            ;;
-        absorb)
-			_arguments '1:path:_files -/' '2:remote-url:' '--branch[initial branch for the files source]:branch:' '--clone-mode[clone mode]:mode:(full partial)' '--preserve-history[preserve path history with git-filter-repo]' '--push[push absorbed repository]' '--message[commit message]:message:' '--force[bypass metadata conflicts only]' '--dry-run[show planned changes]' '--json[print JSON]' '--json-pretty[print formatted JSON]' '--subrepo[absorb a git-subrepo path]' '--subtree[absorb a git-subtree path]'
-            ;;
-        inline)
-            _arguments '1:subproject:__git_nest_subprojects' '--commit[commit staged outer changes]' '--message[commit message]:message:' '--dry-run[show planned changes]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        detach)
-            _arguments '1:subproject:__git_nest_subprojects' '--dry-run[show planned changes]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        status)
-            _arguments '--recursive[include nested projects]' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]' '--exit-code[return nonzero for dirty or missing rows]'
-            ;;
-        outdated)
-            _arguments '--recursive[include nested projects]' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        verify)
-            _arguments '--recursive[include nested projects]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        restore)
-            _arguments '--recursive[include nested projects]' '--prune[remove reviewed stale paths]' '--force[proceed past tag drift warnings]' '--dry-run[show planned actions without writing]'
-            ;;
-        pull)
-            _arguments '--recursive[include nested nests]' '--sure[also pull nest root]' '--no-fetch[use local refs only]' '--dry-run[show planned actions without writing]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        doctor)
-            _arguments '--json[print JSON]' '--json-pretty[print formatted JSON]' '--online[contact subproject remotes]' '--offline[skip remote checks]' '--timeout[remote timeout seconds]:seconds:' '--exit-code[return nonzero for warnings or errors]' '--redact[strip credentials and home paths]'
-            ;;
-        survey)
-            _arguments '--max-depth[maximum scan depth]:depth:' '--exclude[exclude directory name]:name:' '--include[narrow scan to path]:path:_files -/' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        absorb-all)
-            _arguments '--sure[confirm creating or extending a nest here]' '--force-partial[skip rollback on mid-batch failure]' '--dry-run[show planned actions without writing]' '--max-depth[maximum scan depth]:depth:' '--exclude[exclude directory name]:name:' '--include[narrow scan to path]:path:_files -/' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        list)
-            _arguments '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]' '--redact[strip credentials and home paths]'
-            ;;
-        tree)
-            _arguments '--all[also show unmanaged findings]' '--recursive[also descend into nested nests]' '--porcelain[stable fixed-column records]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        diff)
-            _arguments '--since[read manifest from ref]:ref:' '--stat[include file statistics]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        log)
-            _arguments '--max-count[count]:count:' '--since[date]:date:' '--until[date]:date:' '--subproject[path]:subproject:' '--oneline[compact output]' '--recursive[include nested projects]'
-            ;;
-        snapshot)
-            _arguments '1:subproject:__git_nest_subprojects' '--recursive[include nested projects]' '--quiet[suppress dirty skip warnings]' '--dry-run[show planned changes without writing]' '--check[check without writing]' '--strict[fail for unreproducible state]' '--no-fetch[use local refs]'
-            ;;
-        branch-list)
-            _arguments '--verbose[include origin and timestamp]' '--json[print JSON]'
-            ;;
-        freeze)
-            _arguments '--force[freeze dirty subprojects]' '--only[limit paths]:paths:' '--dry-run[show changes without writing]'
-            ;;
-        gc)
-            _arguments '--aggressive[pass --aggressive to git gc]' '--dry-run[show planned actions without running]' '--json[print JSON]' '--json-pretty[print pretty JSON]'
-            ;;
-        foreach-modified|foreach-clean)
-            _arguments '--continue-on-error[keep iterating after failures]' '--porcelain[print fixed-column output]' '--json[print JSON]' '--json-pretty[print formatted JSON]'
-            ;;
-        config)
-            subprojects=("${(@f)$(_call_program subprojects git-nest __complete subprojects 2>/dev/null)}")
-            _arguments '1:action:(get set list unset)' '2:subproject:->subproject' '3:key:(clone-mode)' '4:value:(full partial)'
-            if [[ $state == subproject ]]; then
-                _describe 'subproject' subprojects
-            fi
-            ;;
-        remove|rm|detach|move|mv|update)
-            subprojects=("${(@f)$(_call_program subprojects git-nest __complete subprojects 2>/dev/null)}")
-            _describe 'subproject' subprojects
-            ;;
-    esac
+    local -a candidates
+    while IFS=$'\t' read -r _t _v _d _k; do
+        [ "$_t" = "C" ] && candidates+=("$_v:$_d")
+    done < <(git-nest __complete $((CURRENT - 2)) -- "${words[@]:2}" 2>/dev/null)
+    _describe 'git-nest' candidates
 }
-
 _git_nest "$@"
-EOF
+GENEOF
 }
 
 completion_fish() {
-	cat <<'EOF'
-function __git_nest_subprojects
-    git-nest __complete subprojects 2>/dev/null
+	cat <<'GENEOF'
+function __git_nest_complete
+    set -l tokens (commandline -opc)
+    if test "$tokens[1]" = git
+        set tokens $tokens[2..-1]
+        if test "$tokens[1]" = nest
+            set tokens $tokens[2..-1]
+        end
+    else
+        set tokens $tokens[2..-1]
+    end
+    set -l idx (math (count $tokens) - 1)
+    test $idx -ge 0; or set idx 0
+    git-nest __complete $idx -- $tokens 2>/dev/null | string match -r '^C\t' | string replace -r '^C\t([^\t]+).*' '$1'
 end
+complete -c git-nest -f -a "(__git_nest_complete)"
+GENEOF
+}
 
-complete -c git-nest -f -n "__fish_use_subcommand" -a "init tidy add remove rm move mv clone status outdated verify diff log snapshot restore pull freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
-complete -c git-nest -f -n "__fish_seen_subcommand_from help" -a "init tidy add remove rm move mv clone status outdated verify diff log snapshot restore freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
-complete -c git-nest -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
-complete -c git-nest -f -n "__fish_seen_subcommand_from export" -a "--output --format --include-git --deterministic --allow-dirty tar.gz zip dir"
-complete -c git-nest -f -n "__fish_seen_subcommand_from absorb" -a "--branch --clone-mode --preserve-history --push --message --force --dry-run --json --json-pretty --subrepo --subtree full partial (__git_nest_subprojects)"
-complete -c git-nest -f -n "__fish_seen_subcommand_from inline" -a "--commit --message --dry-run --json --json-pretty (__git_nest_subprojects)"
-complete -c git-nest -f -n "__fish_seen_subcommand_from detach" -a "--dry-run --json --json-pretty (__git_nest_subprojects)"
-complete -c git-nest -f -n "__fish_seen_subcommand_from status" -a "--recursive --porcelain --json --json-pretty --exit-code"
-complete -c git-nest -f -n "__fish_seen_subcommand_from outdated" -a "--recursive --porcelain --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from verify" -a "--recursive --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from restore" -a "--recursive --prune --force --dry-run"
-complete -c git-nest -f -n "__fish_seen_subcommand_from pull" -a "--recursive --sure --no-fetch --dry-run --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from doctor" -a "--json --json-pretty --online --offline --timeout --exit-code --redact"
-complete -c git-nest -f -n "__fish_seen_subcommand_from survey" -a "--max-depth --exclude --include --porcelain --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from absorb-all" -a "--sure --force-partial --dry-run --max-depth --exclude --include --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from list" -a "--porcelain --json --json-pretty --redact"
-complete -c git-nest -f -n "__fish_seen_subcommand_from tree" -a "--all --recursive --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from diff" -a "--since --stat --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from log" -a "--max-count --since --until --subproject --oneline --recursive"
-complete -c git-nest -f -n "__fish_seen_subcommand_from snapshot" -a "--recursive --quiet --dry-run --check --strict --no-fetch (__git_nest_subprojects)"
-complete -c git-nest -f -n "__fish_seen_subcommand_from branch-list" -a "--verbose --json"
-complete -c git-nest -f -n "__fish_seen_subcommand_from freeze" -a "--force --only --dry-run"
-complete -c git-nest -f -n "__fish_seen_subcommand_from foreach-modified" -a "--continue-on-error --porcelain --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from foreach-clean" -a "--continue-on-error --porcelain --json --json-pretty"
-complete -c git-nest -f -n "__fish_seen_subcommand_from config" -a "get set list unset clone-mode full partial"
-complete -c git-nest -f -n "__fish_seen_subcommand_from remove rm detach move mv update config" -a "(__git_nest_subprojects)"
-EOF
+completion_yash() {
+	cat <<'GENEOF'
+# yash completion for git-nest -- place in your completion load path
+completion//argument-git-nest() {
+    git-nest __complete $((${#WORDS[*]} - 1)) -- "${WORDS[@]:2}" 2>/dev/null |
+    awk -F '\t' '
+    /^C\t/ { v=$2; d=$3; k=$4
+        if (k == "option") print "complete -O -D \"" d "\" -- \"" v "\""
+        else print "complete -D \"" d "\" -- \"" v "\""
+    }
+    /^D\tno-file/ { print "complete -N" }
+    ' | sh
+}
+GENEOF
+}
+
+completion_powershell() {
+	cat <<'GENEOF'
+# git-nest PowerShell completion -- dot-source this file
+Register-ArgumentCompleter -Native -CommandName git-nest -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $args = $commandAst.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Value }
+    $idx = if ($args) { $args.Count } else { 0 }
+    $result = & git-nest __complete $idx -- @args 2>$null
+    $result | ForEach-Object {
+        if ($_ -match "^C\t(.+?)\t(.*?)\t(.+)$") {
+            [System.Management.Automation.CompletionResult]::new(
+                $matches[1], $matches[1],
+                [System.Management.Automation.CompletionResultType]::ParameterValue,
+                $matches[2]
+            )
+        }
+    }
+}
+GENEOF
 }
 
 # Print shell completion scripts.
 cmd_completion() {
-	[ $# -eq 1 ] || usage_error "usage: git-nest completion <bash|zsh|fish>"
+	[ $# -eq 1 ] || usage_error "usage: git-nest completion <bash|zsh|fish|yash|powershell>"
 	case "$1" in
-	bash) completion_bash ;;
-	zsh) completion_zsh ;;
-	fish) completion_fish ;;
+	bash)       completion_bash ;;
+	zsh)        completion_zsh ;;
+	fish)       completion_fish ;;
+	yash)       completion_yash ;;
+	powershell) completion_powershell ;;
 	*) usage_error "unknown completion shell: $1" ;;
 	esac
 }

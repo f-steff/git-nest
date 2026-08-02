@@ -8,12 +8,12 @@ to verify cross-shell compatibility using the posix-shell skill.
 The [POSIX Shell Skill](https://github.com/f-steff/POSIX_Shell_Skill) is a
 portable POSIX shell scripting skill for AI coding assistants. It provides:
 
-- **Cross-shell test runners** — test scripts across dash, bash, ash, zsh,
+- **Cross-shell test runners** -- test scripts across dash, bash, ash, zsh,
   mksh, yash, and more
-- **Docker-based testing** — run tests inside an Alpine container with
+- **Docker-based testing** -- run tests inside an Alpine container with
   multiple shells installed
-- **Linting scripts** — shellcheck, shfmt, checkbashisms
-- **ASCII scanner** — byte-level non-ASCII detection using `od`
+- **Linting scripts** -- shellcheck, shfmt, checkbashisms
+- **ASCII scanner** -- byte-level non-ASCII detection using `od`
 
 ### Installing the Skill
 
@@ -93,7 +93,7 @@ All source files pass syntax check across all available shells:
 | 1640 (export format) | PASS | PASS | PASS | PASS | PASS | PASS |
 
 **Result: 53/54 PASS** (\*1 zsh failure on Alpine due to missing `cksum` in zsh's
-PATH — not a code portability issue. `cksum` is a standalone binary provided by
+PATH -- not a code portability issue. `cksum` is a standalone binary provided by
 BusyBox; zsh on Alpine does not always find it. All other shells run it correctly.)
 
 ## Known Limitations

@@ -7,13 +7,13 @@ and what each container provides.
 ## Quick Start
 
 ```sh
-# Run on Alpine (6 shells: dash, bash, ash, zsh, mksh, yash)
+# Run on Alpine (8 shells: dash, bash, ash, zsh, mksh, yash, fish, pwsh)
 sh tests/docker/run-cross-shell-tests.sh --alpine
 
-# Run on Debian (6 shells: dash, bash, zsh, ksh, mksh, posh)
+# Run on Debian (7 shells: dash, bash, zsh, ksh, mksh, posh, pwsh)
 sh tests/docker/run-cross-shell-tests.sh --debian
 
-# Run both (covers all 8 shells)
+# Run both (covers all 10 shells)
 sh tests/docker/run-cross-shell-tests.sh
 ```
 
@@ -21,10 +21,10 @@ sh tests/docker/run-cross-shell-tests.sh
 
 | Image | Shells | Tools provided |
 |-------|--------|----------------|
-| `alpine:3.21` | dash, bash, ash, zsh, mksh, yash | git, tar, python3, gawk, coreutils |
-| `debian:bookworm-slim` | dash, bash, zsh, ksh, mksh, posh | git, tar, python3, gawk, shellcheck |
+| `alpine:3.21` | dash, bash, ash, zsh, mksh, yash, fish, pwsh | git, tar, python3, gawk, coreutils |
+| `debian:bookworm-slim` | dash, bash, zsh, ksh, mksh, posh, pwsh | git, tar, python3, gawk, shellcheck |
 
-Combined they cover all 8 target shells:
+Combined they cover all 10 target shells:
 
 | Shell | Role | Available in |
 |-------|------|-------------|
@@ -35,14 +35,30 @@ Combined they cover all 8 target shells:
 | ksh | Korn shell (legacy enterprise) | Debian |
 | mksh | MirBSD ksh (portable variant) | Alpine + Debian |
 | yash | Yet another shell (strict POSIX) | Alpine |
+| fish | Friendly interactive shell | Alpine |
 | posh | Policy-compliant shell | Debian |
+| pwsh | PowerShell 7+ (launcher + __complete dispatch) | Alpine + Debian |
 
 ## What Gets Tested
 
-### Syntax check (7 source files, 42 shell variants)
+### Syntax check (7 source files + 1 pwsh, 44 shell variants)
 
-Each shell runs `sh -n` on all 7 implementation files. This verifies that
+Each POSIX shell runs `sh -n` on all 7 implementation files. This verifies that
 every script is syntactically valid for that shell's parser.
+
+PowerShell 7+ (`pwsh`) is not a POSIX shell, so instead it runs a
+syntax check on `bin/git-nest.ps1` itself via `pwsh -noprofile` and a
+`__complete` dispatch test through the `.ps1` launcher.
+
+Fish is also not a POSIX shell; it runs `fish --no-execute` on the
+generated fish completion script rather than on implementation files.
+
+### __complete engine test
+
+Each POSIX shell also runs the `__complete` internal command via
+`git-nest __complete 0 -- ""` and verifies the TSV output contains
+command entries. This ensures the engine produces correct output
+under every shell's parser regardless of syntax quirks.
 
 ### Unit tests (pure function tests)
 
@@ -81,5 +97,5 @@ automatically by the runner script.
 ## Reproducibility
 
 These tests are fully reproducible: running the same command on the same
-image produces the same result every time. No Dockerfiles to maintain — the
+image produces the same result every time. No Dockerfiles to maintain -- the
 runner script specifies all dependencies explicitly.
