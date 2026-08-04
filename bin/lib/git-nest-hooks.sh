@@ -193,6 +193,8 @@ cmd_hooks_uninstall() {
 	rm -f "$targets"
 }
 
+# Internal __hook endpoint: dispatch the installed root/subproject hook
+# actions (post-checkout, pre-commit, pre-push, post-commit) that git invokes.
 cmd_internal_hook() {
 	hook_action=${1:-}
 	shift || true

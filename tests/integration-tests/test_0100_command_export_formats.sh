@@ -56,7 +56,10 @@ assert_file_not_contains tar_list.out './libs/foo/secret.txt'
 "$GIT_NEST" export --output "$root/source-a.zip" --deterministic >export_zip_a.out
 "$GIT_NEST" export --output "$root/source-b.zip" --deterministic >export_zip_b.out
 cmp "$root/source-a.zip" "$root/source-b.zip"
-python - "$root/source-a.zip" >zip_list.out <<'PY'
+# macOS and some minimal Linux images only ship python3, not python.
+cmd_python=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
+[ -n "$cmd_python" ] || { echo "python3 or python required" >&2; exit 1; }
+"$cmd_python" - "$root/source-a.zip" >zip_list.out <<'PY'
 import sys
 import zipfile
 

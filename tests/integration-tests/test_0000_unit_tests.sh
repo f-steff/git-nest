@@ -5,7 +5,7 @@ set -eu
 . "$(dirname "$0")/helper.sh"
 test_begin unit_tests
 
-REPO_ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 
 test_step "Run unit test suite" "Verify all unit test functions using the mock Git shim."
 
@@ -15,7 +15,7 @@ _unit_stderr=$(mktemp)
 
 # Run each unit test individually so PASS/FAIL appears immediately in the
 # narrative stream rather than being dumped all at once at the end.
-for _ut in "$REPO_ROOT/unit-tests/unit-test_"*.sh; do
+for _ut in "$REPO_ROOT/tests/unit-tests/unit-test_"*.sh; do
     [ -f "$_ut" ] || continue
     _id=$(basename "$_ut" | sed 's/unit-test_//;s/_.*//')
     _desc=$(sed -n '2s/^# Unit test: //p' "$_ut")
@@ -41,7 +41,7 @@ printf '  --- Unit tests: %s passed, %s failed ---\n' "$_unit_passed" "$_unit_fa
 
 if [ "$_unit_failed" -gt 0 ]; then
     describe_result "Unit tests: $_unit_passed passed, $_unit_failed FAILED."
-    printf 'To re-run unit tests:  sh unit-tests/run-all-tests.sh\n' >&9
+    printf 'To re-run unit tests:  sh tests/unit-tests/run-all-tests.sh\n' >&9
     printf 'To re-run only this step:  sh tests/run-all-tests.sh only 0000\n' >&9
     exit 1
 fi

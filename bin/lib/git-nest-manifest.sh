@@ -24,9 +24,9 @@ die() {
 # does the wrong thing if the user copies and pastes it verbatim.
 #
 # Only quotes when the value actually needs it (matches the same safe
-# character class tests/helper.sh's print_command already uses), so an
-# ordinary path prints exactly as before and only a path with a space or
-# other shell metacharacter gains quotes.
+# character class tests/integration-tests/helper.sh's print_command already
+# uses), so an ordinary path prints exactly as before and only a path with a
+# space or other shell metacharacter gains quotes.
 shell_quote() {
 	case "$1" in
 	*[!A-Za-z0-9_./:=,@%+-]* | '')
@@ -36,6 +36,8 @@ shell_quote() {
 	esac
 }
 
+# Exit with the given code after printing an Error: line on stderr; the
+# dedicated wrappers below give each error class its own stable exit code.
 die_code() {
 	code=$1
 	shift
@@ -43,14 +45,17 @@ die_code() {
 	exit "$code"
 }
 
+# Fail with the usage-error code for invalid command-line usage.
 usage_error() {
 	die_code "$EXIT_USAGE" "$@"
 }
 
+# Fail with the precondition-error code for invalid workspace state.
 precondition_error() {
 	die_code "$EXIT_PRECONDITION" "$@"
 }
 
+# Fail with the git-error code after a Git operation fails.
 git_error() {
 	die_code "$EXIT_GIT" "$@"
 }
@@ -72,6 +77,8 @@ require_value() {
 	[ -n "$value" ] || precondition_error "$message"
 }
 
+# Validate that a value is a positive integer (for timeout/depth options)
+# before it is used in arithmetic or passed to external tools.
 validate_positive_integer() {
 	vpi_value=$1
 	vpi_name=$2
@@ -81,6 +88,8 @@ validate_positive_integer() {
 	[ "$vpi_value" -gt 0 ] || usage_error "$vpi_name requires a positive integer"
 }
 
+# Remove the manifest lock directory if this process holds it, so an
+# interrupted command never leaves the workspace locked.
 cleanup_manifest_lock() {
 	if [ -n "$MANIFEST_LOCK_HELD" ] && [ -n "$MANIFEST_LOCK_PATH" ]; then
 		rm -rf "$MANIFEST_LOCK_PATH" 2>/dev/null || true
@@ -88,6 +97,8 @@ cleanup_manifest_lock() {
 	fi
 }
 
+# Install EXIT/INT/TERM traps that release the manifest lock, so locks are
+# never left behind even when a command dies unexpectedly (idempotent).
 install_exit_handler() {
 	[ "$GIT_NEST_EXIT_HANDLER_INSTALLED" -eq 0 ] || return 0
 	trap 'status=$?; cleanup_manifest_lock; exit $status' EXIT
@@ -96,16 +107,25 @@ install_exit_handler() {
 	GIT_NEST_EXIT_HANDLER_INSTALLED=1
 }
 
+# Sleep for a fractional number of milliseconds; uses awk to compute the
+# fractional seconds, because not all sleep implementations support sub-second
+# arguments (e.g. macOS sleep accepts "0.1" but has a fixed limit of 1s resolution
+# before macOS 13, and busybox sleep ignores sub-second values).
+# LC_NUMERIC=C ensures awk always produces a dot decimal (e.g. "0.050") regardless
+# of the user's locale -- non-C locales may emit "0,050" which macOS sleep rejects.
 sleep_ms() {
 	ms=$1
-	seconds=$(awk -v ms="$ms" 'BEGIN { printf "%.3f", ms / 1000 }')
+	seconds=$(LC_NUMERIC=C awk -v ms="$ms" 'BEGIN { printf "%.3f", ms / 1000 }')
 	sleep "$seconds"
 }
 
+# Print the current UTC timestamp in ISO-8601 form for reproducible metadata.
 utc_now() {
 	date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
 
+# Acquire the manifest lock directory with exponential backoff up to the
+# configured timeout; concurrent commands wait rather than corrupt the file.
 acquire_manifest_lock() {
 	[ -z "$MANIFEST_LOCK_HELD" ] || return 0
 	validate_positive_integer "$GIT_NEST_LOCK_TIMEOUT_SECONDS" GIT_NEST_LOCK_TIMEOUT_SECONDS
@@ -146,6 +166,8 @@ acquire_manifest_lock() {
 	exit "$EXIT_LOCK"
 }
 
+# Escape a stream on stdin into a JSON string body (quotes, backslashes, and
+# control characters), used by json_string for safe machine output.
 json_escape() {
     command awk '
         BEGIN { ORS="" }
@@ -165,12 +187,15 @@ json_escape() {
     '
 }
 
+# Print a value as a quoted, escaped JSON string.
 json_string() {
 	printf '"'
 	printf '%s' "$1" | json_escape
 	printf '"'
 }
 
+# Build one JSON object for a porcelain row (code/path/state/target/current/
+# expected/detail) so machine output has one stable shape everywhere.
 json_row_object() {
 	code=$1
 	path=$2
@@ -196,6 +221,7 @@ json_row_object() {
 	printf '}'
 }
 
+# Print a JSON array of strings from a line-per-entry file (skipping blanks).
 json_array_from_lines() {
 	file=$1
 	first=1
@@ -211,6 +237,8 @@ json_array_from_lines() {
 	printf ']'
 }
 
+# Print a JSON array of row objects parsed from a tab-separated porcelain file,
+# used by commands that reuse status-style output for their JSON form.
 json_rows_from_porcelain_file() {
 	file=$1
 	first=1
@@ -226,6 +254,8 @@ json_rows_from_porcelain_file() {
 	printf ']'
 }
 
+# Emit the shared JSON output envelope (rows/errors/warnings arrays plus
+# ok/recursive flags) so every command's JSON form is consistent.
 emit_json_result() {
 	command=$1
 	recursive=$2
@@ -316,6 +346,8 @@ resolve_commit() {
 	printf '%s\n' "$sha"
 }
 
+# Escape a string for use in a BRE/ERE pattern, so user input is matched
+# literally inside sed/grep expressions.
 regex_escape() {
 	printf '%s\n' "$1" | sed 's/[][(){}.^$*+?|\\-]/\\&/g'
 }
@@ -332,6 +364,9 @@ require_git() {
 	command -v git >/dev/null 2>&1 || die "git is required"
 }
 
+# Resolve a path to its canonical absolute form (following symlinks when
+# readlink exists) so manifest lookups are stable regardless of invocation
+# directory or link structure.
 canonical_start_dir_for_path() {
 	target=$1
 	[ -e "$target" ] || precondition_error "$target does not exist; cannot locate owning $MANIFEST_FILE"
@@ -366,6 +401,8 @@ find_owning_manifest() {
 	done
 }
 
+# Print the absolute path of the nest root (directory containing the owning
+# manifest) or fail silently for callers that tolerate "no nest".
 find_project_root() {
 	manifest=$(find_owning_manifest 2>/dev/null) || return 1
 	dirname -- "$manifest"
@@ -419,6 +456,8 @@ ensure_outer_repo() {
 	fi
 }
 
+# Return 0 only when .gitattributes contains the complete git-nest guard
+# (all six owned entries), so tidy knows whether to refresh it.
 gitattributes_has_guard() {
 	[ -f .gitattributes ] || return 1
 	awk '
@@ -432,6 +471,8 @@ gitattributes_has_guard() {
     ' .gitattributes
 }
 
+# Print the full git-nest .gitattributes guard block (BEGIN/END markers plus
+# the six owned entries) so every platform keeps the same line endings.
 print_gitattributes_guard() {
 	printf '%s\n' "$GITATTRIBUTES_BEGIN"
 	printf '%s\n' "$GITATTRIBUTES_GUARD"
@@ -443,6 +484,8 @@ print_gitattributes_guard() {
 	printf '%s\n' "$GITATTRIBUTES_END"
 }
 
+# Create or refresh the managed .gitattributes block, removing any stale
+# git-nest entries outside the block and preserving user lines.
 ensure_gitattributes_guard() {
 	if gitattributes_has_guard; then
 		return 0
@@ -475,11 +518,15 @@ ensure_gitattributes_guard() {
 	mv "$tmp" .gitattributes
 }
 
+# Warn once per run when the git-nest .gitattributes guard is missing, so
+# users learn about the fix without repeated noise.
 warn_missing_gitattributes_guard() {
 	gitattributes_has_guard && return 0
 	warn "missing or stale git-nest .gitattributes guard; run git-nest tidy to refresh it"
 }
 
+# Warn once when a hook written by the retired git-stack tool is detected, so
+# users know to reinstall the current git-nest hook set.
 warn_old_managed_hooks() {
 	[ "$OLD_HOOK_WARNING_PRINTED" -eq 0 ] || return 0
 	git rev-parse --git-dir >/dev/null 2>&1 || return 0
@@ -495,6 +542,7 @@ warn_old_managed_hooks() {
 	done
 }
 
+# Run all startup warnings (gitattributes guard, old hooks) once per command.
 project_invocation_warnings() {
 	warn_missing_gitattributes_guard
 	warn_old_managed_hooks
@@ -533,6 +581,8 @@ normalize_path() {
 	printf '%s\n' "$1" | sed 's#//*#/#g; s#/$##'
 }
 
+# Reject Windows-style backslash paths with guidance, because subproject
+# paths are stored with forward slashes and backslashes would be ambiguous.
 reject_backslash_path() {
 	case "$1" in
 	*[\\]*)
@@ -542,6 +592,8 @@ reject_backslash_path() {
 	esac
 }
 
+# Return 0 only for safe relative subproject paths: no absolute, parent
+# escape, drive-letter, or Git-internal names.
 path_is_relative_safe() {
 	case "$1" in
 	"" | /* | [A-Za-z]:* | ../* | */../* | .. | .) return 1 ;;
@@ -551,6 +603,8 @@ path_is_relative_safe() {
 	esac
 }
 
+# Fail unless the given subproject path is a safe relative path inside the
+# current project (used by every path-taking command before any writes).
 assert_safe_project_path() {
 	path=$1
 	path_is_relative_safe "$path" ||
@@ -640,7 +694,7 @@ assert_path_not_containing_nested_project() {
 # contain a path already registered as a subproject by an ancestor nest. This
 # can only happen if a directory that is an ancestor of an already-registered
 # deep subproject is later, retroactively, given its own Git repository and
-# becomes a valid new nest root -- see todo.md (postponed `--adopt`) for
+# becomes a valid new nest root -- see todo.md (won't do: `init --adopt`) for
 # the full scenario and why absorb itself cannot hit this (assert_no_deeper_repos
 # and assert_path_not_containing_nested_project already guard every absorb
 # path; only nest creation itself was missing this check). Called from
@@ -680,6 +734,8 @@ assert_new_nest_excludes_ancestor_subprojects() {
 	done
 }
 
+# Stage outer-repository paths with git add, translating git failures into
+# the standard git-error diagnostic.
 stage_outer_paths() {
 	git add -- "$@" || git_error "failed to stage outer repository changes"
 }
@@ -770,6 +826,8 @@ manifest_get_from_file() {
     ' "$file"
 }
 
+# Classify a manifest section header as project, subproject, or unknown so
+# schema validation and rewriting treat each section type consistently.
 manifest_section_kind() {
 	section=$1
 	case "$section" in
@@ -779,6 +837,8 @@ manifest_section_kind() {
 	esac
 }
 
+# Validate the manifest schema (version, section structure, key allowlist)
+# before any command trusts its content; collects all errors at once.
 validate_manifest_schema() {
 	[ -f "$MANIFEST_FILE" ] || precondition_error "missing $MANIFEST_FILE; run git-nest init"
 
@@ -847,10 +907,6 @@ validate_manifest_schema() {
             for (section in subprojects) {
                 repo = value_for[section SUBSEP "repo"]
                 clone = value_for[section SUBSEP "clone"]
-                pending = value_for[section SUBSEP "pending_branch"]
-                base = value_for[section SUBSEP "base_revision"]
-                pushed = value_for[section SUBSEP "pushed_commit"]
-                cleanup = value_for[section SUBSEP "finalized_from_branch"]
                 revision = value_for[section SUBSEP "revision"]
                 target = value_for[section SUBSEP "target_branch"]
                 tag = value_for[section SUBSEP "tag"]
@@ -861,10 +917,6 @@ validate_manifest_schema() {
                     add_error("subproject " path " is missing repo")
                 }
                 if (clone != "" && clone != "full" && clone != "partial" && clone != "shallow") add_error("invalid clone mode in [" section "]: " clone)
-                if (pending != "") add_error("pending_branch is no longer supported in [" section "]; use git-nest snapshot after pushing the subproject commit")
-                if (base != "") add_error("base_revision is no longer supported in [" section "]")
-                if (pushed != "") add_error("pushed_commit is no longer supported in [" section "]")
-                if (cleanup != "") add_error("finalized_from_branch is no longer supported in [" section "]")
                 if (tag != "" && revision == "") add_error("tag requires revision in [" section "]")
             }
         }
@@ -945,6 +997,8 @@ manifest_remove_section() {
 	_MNF_LOADED=
 }
 
+# List the manifest keys that rewrites must preserve verbatim (extension
+# keys and command-owned keys), so untouched data survives a rewrite.
 manifest_preserved_keys() {
 	section=$1
 	known_pattern=$2
@@ -1247,6 +1301,8 @@ repo_has_dirty() {
 	[ -n "$(repo_status_porcelain "$1" "cannot inspect dirty state")" ]
 }
 
+# Return 0 when the candidate path is itself a managed subproject or sits
+# inside one, so nested boundaries are never crossed by path commands.
 path_is_manifest_subproject_or_child() {
 	candidate=$1
 	paths=$(mktemp)
@@ -1264,6 +1320,8 @@ path_is_manifest_subproject_or_child() {
 	return 1
 }
 
+# List local Git repositories that are not part of the manifest, used by
+# survey-style scans to surface unmanaged checkouts.
 unmanaged_subprojects() {
 	[ -f "$MANIFEST_FILE" ] || return 0
 	find . \( -type d -o -type f \) -name .git 2>/dev/null | while IFS= read -r gitpath; do
@@ -1279,6 +1337,8 @@ unmanaged_subprojects() {
 	done | sort -u
 }
 
+# Return 0 when a subproject's checked-out HEAD differs from its recorded
+# revision, i.e. the checkout has drifted from the manifest.
 subproject_manifest_mismatch() {
 	path=$1
 	revision=$(subproject_key "$path" revision || true)
@@ -1289,16 +1349,18 @@ subproject_manifest_mismatch() {
 	[ -n "$head" ] && [ -n "$expected" ] && [ "$head" != "$expected" ]
 }
 
+# Classify a subproject's drift state into a one-letter status code (C for
+# composite/mismatched, D for dirty) used by status and verify output.
 status_code_for_subproject() {
 	path=$1
-	pending=$(subproject_key "$path" pending_branch || true)
-	if [ -n "$pending" ] || subproject_manifest_mismatch "$path"; then
+	if subproject_manifest_mismatch "$path"; then
 		printf 'C\n'
 	else
 		printf 'D\n'
 	fi
 }
 
+# Map a status code to its human label (composite/dirty) for report output.
 status_state_for_code() {
 	case "$1" in
 	C) printf 'composite\n' ;;
@@ -1395,6 +1457,8 @@ safe_stale_path() {
 	esac
 }
 
+# Count how many recorded stale paths for a repository no longer exist or
+# were already reconciled, so restore can report a clean stale-state summary.
 count_stale_repo_paths() {
 	previous=$1
 	current=$2
@@ -1410,6 +1474,8 @@ count_stale_repo_paths() {
 	printf '%s\n' "$count"
 }
 
+# List recorded manifest paths for a repository whose checkout is missing,
+# so restore knows exactly what to re-clone.
 missing_manifest_paths_for_repo() {
 	current=$1
 	repo=$2
@@ -1421,10 +1487,12 @@ missing_manifest_paths_for_repo() {
 	done <"$current"
 }
 
+# Print the first line of a file (e.g. a single recorded value).
 first_line() {
 	sed -n '1p' "$1"
 }
 
+# Count non-empty lines in a file, used for stable summary reporting.
 line_count() {
 	sed '/^$/d' "$1" | wc -l | tr -d ' '
 }
@@ -1455,11 +1523,14 @@ stale_subproject_safety_reason() {
 	rm -f "$branches"
 }
 
+# Delete a stale subproject checkout that is no longer in the manifest.
 remove_stale_subproject() {
 	path=$1
 	rm -rf -- "$path" || die "failed to remove stale subproject $path"
 }
 
+# Move a stale subproject checkout aside (instead of deleting) so the user
+# can review it after restore reconciles the stale state.
 move_stale_subproject() {
 	old_path=$1
 	new_path=$2
@@ -1572,6 +1643,8 @@ notice_nested_projects() {
 	done
 }
 
+# Return 0 when a subproject has committed work ahead of its recorded target
+# that a plain snapshot would silently leave out (drives --check warnings).
 subproject_would_snapshot() {
 	path=$1
 	[ -d "$path/.git" ] || return 1
@@ -1592,6 +1665,8 @@ subproject_would_snapshot() {
 	[ "$ahead" -gt 0 ] 2>/dev/null
 }
 
+# Return 0 when any subproject in the nest has unreported committed work,
+# used by snapshot --check to warn before recording state.
 project_would_snapshot() {
 	ensure_manifest
 	manifest_subprojects | while IFS= read -r path; do
@@ -1603,6 +1678,8 @@ project_would_snapshot() {
 	done | grep '^yes$' >/dev/null 2>&1
 }
 
+# Recursively collect labels of nested projects with unreported commits into
+# a candidates file, de-duplicating via a visited-roots file.
 nested_snapshot_candidates() {
 	label=$1
 	out=$2
@@ -1627,6 +1704,8 @@ nested_snapshot_candidates() {
 	done
 }
 
+# Print one notice per nested project that has unreported commits, telling
+# the user to run snapshot --recursive to include them.
 notice_nested_snapshot_candidates() {
 	candidates=$(mktemp)
 	visited=$(mktemp)
@@ -1646,6 +1725,8 @@ notice_nested_snapshot_candidates() {
 	rm -f "$candidates" "$visited"
 }
 
+# Validate and record a --base <subproject>=<ref> override for the current
+# command, so restore/update can pin a different revision per subproject.
 add_base_override() {
 	value=$1
 	case "$value" in
@@ -1662,6 +1743,7 @@ add_base_override() {
 	printf '%s\t%s\n' "$path" "$ref" >>"$GIT_NEST_BASE_OVERRIDES"
 }
 
+# Look up the --base override ref recorded for a subproject, if any.
 base_override_for() {
 	path=$1
 	[ -n "$GIT_NEST_BASE_OVERRIDES" ] || return 1
@@ -1669,6 +1751,8 @@ base_override_for() {
 	awk -F '	' -v path="$path" '$1 == path { value=$2 } END { if (value != "") print value; else exit 1 }' "$GIT_NEST_BASE_OVERRIDES"
 }
 
+# Drop all --base overrides and re-enable fetching after the command using
+# them finishes, so no state leaks into later commands.
 clear_base_overrides() {
 	[ -z "$GIT_NEST_BASE_OVERRIDES" ] || rm -f "$GIT_NEST_BASE_OVERRIDES"
 	GIT_NEST_BASE_OVERRIDES=
@@ -1862,6 +1946,8 @@ stale_gitignore_orphans() {
 	rm -f "$rg_managed"
 }
 
+# Walk upward to the nearest ancestor directory that owns a manifest, used
+# by nested-nest overlap checks to detect conflicting nest boundaries.
 nearest_parent_manifest_root() {
 	dir=$(pwd -P)
 	parent=$(dirname "$dir")
@@ -1876,11 +1962,15 @@ nearest_parent_manifest_root() {
 	return 1
 }
 
+# Return 0 when a path is already recorded as a subproject in the manifest.
 subproject_exists_in_manifest() {
 	path=$1
 	[ -n "$(subproject_repo "$path" || true)" ]
 }
 
+# Explain why switching a subproject to its target branch is unsafe right now
+# (missing checkout, dirty state, or a conflicting current branch), or print
+# nothing when the switch is safe.
 current_branch_safety_reason() {
 	path=$1
 	target=$2
@@ -1919,6 +2009,8 @@ current_branch_safety_reason() {
 	fi
 }
 
+# Rename a subproject section header in the manifest in place, invalidating
+# the parse cache so later reads see the new name.
 manifest_rename_subproject_section() {
 	old_path=$1
 	new_path=$2
@@ -1959,6 +2051,8 @@ manifest_set_subproject_key() {
 	mv "$tmp" "$MANIFEST_FILE"
 }
 
+# Query a remote's HEAD commit SHA without touching local refs, used by
+# add/update to record what the remote currently points at.
 remote_head_commit_for_url() {
 	repo=$1
 	git ls-remote "$repo" HEAD 2>/dev/null | awk 'NR == 1 { print $1 }'
@@ -1987,6 +2081,8 @@ remote_branch_commit() {
 	awk 'NR == 1 { print $1 }' "$out"
 }
 
+# Resolve the commit a remote tag points at (preferring the peeled ^{} form)
+# without updating local refs, for tag-drift checks.
 remote_tag_commit() {
 	repo=$1
 	tag=$2
@@ -2072,7 +2168,6 @@ manifest_diff_base_from_file() {
 	path=$2
 	section=$(subproject_section "$path")
 	base=$(manifest_get_from_file "$file" "$section" revision || true)
-	[ -n "$base" ] || base=$(manifest_get_from_file "$file" "$section" pushed_commit || true)
 	printf '%s\n' "$base"
 }
 
@@ -2090,6 +2185,8 @@ resolve_target_ref() {
 	fi
 }
 
+# Append one doctor check result row (code, name, detail) to the results file
+# so the doctor report is built incrementally in a stable order.
 doctor_add_check() {
 	file=$1
 	code=$2
@@ -2098,6 +2195,7 @@ doctor_add_check() {
 	printf '%s\t%s\t%s\n' "$code" "$name" "$detail" >>"$file"
 }
 
+# Map a doctor check code (I/W/E) to its human status label for output.
 doctor_code_to_status() {
 	case "$1" in
 	I) printf 'info\n' ;;
@@ -2107,6 +2205,8 @@ doctor_code_to_status() {
 	esac
 }
 
+# Reachability-check one remote with a timeout, using the external timeout
+# utility when present and a shell watchdog fallback otherwise.
 doctor_ls_remote() {
 	repo=$1
 	timeout_seconds=$2

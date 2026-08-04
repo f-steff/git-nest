@@ -2,3 +2,6 @@ test_workspaces/
 run-all-tests-results.md
 run-all-tests.log
 .gitnest-recovery-*/
+
+# Installed copy of the external POSIX shell skill (see .agents/skills/posix-shell/SKILL.md).
+.agents/skills/posix-shell/source/

@@ -57,16 +57,22 @@ uses `cygpath -m` for conversion, but this only works in full Cygwin
 environments, not in Git Bash (MSYS2).
 
 **Suggestion:** For Git Bash (MSYS2/MINGW), use `pwd -W` to get a Windows
-path, and set `MSYS2_ARG_CONV_EXCL=*` to prevent path mangling:
+path, and set `MSYS2_ARG_CONV_EXCL=*` scoped to the docker invocation only:
 
 ```sh
 case "$(uname -s)" in
     MINGW*|MSYS*) winpath=$(pwd -W) ;;
     *) winpath=$(pwd) ;;
 esac
-export MSYS2_ARG_CONV_EXCL="*"
-docker run -v "$winpath:/mnt:ro" ...
+MSYS2_ARG_CONV_EXCL="*" docker run -v "$winpath:/mnt:ro" ...
 ```
+
+Caution (learned in git-nest, 2026-07): do **not** `export
+MSYS2_ARG_CONV_EXCL="*"`. Exporting it disables MSYS2 POSIX-to-Windows
+argument conversion for every native binary spawned afterwards in the whole
+process tree, so native `git.exe` receives raw `/tmp/...` paths and fails
+with `fatal: cannot change to '/tmp/...'`. Scope the variable to the single
+docker command as shown, or unset it afterwards.
 
 ## 5. Test Output Format
 

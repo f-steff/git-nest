@@ -58,7 +58,7 @@ run_in_docker() {
 
             # Check that fish syntax check uses fish --no-execute
             if [ \"\$sh\" = fish ]; then
-                for f in /work/unit-tests/unit-test_*.sh; do
+                for f in /work/tests/unit-tests/unit-test_*.sh; do
                     [ -f \"\$f\" ] || continue
                     bn=\$(basename \"\$f\")
                     # Fish has its own syntax; skip POSIX unit tests
@@ -80,7 +80,7 @@ run_in_docker() {
                 [ -f \"/work/\$f\" ] || continue
                 if \"\$sh\" -n \"/work/\$f\" 2>/dev/null; then printf 'PASS\\t%s\\t%s\\n' \"\$sh\" \"\$f\"; else printf 'FAIL\\t%s\\t%s\\n' \"\$sh\" \"\$f\"; fi
             done
-            for f in /work/unit-tests/unit-test_*.sh; do
+            for f in /work/tests/unit-tests/unit-test_*.sh; do
                 [ -f \"\$f\" ] || continue
                 bn=\$(basename \"\$f\")
                 # zsh: known issue in container environments -- command

@@ -10,6 +10,14 @@ TEST_WATCHDOG_SECONDS=${TEST_WATCHDOG_SECONDS:-180}
 PATH="$REPO_ROOT/bin:$PATH"
 export PATH
 
+# The suite must run with MSYS2 path conversion ENABLED: git.exe is a native
+# Windows binary and needs POSIX->Windows conversion for /tmp workspace paths.
+# Callers may have set MSYS2_ARG_CONV_EXCL or MSYS_NO_PATHCONV for their own
+# shells (e.g. around docker volume mounts); neutralize them here so the test
+# processes get a deterministic environment regardless of how the runner was
+# invoked.
+unset MSYS2_ARG_CONV_EXCL MSYS_NO_PATHCONV MSYS2_ENV_CONV_EXCL 2>/dev/null || true
+
 # Capture the full run to a log file by default, written at the repository root
 # and named after the runner. Disable with --no-log, or choose --log FILE.
 LOG_FILE="$REPO_ROOT/run-all-tests.log"
@@ -25,6 +33,7 @@ STOP_ON_FAIL=0
 COMMAND=
 COMMAND_IDS=
 
+# Print the runner's help text (commands and options) and stop.
 usage() {
     cat <<'EOF'
 Usage: run-all-tests.sh [options] [command]
@@ -34,6 +43,7 @@ Commands:
   list           List all tests as: ID  description.
   only <ids>     Run only the comma-separated test IDs.
   except <ids>   Run every test except the comma-separated IDs.
+  cleanup        Remove artifacts from previous runs and stop (no tests run).
   help           Show this help and exit.
 
 Options:
@@ -48,6 +58,7 @@ Examples:
   run-all-tests.sh list
   run-all-tests.sh only 0130,0140,5010
   run-all-tests.sh except 5000,5010,5020
+  run-all-tests.sh cleanup
   run-all-tests.sh only 0250 --verbose
   run-all-tests.sh --stop-on-fail
 
@@ -56,9 +67,32 @@ command, option, or test ID prints this help and stops.
 EOF
 }
 
+# Remove every artifact a previous run may have left behind: the persistent
+# test workspace root (guarded so cleanup never touches anything outside the
+# known test-root pattern) and stale per-test temp dirs in the system temp
+# area (leaked mock-git dirs, unit-test scratch dirs, and standalone shim
+# dirs). Every run starts by calling this; the cleanup command exposes it
+# standalone. Pass 1 to print a confirmation line.
+cleanup_artifacts() {
+    _ca_verbose=${1:-0}
+    case "$TEST_ROOT" in
+        "$REPO_ROOT"|"$REPO_ROOT"/*) echo "Refusing to use test root inside repository: $TEST_ROOT" >&2; exit 1 ;;
+        */git-nest-test-workspaces) rm -rf "$TEST_ROOT" ;;
+        *) echo "Refusing to remove unexpected test root: $TEST_ROOT" >&2; exit 1 ;;
+    esac
+    _ca_tmp=${TMPDIR:-/tmp}
+    rm -rf "$_ca_tmp"/gn-mock-git.* "$_ca_tmp"/gn-unit-test.* "$_ca_tmp"/git-nest-shim.* 2>/dev/null || true
+    # Remove the runner's generated summary and log from the repository root
+    # (both are git-ignored artifacts of a previous run).
+    rm -f "$REPO_ROOT/run-all-tests-results.md" "$REPO_ROOT/run-all-tests.log" 2>/dev/null || true
+    if [ "$_ca_verbose" -eq 1 ]; then
+        printf 'Removed test workspace %s, stale test artifacts, and run-all summary/log.\n' "$TEST_ROOT"
+    fi
+}
+
 # Print the sorted paths of all numbered test files.
 test_files() {
-    for tf in "$SCRIPT_DIR"/test_[0-9][0-9][0-9][0-9]_*.sh; do
+    for tf in "$SCRIPT_DIR"/integration-tests/test_[0-9][0-9][0-9][0-9]_*.sh; do
         [ -e "$tf" ] && printf '%s\n' "$tf"
     done | sort
 }
@@ -94,7 +128,7 @@ while [ "$#" -gt 0 ]; do
         --verbose|-v) VERBOSE=1 ;;
         --stop-on-fail) STOP_ON_FAIL=1 ;;
         -h|--help|help) usage; exit 0 ;;
-        list|only|except)
+        list|only|except|cleanup)
             [ -z "$COMMAND" ] || { printf 'run-all-tests: only one command is allowed\n' >&2; usage >&2; exit 2; }
             COMMAND=$1
             ;;
@@ -116,6 +150,12 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
+
+# --- cleanup: remove artifacts from previous runs and stop (no tests run) ---
+if [ "$COMMAND" = cleanup ]; then
+    cleanup_artifacts 1
+    exit 0
+fi
 
 # --- list: print every test as "ID  description" (no execution) ---
 if [ "$COMMAND" = list ]; then
@@ -166,14 +206,11 @@ esac
 # Make Git's external-command discovery find the workspace git-nest binary.
 chmod +x "$REPO_ROOT/bin/git-nest" 2>/dev/null || true
 
-# Clean only the known persistent test workspace root, then leave new fixtures
-# in place after the run for inspection. Keep it outside the tool repository so
-# startup tests in non-Git folders are not pulled up to the tool repo root.
-case "$TEST_ROOT" in
-    "$REPO_ROOT"|"$REPO_ROOT"/*) echo "Refusing to use test root inside repository: $TEST_ROOT" >&2; exit 1 ;;
-    */git-nest-test-workspaces) rm -rf "$TEST_ROOT" ;;
-    *) echo "Refusing to remove unexpected test root: $TEST_ROOT" >&2; exit 1 ;;
-esac
+# Every run starts clean: remove the persistent test workspace root and stale
+# temp artifacts from previous runs, then leave new fixtures in place after the
+# run for inspection. Keep the workspace outside the tool repository so startup
+# tests in non-Git folders are not pulled up to the tool repo root.
+cleanup_artifacts
 mkdir -p "$TEST_ROOT"
 SUMMARY_MD="$REPO_ROOT/run-all-tests-results.md"
 
@@ -191,6 +228,8 @@ test_files | while IFS= read -r tf; do
     esac
 done
 
+# Print a heading with a matching dash underline so test headers stand out
+# in the console stream without depending on terminal control codes.
 underline_for() {
     printf '%s\n' "$1" | sed 's/./-/g'
 }
@@ -207,14 +246,20 @@ summary_dashes() {
     printf '%s' "$sd_s"
 }
 
+# Append one markdown table row (ID, name, status, time, log link) to the
+# results file so the summary is a self-contained report for CI and docs.
 append_summary_markdown_row() {
     printf '| %s | `%s` | %s | %s | `%s` |\n' "$1" "$2" "$3" "$4" "$5" >>"$SUMMARY_MD"
 }
 
+# Print the per-test result line (PASS/FAIL/SKIP and elapsed seconds) to the
+# console immediately after each test finishes.
 print_result() {
     printf '\nResult: %s (%s)\n' "$1" "$2"
 }
 
+# Print any lines of a streaming file that were not printed yet, so the
+# console shows progress incrementally instead of waiting for the whole test.
 stream_new_output() {
     output_file=$1
     line_count=$(wc -l <"$output_file" 2>/dev/null || printf '0')
@@ -225,6 +270,9 @@ stream_new_output() {
     fi
 }
 
+# Run one test as a background subprocess and watch it: stream its output as
+# it appears, kill it if it produces nothing for TEST_WATCHDOG_SECONDS, and
+# return its exit code (124 when treated as hung).
 run_test_with_watchdog() {
     test_script=$1
     output_file=$2

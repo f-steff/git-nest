@@ -2,10 +2,16 @@
 
 set -eu
 
-REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 GIT_NEST_REAL="$REPO_ROOT/bin/git-nest"
 TEST_ROOT=${TEST_ROOT:-"${TMPDIR:-/tmp}/git-nest-test-workspaces"}
 GIT_NEST_COMMAND_LOG=${GIT_NEST_COMMAND_LOG:-"$TEST_ROOT/.git-nest-commands.log"}
+
+# Tests need MSYS2 path conversion ENABLED: git.exe is a native Windows binary
+# and must translate /tmp workspace paths. The full-suite runner already
+# neutralizes these variables; doing it here as well protects standalone runs
+# (sh tests/integration-tests/test_XXXX.sh) from an inherited caller environment.
+unset MSYS2_ARG_CONV_EXCL MSYS_NO_PATHCONV MSYS2_ENV_CONV_EXCL 2>/dev/null || true
 
 # fd 9 is the curated narrative stream. The full-suite runner opens it to a
 # per-test narrative file it streams to the console; a standalone test run has no
@@ -17,7 +23,14 @@ fi
 # Install a git-nest logging shim. Every invocation through $GIT_NEST or `git
 # nest` echoes the command and its output to the narrative stream (fd 9) while
 # still delivering real stdout/stderr, so assertions and captures are unaffected.
-GIT_NEST_SHIM_DIR=${GIT_NEST_SHIM_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/git-nest-shim.XXXXXX")}
+# The full-suite runner presets GIT_NEST_SHIM_DIR and owns it; a standalone run
+# creates one via mktemp and cleans it up on exit.
+_GIT_NEST_SHIM_SELF_CREATED=0
+if [ -z "${GIT_NEST_SHIM_DIR:-}" ]; then
+    GIT_NEST_SHIM_DIR=$(mktemp -d "${TMPDIR:-/tmp}/git-nest-shim.XXXXXX")
+    _GIT_NEST_SHIM_SELF_CREATED=1
+fi
+trap '_GIT_NEST_SHIM_SELF_CREATED=${_GIT_NEST_SHIM_SELF_CREATED:-0}; [ "$_GIT_NEST_SHIM_SELF_CREATED" -eq 1 ] && rm -rf "$GIT_NEST_SHIM_DIR" 2>/dev/null || true' EXIT
 mkdir -p "$GIT_NEST_SHIM_DIR"
 cat >"$GIT_NEST_SHIM_DIR/git-nest" <<SHIM
 #!/bin/sh
@@ -77,6 +90,9 @@ test_begin() {
 
 TEST_STEP_NUMBER=0
 
+# Echo a command as a RUN: line on the narrative stream so the console shows
+# exactly what the test executes next. git-nest invocations are skipped because
+# the shim already logs them (avoids duplicate RUN lines).
 print_command() {
     # git-nest invocations are already logged by the shim, so skip them here to
     # avoid a duplicate RUN line.
@@ -96,16 +112,21 @@ print_command() {
     } >&9
 }
 
+# Start a new numbered test step with its What/Why narration, partitioning the
+# test into visible phases the runner streams to the console.
 test_step() {
     TEST_STEP_NUMBER=$((TEST_STEP_NUMBER + 1))
     printf '\nStep %s: %s\n' "$TEST_STEP_NUMBER" "$1" >&9
     printf 'Why: %s\n' "$2" >&9
 }
 
+# Close the test with a one-line RESULT: summary on the narrative stream.
 describe_result() {
     printf 'RESULT: %s\n' "$1" >&9
 }
 
+# Run a command that must succeed, narrating it, and fail the test if it
+# exits nonzero (protects assertions under set -e with a clear message).
 run_ok() {
     description=$1
     shift
@@ -119,6 +140,8 @@ run_ok() {
     printf 'OK: %s\n' "$description" >&9
 }
 
+# Run a command that must fail with the expected exit code (or any nonzero
+# exit when "any"), narrating it, and fail the test on a wrong result.
 run_fail() {
     description=$1
     expected=$2
@@ -147,6 +170,8 @@ run_fail() {
     printf 'EXPECTED FAIL: %s\n' "$description" >&9
 }
 
+# Run a command that must succeed while capturing stdout/stderr to files so
+# the test can assert on them; narrates the command and the capture paths.
 run_capture() {
     description=$1
     stdout_file=$2
@@ -182,7 +207,11 @@ git_config() {
     git config core.autocrlf false
     git config core.eol lf
     git config core.safecrlf false
-    git config advice.detachedHead false
+	git config advice.detachedHead false
+	# Ensure git init and git init --bare default to "main" regardless of the
+	# user's global init.defaultBranch setting (some systems, notably macOS
+	# where git is installed via homebrew, may have init.defaultBranch=master).
+	git config init.defaultBranch main
 }
 
 # Create a normal repository on main, tolerating older Git without init -b.
@@ -230,6 +259,8 @@ assert_file_not_contains() {
     fi
 }
 
+# Run a command under set +e and fail the test unless its exit code matches
+# the expected value, with a clear message showing the actual result.
 assert_exit_code() {
     expected=$1
     shift

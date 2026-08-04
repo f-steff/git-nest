@@ -1,5 +1,27 @@
 # git-nest Technical Notes
 
+The shell implementation is split into one thin entrypoint and five library
+modules that are sourced together:
+
+```mermaid
+graph LR
+    entry["bin/git-nest"] --> sh["bin/git_nest.sh"]
+    sh --> manifest["bin/lib/git-nest-manifest.sh"]
+    sh --> commands["bin/lib/git-nest-commands.sh"]
+    sh --> hooks["bin/lib/git-nest-hooks.sh"]
+    sh --> conversion["bin/lib/git-nest-conversion.sh"]
+    sh --> doctor["bin/lib/git-nest-doctor.sh"]
+    manifest -->|helpers| commands
+    manifest -->|helpers| conversion
+    manifest -->|helpers| hooks
+    manifest -->|helpers| doctor
+```
+
+`bin/git-nest` stays thin: it sources `git_nest.sh`, which sources the five
+modules and defines shared constants. `git_nest_main` (the command dispatch
+table) lives in `git-nest-commands.sh`. The manifest module is the shared
+core the other modules build on.
+
 ## Workflow
 
 Create a nest with `git-nest init`, add subprojects with `git-nest add`, restore recorded files with `git-nest restore`, and record reproducible current subproject commits with `git-nest snapshot`.
@@ -10,7 +32,7 @@ Branching, committing, and pushing remain normal Git operations inside each repo
 
 ## Manifest
 
-`.gitnest` records repository URLs and exact revisions. The current manifest does not contain pending review state. Keys from the old pending workflow are schema errors.
+`.gitnest` records repository URLs and exact revisions. The current manifest does not contain pending review state. Only the keys documented in `MANIFEST.md` are recognized; unknown keys are preserved as extension data.
 
 ## Managed .gitignore Block
 
@@ -46,7 +68,7 @@ Manifest writers validate required fields before writing. Dirty subprojects are 
 
 ## Dry-Run Semantics
 
-`restore --dry-run` and `snapshot --dry-run` print planned changes without writing manifests, cloning, fetching, checking out, or pruning. `freeze`, `absorb` (including `--subrepo`/`--subtree`), `absorb-all`, `inline`, `detach`, `remove`, and `pull` also support `--dry-run` and report the planned change without writing. `absorb-all --dry-run` never runs the init step either, even when the scanned directory is not yet a nest.
+`restore --dry-run` and `snapshot --dry-run` print planned changes without writing manifests, cloning, fetching, checking out, or pruning. `freeze`, `gc`, `absorb` (including `--subrepo`/`--subtree`), `absorb-all`, `inline`, `detach`, `remove`, and `pull` also support `--dry-run` and report the planned change without writing. `absorb-all --dry-run` never runs the init step either, even when the scanned directory is not yet a nest.
 
 ## Worktree Compatibility
 

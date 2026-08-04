@@ -6,14 +6,16 @@
 
 set -eu
 UNIT_TESTS_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-REPO_ROOT=$(CDPATH='' cd -- "$UNIT_TESTS_DIR/.." && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "$UNIT_TESTS_DIR/../.." && pwd)
 
 # All function definitions from the source files.
 _all_funcs=$(mktemp)
 grep -h '^[a-z_][a-z0-9_]*()' "$REPO_ROOT"/bin/lib/*.sh | sed 's/()//' | sort -u >"$_all_funcs"
 # Some function definitions use "name() {" format (awk) instead of "name()".
 # Normalise by trimming whitespace and stripping trailing {.
-sed -i 's/[[:space:]]*{//' "$_all_funcs"
+# sed -i requires an explicit backup extension on BSD sed (macOS);
+# using -i.bak + cleanup is portable across both GNU and BSD sed.
+sed -i.bak 's/[[:space:]]*{//' "$_all_funcs" && rm -f "$_all_funcs.bak"
 
 # Covered functions from # Coverage: headers in unit test files.
 _cov_funcs=$(mktemp)
@@ -29,8 +31,10 @@ _ini_funcs=$(mktemp)
 : >"$_ini_funcs"
 _ini_file="$UNIT_TESTS_DIR/unit-tests.ini"
 if [ -f "$_ini_file" ]; then
-    # Extract keys from the [untested] section (everything before the first =)
-    sed -n '/^\[untested\]/,/^\[\(.*\)\]/{/^\[/d; /^#/d; /^$/d; p}' "$_ini_file" | grep -o '^[^=]*' | sort -u >"$_ini_funcs"
+    # Extract keys from the [untested] section (everything before the first =).
+    # Use awk instead of a multi-command sed block ({.../d;.../d;p}) because BSD
+    # sed (macOS) does not support semicolon-separated commands inside {}.
+    awk '/^\[untested\]/{s=1; next} /^\[/{s=0} s && !/^#/ && !/^$/ {key=$0; sub(/=.*/, "", key); print key}' "$_ini_file" | sort -u >"$_ini_funcs"
 fi
 
 # Functions that are neither covered nor in ini -- these are newly added code.

@@ -28,13 +28,13 @@ Bash paths without PowerShell quoting.
 - Quote executable paths with spaces and invoke them with `&`:
 
 ```powershell
-& 'C:\Program Files\Git\bin\bash.exe' scripts/submodule.sh status --no-fetch --no-stage
+& 'C:\Program Files\Git\bin\bash.exe' tests/run-all-tests.sh
 ```
 
 - Do not write an unquoted path with spaces:
 
 ```powershell
-C:\Program Files\Git\bin\bash.exe scripts/submodule.sh status
+C:\Program Files\Git\bin\bash.exe tests/run-all-tests.sh
 ```
 
 PowerShell parses that as command `C:\Program`.
@@ -75,12 +75,13 @@ PowerShell parses that as command `C:\Program`.
 
 - Do not put PowerShell syntax such as `$env:TEMP`, `Get-Content`, or
   `Select-String` inside the `-lc` payload. Do not put Bash syntax such as
-  `for f in tests/*.sh; do ...; done` directly in PowerShell.
+  `for f in tests/integration-tests/*.sh; do ...; done` directly in PowerShell.
 - If Git Bash startup prints `.bashrc` noise, ignore it only when the command
   exit code and expected output are otherwise correct; do not hide real command
   failures behind startup warnings.
-- Prefer repository-native Windows launchers, such as `.bat` files, when
-  Windows launcher behavior is what needs testing.
+- Prefer repository-native Windows launchers when Windows launcher behavior is
+  what needs testing: `bin/git-nest.bat` from cmd.exe or Git Bash, and
+  `bin/git-nest.ps1` from PowerShell.
 
 ## Editing Files
 
@@ -102,16 +103,16 @@ PowerShell parses that as command `C:\Program`.
 git status --short
 ```
 
-- For repository searches that should ignore build output, add explicit globs:
+- For repository searches that should ignore test artifacts, add explicit globs:
 
 ```powershell
-rg "pattern" lib_* -n -g "!**/debug/**" -g "!**/debug_application/**" -g "!**/debug_bootloader/**"
+rg "GIT_NEST" bin tests -n
 ```
 
 - For line-numbered file inspection in PowerShell:
 
 ```powershell
-$i=0; Get-Content path\file.c | ForEach-Object { $i++; if ($i -ge 10 -and $i -le 30) { '{0,4}: {1}' -f $i, $_ } }
+$i=0; Get-Content tests\run-all-tests.sh | ForEach-Object { $i++; if ($i -ge 10 -and $i -le 30) { '{0,4}: {1}' -f $i, $_ } }
 ```
 
 If that hits the Windows sandbox spawn issue, rerun it escalated as the same

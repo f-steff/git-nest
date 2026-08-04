@@ -41,10 +41,11 @@ Combined they cover all 10 target shells:
 
 ## What Gets Tested
 
-### Syntax check (7 source files + 1 pwsh, 44 shell variants)
+### Syntax check (6 source files + 1 pwsh)
 
-Each POSIX shell runs `sh -n` on all 7 implementation files. This verifies that
-every script is syntactically valid for that shell's parser.
+Each POSIX shell runs `sh -n` on the 6 implementation files
+(`bin/git_nest.sh` + the 5 modules in `bin/lib/`). This verifies that every
+script is syntactically valid for that shell's parser.
 
 PowerShell 7+ (`pwsh`) is not a POSIX shell, so instead it runs a
 syntax check on `bin/git-nest.ps1` itself via `pwsh -noprofile` and a
@@ -60,23 +61,40 @@ Each POSIX shell also runs the `__complete` internal command via
 command entries. This ensures the engine produces correct output
 under every shell's parser regardless of syntax quirks.
 
-### Unit tests (pure function tests)
+### Unit tests
 
-Tests that have no external dependencies (no `git`, no filesystem state) run
-through each shell to verify correct execution.
-
-Known quirk: zsh on Alpine does not always find the `cksum` binary, which
-causes `manifest_varname` (unit-test_1510) to fail. This is an Alpine zsh
-environment issue, not a code portability problem.
+All unit tests in `tests/unit-tests/` (using the mock Git shim) run
+through each POSIX shell to verify correct execution. zsh is skipped for
+unit tests in the containers because of zsh function-resolution issues in
+that environment; its syntax checks and `__complete` engine test still run.
 
 ## How It Works
+
+```
+tests/docker/run-cross-shell-tests.sh
+  |  resolves the repository root and mounts it read-only
+  v
+docker run --rm -v <repo>:/mnt:ro <image>
+  |  installs packages (apk/apt) for the target shells
+  |  copies the repo to /work (writable, for zsh)
+  v
+for each shell in the image's list:
+  |-- sh -n on 6 implementation files       (POSIX shells)
+  |-- unit-test_*.sh through the shell      (zsh skipped)
+  |-- git-nest __complete 0 -- "" output    (engine test)
+  |-- fish: fish --no-execute on the generated script
+  +-- pwsh: -noprofile syntax check + __complete dispatch via git-nest.ps1
+  v
+per-shell PASS/FAIL table -> container pass/fail -> overall exit code
+```
 
 The runner script `tests/docker/run-cross-shell-tests.sh`:
 
 1. Resolves the repository root to mount as `/mnt` inside the container
 2. Builds an install command for the target image's package manager
 3. Runs `docker run` with the repo mounted read-only
-4. Inside the container: installs packages, runs syntax checks and unit tests
+4. Inside the container: installs packages, runs syntax checks, unit tests,
+   and the `__complete` engine test per shell
 5. Reports per-shell pass/fail and exits with the aggregate result
 
 ## Adding a New Shell
@@ -86,7 +104,7 @@ To test against a shell not yet in the matrix:
 1. Find a Docker image or distro that packages it
 2. Add the shell name to the test loop in `run-cross-shell-tests.sh`
 3. Add the install command for the new distro
-4. Run `sh run-cross-shell-tests.sh --<distro>` to verify
+4. Run `sh tests/docker/run-cross-shell-tests.sh --<distro>` to verify
 
 ## Windows Notes
 

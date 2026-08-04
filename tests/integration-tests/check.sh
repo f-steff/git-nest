@@ -3,7 +3,7 @@
 # git-nest quality checks -- run this before committing to verify that all
 # shell files pass syntax, formatting, shellcheck, and bashism checks.
 #
-# This file can be executed directly (sh tests/check.sh) or sourced by other
+# This file can be executed directly (sh tests/integration-tests/check.sh) or sourced by other
 # scripts that want access to the tool_check, pass, fail, and skip functions.
 #
 # Missing tools are auto-installed to ~/bin/ on first run.
@@ -11,7 +11,7 @@
 # Supported auto-install: shellcheck, shfmt, checkbashisms.
 
 SCRIPT_DIR=$(dirname -- "$0")
-REPO_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/../.." && pwd)
 FILES="bin/git_nest.sh bin/lib/*.sh"
 NO_INSTALL=0
 BIN_DIR="${HOME:-~}/bin"

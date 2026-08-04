@@ -98,16 +98,14 @@ clone=nonexistent'
 assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
 assert_file_contains err "invalid clone mode"
 
-case_dir obsolete_pending '[project]
+case_dir unknown_keys '[project]
 version=1
 [subproject "libs/foo"]
 repo=file:///tmp/foo.git
-pending_branch=TOPIC-1
 target_branch=main
-base_revision=abc123'
-assert_exit_code 3 "$GIT_NEST" status >/dev/null 2>err
-assert_file_contains err "pending_branch is no longer supported"
-assert_file_contains err "base_revision is no longer supported"
+custom_extension=anything'
+"$GIT_NEST" status >/dev/null 2>err
+assert_file_contains .gitnest "custom_extension=anything"
 
 case_dir tag_without_revision '[project]
 version=1

@@ -24,4 +24,23 @@ test "$(sh "$GIT_NEST_REAL" --version)" = "$expected_version"
 # Git-style invocation must find git-nest on PATH and print the same version.
 test "$(git nest version)" = "$expected_version"
 
+# The .bat polyglot launcher must work from cmd.exe on Windows and report the
+# same version (it locates Git Bash internally and forwards to git-nest).
+if command -v cmd >/dev/null 2>&1; then
+    bat_path="$(CDPATH= cd -- "$(dirname -- "$GIT_NEST_REAL")" && pwd -W)/git-nest.bat"
+    run_ok "cmd.exe launcher version matches" -- cmd //c "$bat_path" version
+fi
+
+# The .ps1 PowerShell launcher must work wherever pwsh is installed and report
+# the same version (on Windows it finds Git Bash; on POSIX it runs /bin/sh).
+# On MSYS2/Git Bash the path must be converted to Windows form for native pwsh;
+# elsewhere the POSIX path is fine.
+if command -v pwsh >/dev/null 2>&1; then
+    ps1_dir=$(CDPATH= cd -- "$(dirname -- "$GIT_NEST_REAL")" && pwd)
+    if CDPATH= cd -- "$(dirname -- "$GIT_NEST_REAL")" && pwd -W >/dev/null 2>&1; then
+        ps1_dir=$(CDPATH= cd -- "$(dirname -- "$GIT_NEST_REAL")" && pwd -W)
+    fi
+    run_ok "pwsh launcher version matches" -- pwsh -noprofile -NoLogo -Command "& '$ps1_dir/git-nest.ps1' version"
+fi
+
 describe_result "git-nest ran directly and as a git subcommand with matching version output."

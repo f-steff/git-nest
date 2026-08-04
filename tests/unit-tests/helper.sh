@@ -12,7 +12,7 @@ set -eu
 # Resolve the repository and unit test roots.
 # Use BASH_SOURCE or $0 depending on the shell; both work for our purposes.
 _UNIT_HELPER_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE:-$0}")" && pwd)
-REPO_ROOT=$(CDPATH='' cd -- "$_UNIT_HELPER_DIR/.." && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "$_UNIT_HELPER_DIR/../.." && pwd)
 UNIT_TESTS_DIR="$_UNIT_HELPER_DIR"
 
 # Global variables normally set by bin/git_nest.sh. Tests that source library
@@ -132,9 +132,13 @@ setup_unit_test() {
     hash -r 2>/dev/null || rehash 2>/dev/null || true
 }
 
-# Removes the temporary directory and its contents.
+# Removes the temporary directory and its contents, plus the mock Git shim
+# directory and response table that setup_unit_test created (otherwise each
+# unit test run leaks a gn-mock-git.* directory in /tmp).
 teardown_unit_test() {
     [ -n "${UNIT_TEST_TEMP:-}" ] && [ -d "$UNIT_TEST_TEMP" ] && rm -rf "$UNIT_TEST_TEMP" || true
+    [ -n "${MOCK_BIN:-}" ] && [ -d "$MOCK_BIN" ] && rm -rf "$MOCK_BIN" || true
+    [ -n "${MOCK_RESPONSE_FILE:-}" ] && [ -f "$MOCK_RESPONSE_FILE" ] && rm -f "$MOCK_RESPONSE_FILE" || true
 }
 
 # Trap ensures teardown runs even when the test exits unexpectedly.

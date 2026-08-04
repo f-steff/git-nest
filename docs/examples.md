@@ -554,7 +554,7 @@ F	packages/widgets	modified	-	-	-	dirty
 
 `foreach` never touches the nest root itself -- only checked-out subprojects. `foreach-modified`/`foreach-clean` narrow the same iteration to dirty or clean subprojects respectively, and are the building blocks for the cross-repository feature-branch recipe documented in the main README (branch, commit, and push every dirty subproject in one pass, then `git-nest snapshot` to pin the result).
 
-Use `--only-nested` to limit iteration to subprojects that are themselves git-nest workspaces, or `--no-nested` to exclude them and run only in plain subproject checkouts. Both flags compose with `--include-root-first`/`--include-root-last` and with `--continue-on-error`.
+Use `--only-nested` to limit iteration to subprojects that are themselves git-nest workspaces, or `--no-nested` to exclude them and run only in plain subproject checkouts. `--only-nested`/`--no-nested`/`--include-root-first`/`--include-root-last` apply to plain `foreach`; `--continue-on-error` applies to `foreach-modified`/`foreach-clean`.
 
 ## 16. Machine-Readable Output For Scripts
 
@@ -592,7 +592,7 @@ $ git-nest list --json-pretty
 }
 ```
 
-Every inspection command (`status`, `verify`, `outdated`, `diff`, `list`, `tree`, `survey`, `doctor`) and every mutating command (`absorb`, `absorb-all`, `inline`, `detach`, `remove`, `pull`) shares this same envelope and the same seven-column row shape (`code`, `path`, `state`, `target`, `current`, `expected`, `detail`), versioned in `schemas/git-nest-output-v1.schema.json`. `--porcelain` gives the same rows as stable, tab-separated text for shell scripts that would rather not parse JSON.
+Every inspection command (`status`, `verify`, `outdated`, `diff`, `list`, `tree`, `survey`, `doctor`, `foreach-modified`, `foreach-clean`) and every mutating command (`absorb`, `absorb-all`, `inline`, `detach`, `remove`, `pull`) shares this same envelope and the same seven-column row shape (`code`, `path`, `state`, `target`, `current`, `expected`, `detail`), versioned in `schemas/git-nest-output-v1.schema.json`. `--porcelain` gives the same rows as stable, tab-separated text for shell scripts that would rather not parse JSON.
 
 ## 17. Health-Check A Workspace With Doctor
 

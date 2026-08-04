@@ -46,7 +46,7 @@ check_ascii || exit 1
 describe_result "No non-ASCII characters found."
 
 if [ "$skipped" -gt 0 ]; then
-    describe_result "Static analysis passed ($skipped tool(s) skipped, install with: sh tests/check.sh)."
+    describe_result "Static analysis passed ($skipped tool(s) skipped, install with: sh tests/integration-tests/check.sh)."
 else
     describe_result "All static quality checks passed."
 fi

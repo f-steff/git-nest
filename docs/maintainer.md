@@ -14,7 +14,7 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
 - Keep manifest rewrites deterministic and readable.
 - Do not add mandatory provider integration or automatic PR creation.
 - Keep hooks opt-in; hooks may run `git-nest snapshot --quiet` or reproducibility checks but must not push automatically.
-- **Keep all files plain ASCII** (code and documentation alike). No em/en dashes, curly quotes, arrows, box-drawing characters, or other non-ASCII punctuation. Use `--` for em-dash, `-` for en-dash, `->` for arrows, and plain `-`/`=` characters for divider lines. Straight quotes only (`'` and `"`), never curly (`'` `'` `"` `"`). This keeps diffs clean across editors/terminals with inconsistent Unicode rendering and avoids encoding surprises on Windows. This is enforced automatically: `check_ascii` in `tests/check.sh`, run as a step of `tests/test_0000_static_code_analysis.sh`, fails the suite on any non-ASCII character under `bin`, `tests`, `docs`, `skills`, or root-level `*.md` files. To check manually: `grep -rPn "[^\x00-\x7F]" bin tests docs skills *.md` (should return nothing). This does not affect the optional ANSI color escapes in `--help` output (`help_setup_colors`): those are plain ASCII bytes (ESC + digits/letters), already gated to TTY-only output and disabled by `NO_COLOR`/`GIT_NEST_NO_COLOR`/`TERM=dumb`, so they are unrelated to this rule.
+- **Keep all files plain ASCII** (code and documentation alike). No em/en dashes, curly quotes, arrows, box-drawing characters, or other non-ASCII punctuation. Use `--` for em-dash, `-` for en-dash, `->` for arrows, and plain `-`/`=` characters for divider lines. Straight quotes only (`'` and `"`), never curly (`'` `'` `"` `"`). This keeps diffs clean across editors/terminals with inconsistent Unicode rendering and avoids encoding surprises on Windows. This is enforced automatically: `check_ascii` in `tests/integration-tests/check.sh`, run as a step of `tests/integration-tests/test_0004_static_code_analysis.sh`, fails the suite on any non-ASCII character under `bin`, `tests`, `docs`, `skills`, or root-level `*.md` files. To check manually: `grep -rPn "[^\x00-\x7F]" bin tests docs skills *.md` (should return nothing). This does not affect the optional ANSI color escapes in `--help` output (`help_setup_colors`): those are plain ASCII bytes (ESC + digits/letters), already gated to TTY-only output and disabled by `NO_COLOR`/`GIT_NEST_NO_COLOR`/`TERM=dumb`, so they are unrelated to this rule.
 
 ## Change Workflow
 
@@ -39,31 +39,44 @@ sh tests/run-all-tests.sh
 
 ## Testing Expectations
 
-The project has two test suites. **Integration tests** (`tests/`) verify that commands work end-to-end by creating real Git repositories. **Unit tests** (`unit-tests/`) verify individual functions in isolation using a mock Git shim. See `tests/tests.md` and `unit-tests/unit-tests.md` for the respective writing guides.
+The project has two test suites. **Integration tests** (`tests/integration-tests/`) verify that commands work end-to-end by creating real Git repositories. **Unit tests** (`tests/unit-tests/`) verify individual functions in isolation using a mock Git shim. See `tests/tests.md` and `tests/unit-tests/unit-tests.md` for the respective writing guides.
 
-A function is considered tested if it is covered by either suite. Running `sh unit-tests/run-all-tests.sh --coverage` reports which source functions are covered by unit tests; the integration suite covers the `cmd_*` entry points and end-to-end flows. Combined target as close to 100% as practical. Functions that are deliberately not unit-tested are catalogued in `unit-tests/unit-tests.ini [untested]` with a reason; test 1990 enforces that new code must be either covered or explained.
+The two suites and the Docker cross-shell runner all live under `tests/`:
 
-Unit tests follow the same naming convention but use ID block 1000-1999 and live in `unit-tests/`. Every test file must have `# Coverage: <function>` headers. Use the mock shim (`unit-tests/mocks.sh`) instead of calling real Git.
+```
+tests/
+  run-all-tests.sh/.bat      main runner and cmd.exe launcher
+  tests.md                   overall test strategy guide
+  docker/                    cross-shell checks in Alpine + Debian
+  unit-tests/                function-level suite (mock Git shim)
+  integration-tests/         end-to-end suite (real Git repositories)
+```
+
+A function is considered tested if it is covered by either suite. Running `sh tests/unit-tests/run-all-tests.sh` reports which source functions are covered by unit tests (pass `--no-coverage` to skip the scan); the integration suite covers the `cmd_*` entry points and end-to-end flows. Combined target as close to 100% as practical. Functions that are deliberately not unit-tested are catalogued in `tests/unit-tests/unit-tests.ini [untested]` with a reason; test 1990 enforces that new code must be either covered or explained.
+
+Unit tests follow the same naming convention but use ID block 1000-1999 and live in `tests/unit-tests/`. Every test file must have `# Coverage: <function>` headers. Use the mock shim (`tests/unit-tests/mocks.sh`) instead of calling real Git.
 
 Tests should create local bare Git repositories as remotes under `TEST_ROOT`, identify themselves through `test_begin` for standalone runs, and leave numbered workspaces for inspection. The default `TEST_ROOT` is outside the repository so startup tests are not affected by the tool repository's own Git root. The suite owns formatted headings and the final status/time summary table.
 
 See `tests/tests.md` for the complete integration test writing guide (helper API, ID allocation, debugging).
 
-See `unit-tests/unit-tests.md` for the unit test guide (pure function testing, mock Git, assertions, coverage tracking).
+See `tests/unit-tests/unit-tests.md` for the unit test guide (pure function testing, mock Git, assertions, coverage tracking).
 
 Name tests by feature, not development phase, and give each a globally unique four-digit ID prefix: `test_<NNNN>_<category>_<behavior>.sh`. ID blocks step by 10 so tests can be inserted: `command_*` from 0010, `contract_*` from 2000, `platform_*` from 3000, `symmetry_*` from 4000, `workflow_*` from 5000. Categories are `test_<NNNN>_command_<command>_<behavior>.sh`, `test_<NNNN>_command_option_<command>_<option>_<behavior>.sh`, `test_<NNNN>_symmetry_<command_a>_<command_b>.sh`, `test_<NNNN>_workflow_<scenario>.sh`, `test_<NNNN>_contract_<area>.sh`, or `test_<NNNN>_platform_<area>.sh`. Put a `# Test: <one-line description>` header on the second line; `run-all-tests.sh list` shows it. Do not add milestone names such as `wave`, `vawe`, or phase labels. Prefer command-specific tests first, symmetry tests second, and workflow tests only when the scenario genuinely depends on several commands.
 
-The runner supports commands: `list` (every test as `ID  description`), `only <ids>` and `except <ids>` (comma-separated four-digit IDs), and `help`. `--stop-on-fail` stops at the first failure. An unknown command, option, or ID prints help and stops.
+The runner supports commands: `list` (every test as `ID  description`), `only <ids>` and `except <ids>` (comma-separated four-digit IDs), `cleanup` (remove the test workspace and stale temp artifacts from previous runs, then stop), and `help`. `--stop-on-fail` stops at the first failure. An unknown command, option, or ID prints help and stops. Every run starts by cleaning the persistent workspace root and stale temp artifacts, so interrupted runs never contaminate the next one.
 
-Tests should narrate important behavior with `test_step`, `run_ok`, `run_fail`, `run_capture`, and `describe_result` from `tests/helper.sh`. The output should explain what is being tested, why the command matters, which command is being run, the expected result in plain English, and the concise result. Keep full command output captured unless a short excerpt is useful or a command fails. Unexpected assertion results should include `UNEXPECTED RESULT:` so they stand out in console output and captured logs.
+Tests should narrate important behavior with `test_step`, `run_ok`, `run_fail`, `run_capture`, and `describe_result` from `tests/integration-tests/helper.sh`. The output should explain what is being tested, why the command matters, which command is being run, the expected result in plain English, and the concise result. Keep full command output captured unless a short excerpt is useful or a command fails. Unexpected assertion results should include `UNEXPECTED RESULT:` so they stand out in console output and captured logs.
 
-The full suite is long-running and may exceed 10 minutes on Windows. That is acceptable while stdio output continues. By default the runner streams a curated per-test narrative (step descriptions and each git-nest command with its output, produced via a logging shim on `$GIT_NEST` and fd 9); the full raw output is captured per test and printed when a test fails. Use `--verbose`/`-v` to stream the full raw output with a shell trace instead. The runner records total suite time in `run-all-tests-results.md`, captures the entire run to `run-all-tests.log` by default (disable with `--no-log`, redirect with `--log FILE`), and fails any active test that produces no output for more than `TEST_WATCHDOG_SECONDS` seconds. The default watchdog is 180 seconds, and the suite stops after the first hung test. Keep individual tests chatty enough that a healthy long operation emits progress before the watchdog threshold.
+The full suite is long-running and may exceed 30 minutes on Windows. That is acceptable while stdio output continues. By default the runner streams a curated per-test narrative (step descriptions and each git-nest command with its output, produced via a logging shim on `$GIT_NEST` and fd 9); the full raw output is captured per test and printed when a test fails. Use `--verbose`/`-v` to stream the full raw output with a shell trace instead. The runner records total suite time in `run-all-tests-results.md`, captures the entire run to `run-all-tests.log` by default (disable with `--no-log`, redirect with `--log FILE`), and fails any active test that produces no output for more than `TEST_WATCHDOG_SECONDS` seconds. The default watchdog is 180 seconds, and the suite stops after the first hung test. Keep individual tests chatty enough that a healthy long operation emits progress before the watchdog threshold.
+
+On Git Bash for Windows, do not set `MSYS2_ARG_CONV_EXCL` or `MSYS_NO_PATHCONV` around the runner: these disable MSYS2 POSIX-to-Windows argument conversion, so native `git.exe` receives raw `/tmp/...` paths and every integration test fails at repo setup with `fatal: cannot change to '/tmp/...'`. The runner and `tests/integration-tests/helper.sh` now neutralize these variables for test processes (the Docker cross-shell runner sets `MSYS2_ARG_CONV_EXCL=*` intentionally for docker volume mounts only, never for `run-all-tests.sh`).
 
 Cover both successful behavior and negative paths. New parser branches, missing refs, dirty or unreproducible protections, manifest state transitions, Git-style invocation, portability paths, and recursive nested-project behavior should have tests when touched.
 
 ## Verbose Toggle
 
-The runner supports `--verbose`/`-v` to stream full raw output with a `set -x` shell trace instead of the default curated narrative. Tests must tolerate this: assertions using `run_ok`, `run_fail`, and `run_capture` from `tests/helper.sh` work correctly under `-x` because the shim's stdout/stderr delivery is unaffected by the trace on stderr. A test that reads its own output from fd 9 or assumes a clean stderr may break under `--verbose`. Keep all assertions on captured files or exit codes, never on stderr content.
+The runner supports `--verbose`/`-v` to stream full raw output with a `set -x` shell trace instead of the default curated narrative. Tests must tolerate this: assertions using `run_ok`, `run_fail`, and `run_capture` from `tests/integration-tests/helper.sh` work correctly under `-x` because the shim's stdout/stderr delivery is unaffected by the trace on stderr. A test that reads its own output from fd 9 or assumes a clean stderr may break under `--verbose`. Keep all assertions on captured files or exit codes, never on stderr content.
 
 ## Multi-Step Test Structure
 
@@ -80,7 +93,7 @@ case $sc_rc in
 esac
 ```
 
-Test 0000 (`test_0000_static_code_analysis.sh`) is the reference for this pattern. It runs four tool checks as separate steps, tracks skipped tools, and reports a summary. When adding new static checks, add them as additional steps in that file rather than creating separate test files, so the suite's quality gate stays in one place.
+Test 0004 (`tests/integration-tests/test_0004_static_code_analysis.sh`) is the reference for this pattern. It runs five checks as separate steps (syntax, ShellCheck, shfmt, checkbashisms, ASCII), tracks skipped tools, and reports a summary. When adding new static checks, add them as additional steps in that file rather than creating separate test files, so the suite's quality gate stays in one place.
 
 ## Scope Guardrails
 

@@ -11,15 +11,25 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $shellScript = Join-Path $scriptDir "git-nest"
 
 if ($IsWindows) {
-    # Locate Git Bash from git.exe on PATH (same logic as bin/git-nest.bat).
+    # Locate Git Bash from git.exe on PATH (same intent as bin/git-nest.bat).
+    # Walk up from the git.exe directory looking for a bin\bash.exe so any
+    # Git for Windows layout works (cmd\, bin\, mingw64\bin\, ...).
     $gitExe = Get-Command git.exe -ErrorAction SilentlyContinue
     if (-not $gitExe) {
         Write-Error "Git is not installed or not on PATH."
         exit 3
     }
-    $bashExe = Join-Path (Split-Path -Parent $gitExe.Source | Split-Path -Parent) "bin\bash.exe"
-    if (-not (Test-Path $bashExe)) {
-        Write-Error "Git Bash not found at $bashExe"
+    $bashExe = $null
+    $dir = Split-Path -Parent $gitExe.Source
+    while ($dir) {
+        $candidate = Join-Path $dir "bin\bash.exe"
+        if (Test-Path $candidate) { $bashExe = $candidate; break }
+        $parent = Split-Path -Parent $dir
+        if ($parent -eq $dir) { break }
+        $dir = $parent
+    }
+    if (-not $bashExe) {
+        Write-Error "Git Bash not found from git.exe at $($gitExe.Source)"
         exit 3
     }
     if (-not (Test-Path $shellScript)) {

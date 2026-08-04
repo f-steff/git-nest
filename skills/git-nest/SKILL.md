@@ -9,7 +9,7 @@ Use this skill when working in a project that already uses `git-nest`. The goal 
 
 ## Hard Rules
 
-- Do not modify `bin/git-nest`, `bin/git-nest.bat`, or `bin/git_nest.sh` unless the user explicitly asks to change the tool.
+- Do not modify `bin/git-nest`, `bin/git-nest.bat`, `bin/git-nest.ps1`, or `bin/git_nest.sh` unless the user explicitly asks to change the tool.
 - Treat `.gitnest` as project coordination state. Prefer `git-nest` commands over manual edits.
 - Do not push branches, install hooks, discard work, or alter `.gitnest` unless the user explicitly asks.
 - Do not delete subprojects or rewrite branches to clean up unless the user explicitly asks.
@@ -60,9 +60,35 @@ If `git nest` is not available, try:
 git-nest version
 sh bin/git-nest version
 bin/git-nest.bat version
+pwsh bin/git-nest.ps1 version
 ```
 
 Use the command form already used by the project when possible.
+
+## Shell Completion
+
+To give a shell tab-completion for `git-nest`, generate and install a
+completion script:
+
+```sh
+git-nest completion bash > ~/.local/share/bash-completion/completions/git-nest
+git-nest completion zsh  > ~/.zfunc/_git-nest
+git-nest completion fish > ~/.config/fish/completions/git-nest.fish
+git-nest completion yash > ~/.yash/completion/git-nest
+git-nest completion powershell | Out-File -Encoding utf8 ~/git-nest-completion.ps1
+```
+
+The supported shells are `bash`, `zsh`, `fish`, `yash`, and `powershell`.
+All completion scripts are thin adapters over the tool's internal
+`__complete` engine, so the command/option knowledge lives in one place.
+
+On macOS, `zsh` is the default shell. The completion path above works but you
+must also add the directory to your `fpath` in `~/.zshrc`:
+
+```sh
+fpath=(~/.zfunc $fpath)
+autoload -Uz compinit && compinit
+```
 
 ## Worktrees
 
@@ -254,9 +280,11 @@ git nest export --output build/source-dir --format dir
 
 `export` writes `.gitnest`, a generated `MANIFEST.lock`, and tracked subproject working-tree files. It omits ignored files and strips `.git` directories unless `--include-git` is passed. It refuses dirty subprojects unless the user explicitly asks for `--allow-dirty`. Directory exports use shell file copying, `tar.gz` exports require system `tar`, and `zip` exports require `python` or `python3`.
 
+Deterministic export (`--deterministic`) produces byte-identical archives across runs. It requires GNU tar; on macOS and BSD the tool auto-detects and falls back to `python3` (available in Xcode command-line tools or via Homebrew). If neither GNU tar nor Python is available, deterministic tar.gz export refuses with a clear error.
+
 ## IDE And Build Hooks
 
-Some consuming projects call `bin/git-nest.bat` from IDE build or post-build steps because it is polyglot: `cmd.exe` executes the batch section, while `sh`/Bash executes the shell fallback. This lets one project configuration work across Windows, Linux, and macOS.
+Some consuming projects call `bin/git-nest.bat` from IDE build or post-build steps because it is polyglot: `cmd.exe` executes the batch section, while `sh`/Bash executes the shell fallback. This lets one project configuration work across Windows, Linux, and macOS. From PowerShell, `bin/git-nest.ps1` is the native launcher and forwards the same arguments through Git Bash.
 
 Do not remove or replace those calls casually. If a build hook fails, first verify the tool is outdated and the workspace is a valid project:
 

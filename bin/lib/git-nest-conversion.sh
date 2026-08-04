@@ -30,6 +30,7 @@ infer_export_format() {
 	esac
 }
 
+# Reject export formats other than tar.gz, zip, or dir with a clear message.
 validate_export_format() {
 	case "$1" in
 	tar.gz | zip | dir) ;;
@@ -37,6 +38,8 @@ validate_export_format() {
 	esac
 }
 
+# Resolve the export output path to an absolute form, creating the parent
+# directory for relative paths so the archive or directory lands predictably.
 absolute_output_path() {
 	output=$1
 	case "$output" in
@@ -51,6 +54,8 @@ absolute_output_path() {
 	esac
 }
 
+# Collect checked-out subprojects with dirty working trees into a file, so
+# export can refuse (or warn) before producing an inconsistent archive.
 ensure_clean_subprojects_for_export() {
 	dirty_file=$1
 	: >"$dirty_file"
@@ -63,6 +68,8 @@ ensure_clean_subprojects_for_export() {
 	done
 }
 
+# Write a MANIFEST.lock placeholder into the staged tree when exporting
+# deterministically, so consumers can detect a concurrent manifest update.
 write_export_manifest_lock() {
 	stage=$1
 	deterministic=$2
@@ -96,6 +103,8 @@ write_export_manifest_lock() {
 	} >"$lock_file"
 }
 
+# Return 0 when a tracked file carries the export-ignore attribute, so it is
+# excluded from the staged export tree.
 path_has_export_ignore() {
 	repo=$1
 	rel=$2
@@ -103,6 +112,8 @@ path_has_export_ignore() {
 		grep ': export-ignore: set$' >/dev/null 2>&1
 }
 
+# Copy one file into the export stage, creating parent directories and
+# preserving permissions (cp -p) for reproducible archives.
 copy_file_to_stage() {
 	src=$1
 	dst=$2
@@ -111,6 +122,8 @@ copy_file_to_stage() {
 	cp -p "$src" "$dst" || git_error "failed to copy $src"
 }
 
+# Copy all tracked (and optionally .git) files of one subproject into the
+# export stage, honoring export-ignore attributes per file.
 copy_subproject_files_to_stage() {
 	path=$1
 	stage=$2
@@ -127,6 +140,8 @@ copy_subproject_files_to_stage() {
 	fi
 }
 
+# Build the full export staging tree (manifest, lock, and every subproject),
+# aborting with a precondition error when any subproject checkout is missing.
 stage_export_tree() {
 	stage=$1
 	include_git=$2
@@ -150,26 +165,98 @@ stage_export_tree() {
 	rm -f "$set_tmp"
 }
 
+# Normalize all timestamps in the stage to a fixed 1980-01-01 so archives
+# are byte-identical across runs (deterministic export).
 make_deterministic_stage() {
 	stage=$1
 	find "$stage" -exec touch -h -t 198001010000.00 {} + 2>/dev/null ||
 		find "$stage" -exec touch -t 198001010000.00 {} +
 }
 
+# Write the staged tree as a tar.gz archive, using deterministic ordering
+# and metadata when requested.  GNU tar provides --sort=name, --mtime,
+# --owner/--group, and --numeric-owner to produce byte-identical archives;
+# BSD tar (macOS, FreeBSD) has none of these flags, so we fall back to
+# Python's tarfile module which is already required for deterministic zip exports.
 write_tar_export() {
 	stage=$1
 	output=$2
 	deterministic=$3
 	rm -f "$output"
 	if [ "$deterministic" -eq 1 ]; then
-		(cd "$stage" && GZIP=-n tar --sort=name --mtime='UTC 1980-01-01' --owner=0 --group=0 --numeric-owner -czf "$output" .) ||
-			git_error "failed to write deterministic tar.gz export $output"
+		if tar --version 2>/dev/null | grep -q "GNU tar"; then
+			(cd "$stage" && GZIP=-n tar --sort=name --mtime='UTC 1980-01-01' --owner=0 --group=0 --numeric-owner -czf "$output" .) ||
+				git_error "failed to write deterministic tar.gz export $output"
+		else
+			python_cmd=$(command -v python 2>/dev/null || command -v python3 2>/dev/null || true)
+			[ -n "$python_cmd" ] || precondition_error "deterministic tar.gz export requires GNU tar or python"
+			(
+				cd "$stage" && "$python_cmd" - "$output" <<'PY'
+import gzip
+import io
+import os
+import sys
+import tarfile
+
+output = sys.argv[1]
+MTIME = 315532800  # 1980-01-01 00:00:00 UTC
+
+file_entries = []
+dir_entries = set()
+for root, dirs, files in os.walk("."):
+    dirs.sort()
+    files.sort()
+    dir_entries.add(root)
+    for name in files:
+        path = os.path.join(root, name)
+        file_entries.append(path)
+
+buf = io.BytesIO()
+with tarfile.open(fileobj=buf, mode="w") as tar:
+    for d in sorted(dir_entries):
+        arcname = d + "/" if not d.endswith("/") and d != "." else d
+        info = tarfile.TarInfo(arcname)
+        info.type = tarfile.DIRTYPE
+        info.mtime = MTIME
+        info.uid = 0
+        info.gid = 0
+        info.uname = "root"
+        info.gname = "root"
+        info.mode = 0o755
+        try:
+            st = os.stat(d)
+            info.mode = st.st_mode
+        except OSError:
+            pass
+        tar.addfile(info)
+    for path in sorted(file_entries):
+        info = tar.gettarinfo(path, arcname=path)
+        info.mtime = MTIME
+        info.uid = 0
+        info.gid = 0
+        info.uname = "root"
+        info.gname = "root"
+        with open(path, "rb") as fh:
+            tar.addfile(info, fh)
+
+# filename="" suppresses the FNAME flag in the gzip header; without it
+# Python's GzipFile derives the archive name from the file object's .name
+# attribute, making the output non-deterministic when the user passes
+# different --output filenames across runs.
+with open(output, "wb") as f:
+    with gzip.GzipFile(fileobj=f, mode="wb", mtime=0, compresslevel=9, filename="") as gz:
+        gz.write(buf.getvalue())
+PY
+			) || git_error "failed to write deterministic tar.gz export $output"
+		fi
 	else
 		(cd "$stage" && tar -czf "$output" .) ||
 			git_error "failed to write tar.gz export $output"
 	fi
 }
 
+# Write the staged tree as a zip archive via the standard library zipfile,
+# with deterministic entry timestamps and modes when requested.
 write_zip_export() {
 	stage=$1
 	output=$2
@@ -209,6 +296,8 @@ PY
 	) || git_error "failed to write zip export $output"
 }
 
+# Copy the staged tree into a plain output directory, preserving the exact
+# file layout of the export (used by --format dir).
 write_dir_export() {
 	stage=$1
 	output=$2
@@ -288,6 +377,8 @@ cmd_export() {
 	printf 'Exported workspace to %s.\n' "$output_abs"
 }
 
+# Print a UTC timestamp for recovery-backup directory names, stable and
+# sortable across platforms.
 backup_timestamp() {
 	date -u '+%Y%m%dT%H%M%SZ'
 }

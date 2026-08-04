@@ -37,7 +37,7 @@ Allowed subproject keys are:
 - `revision=<sha>`: exact reproducible commit.
 - `tag=<name>`: optional tag name; requires `revision`.
 
-Obsolete pending workflow keys are rejected: `pending_branch`, `base_revision`, `pushed_commit`, and `finalized_from_branch`.
+Only the keys listed above are recognized by git-nest. Unknown keys are preserved as extension data across manifest rewrites, so external tooling can store its own metadata in `.gitnest`; see `docs/MANIFEST.md` for the full format and validation rules.
 
 Subproject paths in the manifest must be safe relative paths inside the nest. Schema validation rejects a manifest whose subproject path is absolute, escapes the nest with `..`, uses a backslash, or names Git-internal files, so no command clones, checks out, or removes outside the nest root.
 
@@ -76,11 +76,11 @@ Removed public workflow commands are rejected with usage errors: `start`, `uploa
 
 ## Generator Internals
 
-`git-nest __complete CURSOR_INDEX [--] ARG...` is an internal endpoint used by all generated completion scripts (bash, zsh, fish, yash, powershell). It returns pipe-separated completion candidates as TSV records in the format:
+`git-nest __complete CURSOR_INDEX [--] ARG...` is an internal endpoint used by all generated completion scripts (bash, zsh, fish, yash, powershell). It returns tab-separated completion candidates as TSV records in the format:
 
 `C<TAB>value<TAB>description<TAB>type`
 
-Directives (`D<TAB>directive`) control shell-specific behavior: `no-file`, `file`, `directory`, `no-space`.
+Directives (`D<TAB>directive`) control shell-specific behavior; the engine currently emits `no-file` (suppress native file completion) and `file` (use native file completion).
 
 The engine shares a single case table of all commands and their options, avoiding duplication across shell adapters. Each adapter (a generated script) is a thin translator that calls `__complete` and converts the TSV output to the shell's native completion API.
 
@@ -117,4 +117,4 @@ Successful `restore` records materialization state under the outer repository's 
 
 ## Tests
 
-The integration suite creates local bare remotes under `TEST_ROOT`, defaults outside the repository, streams output, writes `run-all-tests-results.md`, captures the full run to `run-all-tests.log` by default, and leaves numbered workspaces for inspection. Current tests cover init/tidy, nested init confirmation, add/remove/move, clone/restore modes, stale restore reconciliation, tag drift, snapshot path semantics, branch marks, hooks, status/verify/outdated/diff/log, update modes, export/extract/absorb, completion generation, Git-style invocation, BusyBox compatibility, manifest schema validation, path safety, dry-run behavior, and version output.
+The integration suite creates local bare remotes under `TEST_ROOT`, defaults outside the repository, streams output, writes `run-all-tests-results.md`, captures the full run to `run-all-tests.log` by default, and leaves numbered workspaces for inspection. Current tests cover init/tidy, nested init confirmation, add/remove/move, clone/restore modes, stale restore reconciliation, tag drift, snapshot path semantics, branch marks, hooks, status/verify/outdated/diff/log, update modes, export/absorb (plus legacy extract rejection), completion generation, Git-style invocation, BusyBox compatibility, manifest schema validation, path safety, dry-run behavior, and version output.

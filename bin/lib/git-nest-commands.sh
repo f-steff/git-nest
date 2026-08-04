@@ -43,36 +43,45 @@ help_setup_colors() {
 	HELP_ARG="${esc}[36m"
 }
 
+# Print the top-level help title with bold styling and a blank line after.
 help_title() {
 	printf '%s%s%s\n\n' "$HELP_BOLD" "$1" "$HELP_RESET"
 }
 
+# Print a section heading (e.g. "Commands:") in the section color.
 help_heading() {
 	printf '%s%s%s\n' "$HELP_SECTION" "$1" "$HELP_RESET"
 }
 
+# Print a bold group label above a set of usage lines (e.g. "Workspace:").
 help_usage_group() {
 	printf '\n  %s%s%s\n' "$HELP_BOLD" "$1" "$HELP_RESET"
 }
 
+# Print one usage line: "git-nest <command> <args>" with the command in
+# command color and the argument part dimmed or plain.
 help_usage() {
 	printf '    %sgit-nest%s %s%s%s' "$HELP_DIM" "$HELP_RESET" "$HELP_CMD" "$1" "$HELP_RESET"
 	[ -n "${2:-}" ] && printf ' %s' "$2"
 	printf '\n'
 }
 
+# Print a bold group label above a set of command descriptions.
 help_command_group() {
 	printf '\n  %s%s%s\n' "$HELP_BOLD" "$1" "$HELP_RESET"
 }
 
+# Print one command description line in the command color.
 help_command() {
 	printf '    %s%s%s\n' "$HELP_CMD" "$1" "$HELP_RESET"
 }
 
+# Print an indented explanation line under a command description.
 help_text() {
 	printf '        %s\n' "$1"
 }
 
+# Print a more-indented detail line under a help_text explanation.
 help_detail() {
 	printf '            %s\n' "$1"
 }
@@ -336,7 +345,7 @@ usage() {
 	help_detail "--dry-run reports planned changes without writing; --json/--json-pretty print machine output."
 
 	help_command_group "Tooling"
-	help_command "completion <bash|zsh|fish>"
+		help_command "completion <bash|zsh|fish|yash|powershell>"
 	help_text "Print a shell completion script to stdout."
 	help_command "version"
 	help_text "Print the git-nest version."
@@ -344,14 +353,18 @@ usage() {
 	printf '\nManifest: %s\n' "$MANIFEST_FILE"
 }
 
+# Print one dimmed example line under a help "Examples:" heading.
 help_example() {
 	printf '        %s%s%s\n' "$HELP_DIM" "$1" "$HELP_RESET"
 }
 
+# Print an "Opposite:" hint line that points users at the inverse command.
 help_opposite() {
 	printf '        Opposite: %s\n' "$1"
 }
 
+# Print the full help block (commands, text, details, examples) for the
+# branch-bookmark command group, shared by the grouped overview and help.
 command_help_branch_bookmarks() {
 	help_command "branch-mark [name]"
 	help_command "branch-unmark <name>"
@@ -373,6 +386,8 @@ command_help_branch_bookmarks() {
 	help_example "git-nest branch-unmark feature/cache"
 }
 
+# Print the detailed help page for one command topic (after mapping legacy
+# aliases like rm/mv/extract to their current names).
 command_help() {
 	topic=$1
 	case "$topic" in
@@ -829,7 +844,7 @@ command_help() {
 		help_opposite "absorb brings outer-repo files into the nest as a subproject."
 		;;
 	completion)
-		help_command "completion <bash|zsh|fish>"
+	help_command "completion <bash|zsh|fish|yash|powershell>"
 		help_text "Print a shell completion script to stdout."
 		help_heading "Examples:"
 		help_example "git-nest completion bash > ~/.local/share/bash-completion/completions/git-nest"
@@ -857,6 +872,8 @@ command_help() {
 	esac
 }
 
+# Command handler for help: show the grouped overview, one command's help
+# page, or a usage error for too many arguments.
 cmd_help() {
 	case $# in
 	0) usage ;;
@@ -1058,10 +1075,15 @@ cmd_version() {
 	printf 'git-nest %s \\\\_oOO_//\n' "$GIT_NEST_VERSION"
 }
 
+# Internal endpoint for scripts and tests: print the absolute path of the
+# nearest owning .gitnest for the current directory or the given path.
 cmd_internal_owning_manifest() {
 	[ $# -le 1 ] || usage_error "usage: git-nest __owning-manifest [path]"
 	find_owning_manifest "$@"
 }
+
+# Legacy fallback for the retired .stack manifest format: walk upward looking
+# for a .stack file so old workspaces still resolve their project root.
 find_legacy_manifest_root() {
 	dir=$(pwd)
 	while :; do
@@ -1329,6 +1351,8 @@ resolve_start_dirty() {
 	*) die "unknown dirty action: $action" ;;
 	esac
 }
+# Refresh managed support files (.gitignore/.gitattributes blocks, rc file)
+# for an existing nest and prune stale nest-owned ignore entries.
 cmd_tidy() {
 	create_rc=0
 	while [ $# -gt 0 ]; do
@@ -1613,6 +1637,8 @@ cmd_detach() {
 	fi
 }
 
+# Move or rename a subproject path in the manifest, optionally pointing it at
+# a new --url while keeping the checkout in place.
 cmd_mv() {
 	force=0
 	old_arg=
@@ -1691,6 +1717,8 @@ cmd_mv() {
 	printf 'Moved subproject %s to %s.\n' "$old_path" "$new_path"
 }
 
+# Clone a nest repository and restore its subprojects, unless --no-restore
+# defers restoration to a later explicit restore.
 cmd_clone() {
 	no_restore=0
 	depth=
@@ -1772,6 +1800,8 @@ path_in_only_list() {
 	return 1
 }
 
+# Validate a comma-separated --only path list for freeze: reject backslash
+# paths and normalize each entry before any freeze work starts.
 validate_only_list_boundaries() {
 	list=$1
 	[ -n "$list" ] || return 0
@@ -1786,6 +1816,8 @@ validate_only_list_boundaries() {
 	IFS=$old_ifs
 }
 
+# Freeze the recorded revisions of all (or --only) subprojects without
+# touching their working trees, refusing dirty subprojects unless --force.
 cmd_freeze() {
 	force=0
 	dry_run=0
@@ -1821,12 +1853,7 @@ cmd_freeze() {
 		path_in_only_list "$path" "$only" || continue
 		repo=$(subproject_repo "$path" || true)
 		[ -n "$repo" ] || continue
-		pending=$(subproject_key "$path" pending_branch || true)
 		revision=$(subproject_key "$path" revision || true)
-		if [ -n "$pending" ]; then
-			pinned=$((pinned + 1))
-			continue
-		fi
 		if [ ! -d "$path/.git" ]; then
 			warn "skipping missing subproject $path during freeze"
 			skipped=$((skipped + 1))
@@ -1874,14 +1901,9 @@ status_current() {
 	printf 'subprojects:\n'
 
 	manifest_subprojects | while IFS= read -r path; do
-		pending=$(subproject_key "$path" pending_branch || true)
 		revision=$(subproject_key "$path" revision || true)
 		if [ ! -d "$path/.git" ]; then
 			printf '  %s: missing\n' "$path"
-		elif [ -n "$pending" ]; then
-			dirty=
-			repo_dirty "$path" && dirty=' dirty'
-			printf '  %s: pending %s%s\n' "$path" "$pending" "$dirty"
 		elif [ -n "$revision" ]; then
 			dirty=
 			repo_dirty "$path" && dirty=' dirty'
@@ -1915,7 +1937,6 @@ status_porcelain_current() {
 			printf 'M\t%s\tmissing\t-\t-\t-\tcheckout-missing\n' "$subproject_label"
 			continue
 		fi
-		pending=$(subproject_key "$path" pending_branch || true)
 		code=$(status_code_for_subproject "$path")
 		state=$(status_state_for_code "$code")
 		dirty_status=$(repo_status_porcelain "$path" "cannot inspect dirty state")
@@ -1923,9 +1944,6 @@ status_porcelain_current() {
 			[ -n "$line" ] || continue
 			printf '%s\t%s\t%s\t-\t-\t-\t%s\n' "$code" "$subproject_label" "$state" "$line"
 		done
-		if [ -n "$pending" ] && [ -n "$dirty_status" ]; then
-			printf 'C\t%s\tcomposite\t-\t-\t-\tdirty-and-pending\n' "$subproject_label"
-		fi
 		if subproject_manifest_mismatch "$path"; then
 			printf 'C\t%s\tcomposite\t-\t-\t-\thead-differs-from-manifest\n' "$subproject_label"
 		fi
@@ -2067,12 +2085,6 @@ outdated_current() {
 			continue
 		fi
 
-		pending=$(subproject_key "$path" pending_branch || true)
-		if [ -n "$pending" ]; then
-			printf '  %s: pending %s\n' "$path" "$pending"
-			continue
-		fi
-
 		target=$(outdated_target_branch "$path")
 		remote_tmp=$(tmp_for "$MANIFEST_FILE.outdated_remote")
 		remote_commit=$(remote_branch_commit "$repo" "$target" "$remote_tmp" || true)
@@ -2146,9 +2158,6 @@ outdated_porcelain_current() {
 			printf 'Error: %s: missing repo in %s\n' "$subproject_label" "$MANIFEST_FILE" >>"$errors"
 			continue
 		fi
-
-		pending=$(subproject_key "$path" pending_branch || true)
-		[ -z "$pending" ] || continue
 
 		target=$(outdated_target_branch "$path")
 		remote_tmp=$(tmp_for "$MANIFEST_FILE.outdated_remote")
@@ -2364,17 +2373,12 @@ verify_current() {
 			fi
 		fi
 
-		pending=$(subproject_key "$path" pending_branch || true)
 		tag=$(subproject_key "$path" tag || true)
 		revision=$(subproject_key "$path" revision || true)
 		target=$(subproject_key "$path" target_branch || true)
 		[ -n "$target" ] || target=$(default_target_branch "$path")
 
-		if [ -n "$pending" ]; then
-			git -C "$path" rev-parse --verify "$pending^{commit}" >/dev/null 2>&1 ||
-				git -C "$path" rev-parse --verify "origin/$pending^{commit}" >/dev/null 2>&1 ||
-				printf 'Error: %s: pending branch %s is not resolvable\n' "$path" "$pending" >>"$vc_errors"
-		elif [ -n "$tag" ]; then
+		if [ -n "$tag" ]; then
 			expected=$(git -C "$path" rev-parse --verify "$tag^{commit}" 2>/dev/null || true)
 			if [ -z "$expected" ]; then
 				printf 'Error: %s: tag %s is not resolvable\n' "$path" "$tag" >>"$vc_errors"
@@ -2795,6 +2799,8 @@ snapshot_selected_subprojects() {
 	done
 }
 
+# Record one subproject's current HEAD into the manifest unless it is dirty
+# or missing, honoring quiet/dry-run/strict/check-only modes.
 snapshot_one_subproject() {
 	path=$1
 	quiet=$2
@@ -2835,6 +2841,8 @@ snapshot_one_subproject() {
 	[ "$quiet" -eq 1 ] || printf 'Snapshotted %s at %.12s.\n' "$path" "$head"
 }
 
+# Snapshot all subprojects in the current nest, or only the selected path
+# when given, and rewrite the manifest once at the end.
 snapshot_current() {
 	quiet=$1
 	dry_run=${2:-0}
@@ -2861,6 +2869,8 @@ snapshot_current() {
 	return "$rc"
 }
 
+# Snapshot subprojects inside nested nests too, walking each visited nest
+# root recursively so --recursive refreshes the whole workspace tree.
 snapshot_recursive() {
 	label=$1
 	visited=$2
@@ -2984,135 +2994,6 @@ commit_manifest_if_needed() {
 	fi
 }
 
-# Push changed subproject branches, record pending/finalized state, and push the outer branch.
-cmd_upload() {
-	finalize=0
-	dry_run=0
-	clear_base_overrides
-	while [ $# -gt 0 ]; do
-		case "$1" in
-		--finalize)
-			finalize=1
-			shift
-			;;
-		--dry-run)
-			dry_run=1
-			GIT_NEST_DRY_RUN=1
-			shift
-			;;
-		--no-fetch)
-			GIT_NEST_NO_FETCH=1
-			shift
-			;;
-		--base)
-			[ $# -ge 2 ] || usage_error "--base requires <subproject>=<ref>"
-			add_base_override "$2"
-			shift 2
-			;;
-		*) usage_error "unknown upload option: $1" ;;
-		esac
-	done
-	[ "$dry_run" -eq 1 ] || acquire_manifest_lock
-	ensure_manifest
-	validate_manifest_schema
-	branch=$(current_branch)
-	[ "$branch" != "HEAD" ] || die "upload requires a named branch"
-
-	subprojects_tmp=$(tmp_for "$MANIFEST_FILE.subprojects")
-	manifest_subprojects >"$subprojects_tmp"
-
-	# A dirty subproject blocks the whole upload so the manifest never records a
-	# branch that does not contain all local work.
-	while IFS= read -r path; do
-		[ -d "$path/.git" ] || continue
-		dirty=$(repo_status_porcelain "$path" "cannot inspect subproject $path before upload")
-		[ -z "$dirty" ] || die "subproject $path has uncommitted changes; commit or stash before upload"
-	done <"$subprojects_tmp"
-
-	upload_plan=$(tmp_for "$MANIFEST_FILE.upload_plan")
-	: >"$upload_plan"
-
-	# Candidate branches from start are skipped unless they have commits ahead
-	# of the target branch. Preflight every changed subproject before pushing or
-	# rewriting the manifest so one bad repository does not strand earlier ones
-	# in a surprising partially uploaded state.
-	while IFS= read -r path; do
-		[ -d "$path/.git" ] || continue
-		repo=$(subproject_repo "$path")
-		require_value "$repo" "subproject $path is missing repo in $MANIFEST_FILE; run git-nest add again or fix the manifest"
-		target=$(subproject_key "$path" target_branch || true)
-		[ -n "$target" ] || target=$(default_target_branch "$path")
-		mod_branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-		if [ "$dry_run" -eq 1 ]; then
-			if ! work_count=$(subproject_work_count "$path" "$target" 2>/dev/null); then
-				printf '[dry-run] %s upload state: unknown; real run would fetch first if needed\n' "$path"
-				continue
-			fi
-		else
-			work_count=$(subproject_work_count "$path" "$target")
-		fi
-		if [ "$work_count" -gt 0 ]; then
-			[ -n "$mod_branch" ] || die "subproject $path has committed work on detached HEAD; check out a branch before upload"
-			base=$(base_for_subproject "$path" "$target")
-			pushed=$(resolve_head_commit "$path" "cannot upload subproject $path")
-			remote_exists "$path" || die "subproject $path has no origin remote; restore or add origin, then rerun git-nest upload"
-			if [ "$dry_run" -eq 1 ]; then
-				printf '[dry-run] would push subproject %s branch %s with refspec HEAD:%s\n' "$path" "$mod_branch" "$mod_branch"
-				if [ "$finalize" -eq 1 ]; then
-					printf '[dry-run] would finalize %s at %s from branch %s\n' "$path" "$pushed" "$mod_branch"
-				else
-					printf '[dry-run] would record pending %s target=%s branch=%s base=%s pushed=%s\n' "$path" "$target" "$mod_branch" "$base" "$pushed"
-				fi
-				continue
-			fi
-			printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$path" "$repo" "$target" "$mod_branch" "$base" "$pushed" >>"$upload_plan"
-		fi
-	done <"$subprojects_tmp"
-
-	if [ "$dry_run" -eq 0 ]; then
-		while IFS='	' read -r path repo target mod_branch base pushed; do
-			[ -n "$path" ] || continue
-			if ! git -C "$path" push -u origin "HEAD:$mod_branch"; then
-				printf 'Error: failed to push subproject %s branch %s to origin\n' "$path" "$mod_branch" >&2
-				printf '  recovery: fix the remote, credentials, or rejected branch, then rerun git-nest upload.\n' >&2
-				printf '  note: any subproject branches already pushed by this run may remain on their remotes; rerunning upload will reuse the current manifest and branch state.\n' >&2
-				rm -f "$upload_plan" "$subprojects_tmp"
-				return "$EXIT_GIT"
-			fi
-			if [ "$finalize" -eq 1 ]; then
-				manifest_write_subproject "$path" "$repo" finalized "$pushed" "" "$mod_branch"
-				printf 'Uploaded and finalized subproject %s branch %s at %.12s.\n' "$path" "$mod_branch" "$pushed"
-			else
-				manifest_write_subproject "$path" "$repo" pending "$target" "$mod_branch" "$base" "$pushed"
-				printf 'Uploaded subproject %s branch %s at %.12s.\n' "$path" "$mod_branch" "$pushed"
-			fi
-		done <"$upload_plan"
-	fi
-	rm -f "$upload_plan"
-	rm -f "$subprojects_tmp"
-
-	# The outer push is best-effort when no origin is configured; subproject pushes
-	# remain strict because pending manifest state points at those branches.
-	if [ "$dry_run" -eq 1 ]; then
-		if remote_exists .; then
-			printf '[dry-run] would push outer branch %s with refspec HEAD:%s\n' "$branch" "$branch"
-		else
-			printf '[dry-run] outer repository has no origin remote; would skip outer push\n'
-		fi
-	else
-		commit_manifest_if_needed "$branch"
-		if remote_exists .; then
-			git push -u origin "HEAD:$branch" || git_error "failed to push outer branch $branch to origin"
-		else
-			warn "outer repository has no origin remote; skipped outer push"
-		fi
-	fi
-	clear_base_overrides
-}
-
-# Read the manifest revision value used as a diff base.
-
-# Emit changed subproject commits since the recorded manifest revisions.
 diff_porcelain_from_manifest() {
 	base_manifest=$1
 	rows=$2
@@ -3251,6 +3132,8 @@ cmd_diff() {
 	return "$EXIT_ISSUES"
 }
 
+# Map a public config key name to its manifest key (e.g. clone-mode -> clone);
+# unknown keys return failure so cmd_config can reject them.
 config_manifest_key() {
 	case "$1" in
 	clone-mode) printf 'clone\n' ;;
@@ -3258,6 +3141,8 @@ config_manifest_key() {
 	esac
 }
 
+# Validate a config value for a key (e.g. clone-mode must be full or partial)
+# before cmd_config writes anything.
 validate_config_value() {
 	key=$1
 	value=$2
@@ -3409,10 +3294,6 @@ run_foreach() {
 
 	while IFS= read -r path; do
 		[ -n "$path" ] || continue
-		pending=$(subproject_key "$path" pending_branch || true)
-		if [ "$mode" = "foreach-pending" ] && [ -z "$pending" ]; then
-			continue
-		fi
 		if { [ "$only_nested" -eq 1 ] || [ "$no_nested" -eq 1 ]; }; then
 			is_nested=0
 			[ -f "$path/$MANIFEST_FILE" ] && is_nested=1
@@ -3426,8 +3307,6 @@ run_foreach() {
 
 		repo=$(subproject_repo "$path")
 		target=$(subproject_key "$path" target_branch || true)
-		base=$(subproject_key "$path" base_revision || true)
-		pushed=$(subproject_key "$path" pushed_commit || true)
 		revision=$(subproject_key "$path" revision || true)
 		tag=$(subproject_key "$path" tag || true)
 		branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
@@ -3443,9 +3322,6 @@ run_foreach() {
 				GIT_NEST_SUBPROJECT_REPO=$repo \
 				GIT_NEST_BRANCH=$branch \
 				GIT_NEST_TARGET_BRANCH=$target \
-				GIT_NEST_PENDING_BRANCH=$pending \
-				GIT_NEST_BASE_REVISION=$base \
-				GIT_NEST_PUSHED_COMMIT=$pushed \
 				GIT_NEST_REVISION=$revision \
 				GIT_NEST_TAG=$tag \
 				REPO_PATH=$path \
@@ -3467,11 +3343,8 @@ cmd_foreach() {
 	run_foreach foreach "$@"
 }
 
-# Public wrapper for running a command only in pending subprojects.
-cmd_foreach_pending() {
-	run_foreach foreach-pending "$@"
-}
-
+# Build the filtered subproject row file (dirty/clean rows with full metadata)
+# that run_foreach_filtered then feeds to the user command.
 foreach_filtered_rows() {
 	mode=$1
 	rows=$2
@@ -3500,6 +3373,9 @@ foreach_filtered_rows() {
 	done
 }
 
+# Run one user command inside each row's subproject checkout, exporting the
+# subproject context variables, and aggregate failures (or continue past them
+# with --continue-on-error).
 run_foreach_filtered_command() {
 	rows=$1
 	continue_on_error=$2
@@ -3517,9 +3393,6 @@ run_foreach_filtered_command() {
 
 		repo=$(subproject_repo "$path")
 		target=$(subproject_key "$path" target_branch || true)
-		pending=$(subproject_key "$path" pending_branch || true)
-		base=$(subproject_key "$path" base_revision || true)
-		pushed=$(subproject_key "$path" pushed_commit || true)
 		revision=$(subproject_key "$path" revision || true)
 		tag=$(subproject_key "$path" tag || true)
 		branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
@@ -3534,9 +3407,6 @@ run_foreach_filtered_command() {
 				GIT_NEST_SUBPROJECT_REPO=$repo \
 				GIT_NEST_BRANCH=$branch \
 				GIT_NEST_TARGET_BRANCH=$target \
-				GIT_NEST_PENDING_BRANCH=$pending \
-				GIT_NEST_BASE_REVISION=$base \
-				GIT_NEST_PUSHED_COMMIT=$pushed \
 				GIT_NEST_REVISION=$revision \
 				GIT_NEST_TAG=$tag \
 				REPO_PATH=$path \
@@ -3553,6 +3423,8 @@ run_foreach_filtered_command() {
 	return "$rc"
 }
 
+# Entry point for foreach-modified / foreach-clean: parse options, build the
+# filtered rows, run the user command, and emit human/porcelain/JSON output.
 run_foreach_filtered() {
 	mode=$1
 	shift
@@ -3630,14 +3502,18 @@ run_foreach_filtered() {
 	return "$rc"
 }
 
+# Command handler: run a user command in every dirty subproject.
 cmd_foreach_modified() {
 	run_foreach_filtered foreach-modified "$@"
 }
 
+# Command handler: run a user command in every clean subproject.
 cmd_foreach_clean() {
 	run_foreach_filtered foreach-clean "$@"
 }
 
+# Resolve which nest path (root as "." or a subproject path) the current
+# Git repository corresponds to, for branch-mark bookkeeping.
 current_repo_mark_path() {
 	caller=${GIT_NEST_CALLER_PWD:-$(pwd -P)}
 	root=$(pwd -P)
@@ -3661,16 +3537,22 @@ current_repo_mark_path() {
 	done
 }
 
+# Read the origin URL of a repository path for a branch-mark record, or
+# silently return empty when the remote is missing.
 repo_origin_url_for_mark() {
 	path=$1
 	git -C "$path" remote get-url origin 2>/dev/null || true
 }
 
+# Ensure the local branch-marks file exists and is ignored by Git so the
+# bookkeeping state never pollutes the working tree.
 ensure_branch_marks_file() {
 	[ -f "$BRANCH_MARKS_FILE" ] || : >"$BRANCH_MARKS_FILE"
 	ensure_gitignore_line "$BRANCH_MARKS_FILE"
 }
 
+# Command handler: remember the current (or given) branch name for this
+# repository in the ignored bookmarks file.
 cmd_branch_mark() {
 	[ $# -le 1 ] || usage_error "usage: git-nest branch-mark [name]"
 	repo_path=$(current_repo_mark_path)
@@ -3690,6 +3572,7 @@ cmd_branch_mark() {
 	printf 'Marked branch %s for %s.\n' "$branch" "$repo_path"
 }
 
+# Command handler: remove one remembered branch name for this repository.
 cmd_branch_unmark() {
 	[ $# -eq 1 ] || usage_error "usage: git-nest branch-unmark <name>"
 	repo_path=$(current_repo_mark_path)
@@ -3705,6 +3588,7 @@ cmd_branch_unmark() {
 	printf 'Unmarked branch %s for %s.\n' "$branch" "$repo_path"
 }
 
+# Command handler: list remembered branch names, human or --verbose/--json.
 cmd_branch_list() {
 	verbose=0
 	json=0
@@ -3755,6 +3639,8 @@ cmd_branch_list() {
 	done <"$BRANCH_MARKS_FILE"
 }
 
+# Command handler: drop remembered branch names whose local Git branch no
+# longer exists, reporting how many were removed.
 cmd_branch_cleanup() {
 	[ $# -eq 0 ] || usage_error "branch-cleanup takes no arguments"
 	[ -f "$BRANCH_MARKS_FILE" ] || {
@@ -3774,103 +3660,6 @@ cmd_branch_cleanup() {
 	done <"$BRANCH_MARKS_FILE"
 	mv "$tmp" "$BRANCH_MARKS_FILE"
 	printf 'Removed %s stale branch mark(s).\n' "$removed"
-}
-
-# Resolve the actual hook path for a repo, handling Git's relative path output.
-# Report pending subprojects and return nonzero as the outer-merge gate.
-no_pending_rows() {
-	manifest_subprojects | while IFS= read -r path; do
-		pb=$(subproject_key "$path" pending_branch || true)
-		[ -n "$pb" ] || continue
-		printf 'P\t%s\tpending\t-\t%s\t-\tpending-branch\n' "$path" "$pb"
-	done
-}
-
-cmd_no_pending() {
-	json=0
-	json_pretty=0
-	while [ $# -gt 0 ]; do
-		case "$1" in
-		--json)
-			json=1
-			shift
-			;;
-		--json-pretty)
-			json=1
-			json_pretty=1
-			shift
-			;;
-		*) usage_error "unknown no-pending option: $1" ;;
-		esac
-	done
-	ensure_manifest
-	rows=$(mktemp)
-	no_pending_rows >"$rows"
-	if [ "$json" -eq 1 ]; then
-		errors=$(mktemp)
-		warnings=$(mktemp)
-		: >"$errors"
-		: >"$warnings"
-		[ -s "$rows" ] && ok=0 || ok=1
-		emit_json_result no-pending 0 "$ok" "$rows" "$errors" "$warnings" "$json_pretty"
-		rm -f "$errors" "$warnings"
-		[ "$ok" -eq 1 ] || {
-			rm -f "$rows"
-			return "$EXIT_ISSUES"
-		}
-		rm -f "$rows"
-		return 0
-	fi
-	while IFS='	' read -r code path state target current expected detail; do
-		[ -n "$path" ] || continue
-		printf '%s: pending branch %s\n' "$path" "$current"
-	done <"$rows"
-	if [ -s "$rows" ]; then
-		rm -f "$rows"
-		return "$EXIT_ISSUES"
-	fi
-	rm -f "$rows"
-	printf 'No pending subprojects.\n'
-}
-
-# Delete one local pending branch after or after-deferred finalization cleanup.
-# Uses a cbfs_-prefixed path (rather than bare path) because cmd_finalize
-# calls this without a subshell while holding its own bare path across the call.
-cleanup_branch_for_subproject() {
-	cbfs_path=$1
-	branch=$2
-	[ -n "$branch" ] || return 0
-	[ -d "$cbfs_path/.git" ] || return 0
-	if ! git -C "$cbfs_path" show-ref --verify --quiet "refs/heads/$branch"; then
-		warn "cleanup branch already absent for $cbfs_path: $branch"
-		manifest_remove_subproject_key "$cbfs_path" finalized_from_branch
-		return 0
-	fi
-	current=$(git -C "$cbfs_path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-	if [ "$current" = "$branch" ]; then
-		revision=$(subproject_key "$cbfs_path" revision || true)
-		[ -n "$revision" ] || die "cannot clean current branch for $cbfs_path without finalized revision"
-		revision=$(resolve_commit "$cbfs_path" "$revision" "cannot clean current branch for $cbfs_path")
-		git -C "$cbfs_path" checkout --detach "$revision" >/dev/null ||
-			die "failed to detach $cbfs_path at finalized revision $revision"
-	fi
-	git -C "$cbfs_path" branch -D "$branch" >/dev/null ||
-		die "failed to delete local branch $branch in $cbfs_path"
-	manifest_remove_subproject_key "$cbfs_path" finalized_from_branch
-	printf 'Deleted local branch %s in %s.\n' "$branch" "$cbfs_path"
-}
-
-# Delete all local branches recorded as finalized cleanup hints.
-cmd_cleanup_branches() {
-	[ $# -eq 0 ] || die "cleanup-branches takes no arguments"
-	acquire_manifest_lock
-	ensure_manifest
-	validate_manifest_schema
-	manifest_subprojects | while IFS= read -r path; do
-		branch=$(subproject_key "$path" finalized_from_branch || true)
-		[ -n "$branch" ] || continue
-		cleanup_branch_for_subproject "$path" "$branch"
-	done
 }
 
 # Update one clean, non-pending subproject to another recorded version.
@@ -3961,152 +3750,6 @@ cmd_update() {
 		;;
 	esac
 	printf 'Updated %s to %.12s.\n' "$path" "$revision"
-}
-
-# Resolve a subproject target branch to a commit for --use-target-head finalization.
-
-# Conservatively infer the finalized commit from exactly one ticket-key match.
-auto_finalize_revision() {
-	path=$1
-	target=$2
-	ticket=$(manifest_get project id || true)
-	[ -n "$ticket" ] || ticket=$(ticket_from_branch "$(subproject_key "$path" pending_branch || true)")
-	[ -n "$ticket" ] || die "auto-finalize needs a project id; use --revision, --tag, or --use-target-head"
-	base=$(subproject_key "$path" base_revision || true)
-	[ "$GIT_NEST_DRY_RUN" -eq 1 ] || fetch_quiet "$path"
-	git -C "$path" rev-parse --verify "origin/$target^{commit}" >/dev/null 2>&1 ||
-		die "auto-finalize cannot find origin/$target for $path; fetch the subproject or use --revision/--tag"
-	range=
-	if [ -n "$base" ] && git -C "$path" cat-file -e "$base^{commit}" 2>/dev/null; then
-		range="$base..origin/$target"
-	else
-		range="origin/$target"
-	fi
-	ticket_re=$(regex_escape "$ticket")
-	matches=$(git -C "$path" log --format='%H %s' "$range" 2>/dev/null | grep -E "(^|[^A-Za-z0-9])$ticket_re([^0-9]|$)" || true)
-	count=$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ')
-	[ "$count" = "1" ] || die "auto-finalize found $count candidates for $ticket; use an explicit selector"
-	revision=$(printf '%s\n' "$matches" | awk '{print $1}')
-	require_value "$revision" "auto-finalize matched $ticket but produced an empty revision for $path; use --revision"
-	resolve_commit "$path" "$revision" "cannot auto-finalize $path"
-}
-
-# Convert a subproject from pending to finalized state using an explicit or auto selector.
-cmd_finalize() {
-	[ $# -ge 1 ] || die "usage: git-nest finalize <subproject> [--dry-run] [--cleanup] [--revision <sha> | --tag <tag> | --use-target-head]"
-	reject_backslash_path "$1"
-	path=$(normalize_path "$1")
-	shift
-
-	mode=auto
-	value=
-	cleanup=0
-	dry_run=0
-
-	# Selectors are mutually exclusive so the manifest gets one clear source of
-	# truth: explicit revision, explicit tag, target head, or conservative auto.
-	while [ $# -gt 0 ]; do
-		case "$1" in
-		--dry-run)
-			dry_run=1
-			GIT_NEST_DRY_RUN=1
-			shift
-			;;
-		--cleanup)
-			cleanup=1
-			shift
-			;;
-		--revision)
-			[ "$mode" = auto ] || die "finalize selectors are mutually exclusive"
-			[ $# -ge 2 ] || die "--revision requires a value"
-			mode=revision
-			value=$2
-			shift 2
-			;;
-		--tag)
-			[ "$mode" = auto ] || die "finalize selectors are mutually exclusive"
-			[ $# -ge 2 ] || die "--tag requires a value"
-			mode=tag
-			value=$2
-			shift 2
-			;;
-		--use-target-head)
-			[ "$mode" = auto ] || die "finalize selectors are mutually exclusive"
-			mode=target_head
-			shift
-			;;
-		*) die "unknown finalize option: $1" ;;
-		esac
-	done
-
-	[ "$dry_run" -eq 1 ] || acquire_manifest_lock
-	ensure_manifest
-	validate_manifest_schema
-	assert_path_not_inside_nested_project "$path"
-	[ -d "$path/.git" ] || die "$path is not a checked-out subproject"
-	repo=$(subproject_repo "$path")
-	[ -n "$repo" ] || die "$path is not in $MANIFEST_FILE"
-	target=$(subproject_key "$path" target_branch || true)
-	[ -n "$target" ] || target=main
-
-	tag=
-	# Every path resolves to a concrete commit before the manifest is touched.
-	case "$mode" in
-	revision)
-		revision=$(resolve_commit "$path" "$value" "cannot finalize $path with --revision")
-		;;
-	tag)
-		tag=$value
-		revision=$(resolve_commit "$path" "$value" "cannot finalize $path with --tag")
-		;;
-	target_head)
-		if [ "$dry_run" -eq 1 ]; then
-			remote_tmp=$(tmp_for "$MANIFEST_FILE.finalize_target")
-			remote_revision=$(remote_branch_commit "$repo" "$target" "$remote_tmp" || true)
-			rm -f "$remote_tmp"
-			if [ -n "$remote_revision" ]; then
-				revision=$remote_revision
-			else
-				revision=$(resolve_target_ref "$path" "$target" 0)
-			fi
-		else
-			revision=$(resolve_target_ref "$path" "$target")
-		fi
-		;;
-	auto)
-		if [ "$dry_run" -eq 1 ]; then
-			if git -C "$path" rev-parse --verify "origin/$target^{commit}" >/dev/null 2>&1; then
-				revision=$(auto_finalize_revision "$path" "$target")
-			else
-				revision=unknown
-				printf '[dry-run] %s auto-finalize revision: unknown; real run would fetch first if needed\n' "$path"
-			fi
-		else
-			revision=$(auto_finalize_revision "$path" "$target")
-		fi
-		;;
-	esac
-	require_value "$revision" "finalize produced an empty revision for $path; use --revision <sha>"
-
-	old_pending=$(subproject_key "$path" pending_branch || true)
-	if [ "$dry_run" -eq 1 ]; then
-		old_revision=$(subproject_key "$path" revision || true)
-		old_tag=$(subproject_key "$path" tag || true)
-		printf '[dry-run] %s revision: %s -> %s\n' "$path" "${old_revision:-<unset>}" "$revision"
-		printf '[dry-run] %s tag: %s -> %s\n' "$path" "${old_tag:-<unset>}" "${tag:-<unset>}"
-		if [ "$cleanup" -eq 1 ] && [ -n "$old_pending" ]; then
-			printf '[dry-run] would delete local branch %s in %s\n' "$old_pending" "$path"
-		fi
-		return 0
-	fi
-	manifest_write_subproject "$path" "$repo" finalized "$revision" "$tag" "$old_pending"
-
-	# Cleanup is local-only: remote review branches and untracked files are not
-	# deleted by finalize.
-	if [ "$cleanup" -eq 1 ] && [ -n "$old_pending" ]; then
-		cleanup_branch_for_subproject "$path" "$old_pending"
-	fi
-	printf 'Finalized %s at %.12s.\n' "$path" "$revision"
 }
 
 # Clone/fetch subprojects and restore their recorded manifest state.
@@ -4553,6 +4196,8 @@ pull_recursive() {
 	return "$pull_rc"
 }
 
+# Pull every subproject's upstream (optionally the nest root and nested
+# nests), snapshotting the result and reporting per-subproject outcomes.
 cmd_pull() {
 	recursive=0
 	sure=0
@@ -4684,6 +4329,9 @@ cmd_gc() {
 	rm -f "$gc_rows" "$gc_errors" "$gc_warnings"
 }
 
+# Authoritative list of public command names (one line, space-separated),
+# used by completion, help, and the internal __complete endpoint so the
+# command surface is defined exactly once.
 GIT_NEST_command_names() {
 	printf '%s\n' "init tidy add remove rm move mv clone status outdated verify diff log snapshot restore pull gc freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
 }
@@ -4705,21 +4353,29 @@ cmd_internal_complete() {
 }
 
 # --- TSV protocol helpers ---
+# Every emitter writes one record of the shell-neutral completion protocol:
+# "C<TAB>value<TAB>description<TAB>type" for candidates and "D<TAB>directive"
+# for shell hints. The shell adapters translate these records into their
+# native completion objects, so the engine never needs shell-specific code.
 
+# Emit one candidate record per public command name.
 _GIT_NEST_emit_commands() {
 	for _c in $(GIT_NEST_command_names); do
 		printf 'C\t%s\t\tcommand\n' "$_c"
 	done
 }
 
+# Emit a candidate for a command-line option flag (value starts with --).
 _GIT_NEST_emit_option() {
 	printf 'C\t%s\t%s\toption\n' "$1" "${2:-}"
 }
 
+# Emit a candidate for a plain value (shell name, archive format, etc.).
 _GIT_NEST_emit_value() {
 	printf 'C\t%s\t%s\tvalue\n' "$1" "${2:-}"
 }
 
+# Emit one candidate per manifest subproject, read from the nearest nest root.
 _GIT_NEST_emit_subprojects() {
 	_root=$(find_project_root 2>/dev/null) || return 0
 	(cd "$_root" && manifest_subprojects) 2>/dev/null | while IFS= read -r _sp; do
@@ -4727,6 +4383,8 @@ _GIT_NEST_emit_subprojects() {
 	done
 }
 
+# Emit a directive record telling the shell adapter how to behave (no-file,
+# file, no-space, ...).
 _GIT_NEST_emit_directive() {
 	printf 'D\t%s\n' "$1"
 }
@@ -5083,7 +4741,12 @@ _GIT_NEST_complete_for() {
 }
 
 # --- Shell adapter generators (thin translators) ---
+# Each generator emits a small shell-specific script that translates
+# __complete TSV records into the shell's native completion API, keeping all
+# command/option knowledge in the single engine case table above.
 
+# Generate the Bash completion script: a thin _git_nest_complete function
+# that calls the __complete engine and feeds matching candidates to COMPREPLY.
 completion_bash() {
 	cat <<'GENEOF'
 _git_nest_complete()
@@ -5098,6 +4761,8 @@ complete -F _git_nest_complete git-nest
 GENEOF
 }
 
+# Generate the zsh completion script: a _git_nest function that calls the
+# __complete engine and hands candidates to _describe for native zsh display.
 completion_zsh() {
 	cat <<'GENEOF'
 #compdef git-nest
@@ -5113,6 +4778,9 @@ _git_nest "$@"
 GENEOF
 }
 
+# Generate the Fish completion script: one dynamic completer that strips the
+# program name tokens, asks the __complete engine, and maps candidates into
+# fish's complete -a output.
 completion_fish() {
 	cat <<'GENEOF'
 function __git_nest_complete
@@ -5133,6 +4801,8 @@ complete -c git-nest -f -a "(__git_nest_complete)"
 GENEOF
 }
 
+# Generate the yash completion script: a completion//argument-git-nest function
+# that pipes __complete output through awk into yash's complete builtin.
 completion_yash() {
 	cat <<'GENEOF'
 # yash completion for git-nest -- place in your completion load path
@@ -5149,6 +4819,8 @@ completion//argument-git-nest() {
 GENEOF
 }
 
+# Generate the PowerShell completion script: a Register-ArgumentCompleter block
+# that asks the __complete engine and returns CompletionResult objects.
 completion_powershell() {
 	cat <<'GENEOF'
 # git-nest PowerShell completion -- dot-source this file

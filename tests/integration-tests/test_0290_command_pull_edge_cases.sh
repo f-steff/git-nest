@@ -120,7 +120,13 @@ root_remote="$root/remotes/root.git"
 git init --bare -q "$root_remote"
 git remote add origin "$root_remote"
 git push -q -u origin HEAD:main
-git clone -q "$root_remote" "$root/root-mirror" >/dev/null 2>&1
+# Point the bare remote's symbolic HEAD at main so that a bare clone
+# checks out main instead of whatever the git default branch name is
+# (older git and some configurations default to "master").
+git --git-dir="$root_remote" symbolic-ref HEAD refs/heads/main
+# Use -b main so the clone checks out main even if the remote HEAD
+# points elsewhere (robust across all git versions).
+git clone -q -b main "$root_remote" "$root/root-mirror" >/dev/null 2>&1
 (cd "$root/root-mirror" && git_config && echo marker >root_marker.txt && git add -A && git commit -qm "advance root remotely" && git push -q origin main)
 run_capture "pull without --sure leaves the root alone" nosure.out nosure.err -- "$GIT_NEST" pull
 test ! -f root_marker.txt

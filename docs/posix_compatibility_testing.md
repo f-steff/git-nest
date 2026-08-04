@@ -17,20 +17,30 @@ portable POSIX shell scripting skill for AI coding assistants. It provides:
 
 ### Installing the Skill
 
-The skill is installed locally at `.agents/skills/posix-shell/`. It was
-copied from the development repository (see the `AGENTS.md` at the root of
-the [POSIX_Shell_Skill](https://github.com/f-steff/POSIX_Shell_Skill) repo
-for more installation methods).
+The skill is not committed inside this repository. `.agents/skills/posix-shell/SKILL.md`
+is a thin pointer to the external skill repository. To make the full skill
+(including its test runners) available to development agents, clone it once
+from the repository root:
 
-To install into a new project, copy the skill into your AI tool's skills path:
+```sh
+git clone https://github.com/f-steff/POSIX_Shell_Skill.git \
+    .agents/skills/posix-shell/source
+```
+
+The installed content lives under `.agents/skills/posix-shell/source/`, is
+ignored via `.gitignore`, and must not be committed; updates come from
+`git -C .agents/skills/posix-shell/source pull`.
+
+To install the skill into a new project, clone it directly into your AI tool's
+skills path:
 
 ```sh
 # OpenCode
-cp -r skills/posix-shell ~/.config/opencode/skills/
+git clone https://github.com/f-steff/POSIX_Shell_Skill.git ~/.config/opencode/skills/posix-shell
 # Codex CLI
-cp -r skills/posix-shell ~/.agents/skills/
+git clone https://github.com/f-steff/POSIX_Shell_Skill.git ~/.agents/skills/posix-shell
 # Claude Code
-cp -r skills/posix-shell ~/.claude/skills/
+git clone https://github.com/f-steff/POSIX_Shell_Skill.git ~/.claude/skills/posix-shell
 ```
 
 The skill source is at `https://github.com/f-steff/POSIX_Shell_Skill.git`.
@@ -40,20 +50,22 @@ The skill source is at `https://github.com/f-steff/POSIX_Shell_Skill.git`.
 ### Using the built-in test runner (local shells)
 
 The skill provides `test_runner.sh` which runs a script through all locally
-available shells:
+available shells. This script ships in the external skill and is present here
+only after installing it (see "Installing the Skill" above):
 
 ```sh
-sh .agents/skills/posix-shell/scripts/test_runner.sh bin/git_nest.sh
-sh .agents/skills/posix-shell/scripts/test_runner.sh unit-tests/
+sh .agents/skills/posix-shell/source/scripts/test_runner.sh bin/git_nest.sh
+sh .agents/skills/posix-shell/source/scripts/test_runner.sh tests/unit-tests/
 ```
 
 ### Using Docker (all shells)
 
 The `docker_test.sh` script runs tests inside an Alpine container with
-multiple shells installed:
+multiple shells installed. Like `test_runner.sh`, it comes from the external
+skill and requires the install step above:
 
 ```sh
-sh .agents/skills/posix-shell/scripts/docker_test.sh \
+sh .agents/skills/posix-shell/source/scripts/docker_test.sh \
     --verbose bin/lib/git-nest-manifest.sh
 ```
 
@@ -62,9 +74,15 @@ available shells (dash, bash, ash, zsh, mksh, yash).
 
 ## Test Results
 
-### Syntax check (7 source files, 6 shells, 42 tests)
+These are snapshots from past verification runs. For current per-shell
+results, run the repository's own cross-shell runner:
+`sh tests/docker/run-cross-shell-tests.sh` (see
+`docs/dockerized_testing.md`).
 
-All source files pass syntax check across all available shells:
+### Syntax check (6 source files, 6 shells, 36 tests)
+
+All 6 shell implementation files pass syntax check across the Alpine shell
+set:
 
 | File | dash | bash | ash | zsh | mksh | yash |
 |------|------|------|-----|-----|------|------|
@@ -74,50 +92,40 @@ All source files pass syntax check across all available shells:
 | `bin/lib/git-nest-conversion.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
 | `bin/lib/git-nest-doctor.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
 | `bin/lib/git-nest-hooks.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
-| `bin/git-nest.bat` | PASS | PASS | PASS | PASS | PASS | PASS |
 
-**Result: 42/42 PASS.**
+**Result: 36/36 PASS.** (`bin/git-nest.bat` is a Windows batch launcher, not
+a shell implementation, and is not `sh -n`-checked.)
 
-### Pure unit tests (9 tests, 6 shells, 54 tests)
+### Unit tests (31 tests per shell)
 
-| Test | dash | bash | ash | zsh | mksh | yash |
-|------|------|------|-----|-----|------|------|
-| 1000 (path_is_relative_safe) | PASS | PASS | PASS | PASS | PASS | PASS |
-| 1010 (normalize_path) | PASS | PASS | PASS | PASS | PASS | PASS |
-| 1020 (validate_clone_mode) | PASS | PASS | PASS | PASS | PASS | PASS |
-| 1450 (tree_survey_typelabel) | PASS | PASS | PASS | PASS | PASS | PASS |
-| 1460 (diagnostic helpers) | PASS | PASS | PASS | PASS | PASS | PASS |
-| 1470 (sleep_ms, regex_escape) | PASS | PASS | PASS | PASS | PASS | PASS |
-| 1510 (manifest section) | PASS | PASS | PASS | FAIL* | PASS | PASS |
-| 1520 (redact_stream) | PASS | PASS | PASS | PASS | PASS | PASS |
-| 1640 (export format) | PASS | PASS | PASS | PASS | PASS | PASS |
-
-**Result: 53/54 PASS** (\*1 zsh failure on Alpine due to missing `cksum` in zsh's
-PATH -- not a code portability issue. `cksum` is a standalone binary provided by
-BusyBox; zsh on Alpine does not always find it. All other shells run it correctly.)
+The full unit suite in `tests/unit-tests/` passes through every POSIX shell
+in the repository's Docker runner. zsh unit tests are skipped there (zsh
+function-resolution issues in the container); its syntax checks and
+`__complete` engine test still run.
 
 ## Known Limitations
 
 - **ksh and posh** are not available in the `alpine:3.21` package repository.
   Testing on these shells requires a different base image (Debian, Fedora).
-- **zsh on Alpine** may fail on tests using `cksum` if the binary is not in
-  zsh's PATH after installation. This is an Alpine/zsh quirk, not a portability
-  issue.
+- **zsh in containers** is skipped for unit tests because of zsh
+  function-resolution issues in the container environment; this is an
+  Alpine/zsh quirk, not a portability issue.
 - **Docker on Windows** requires `MSYS2_ARG_CONV_EXCL="*"` to prevent Git Bash
   from mangling volume mount paths. The `docker_test.sh` script handles this
-  automatically.
+  automatically (scoped to the docker invocation only, never exported).
 
 ## Adding New Tests
 
-When adding shell code to git-nest:
+The `docker_test.sh` commands below require the skill to be installed
+(see "Installing the Skill" above). When adding shell code to git-nest:
 
 1. Run the existing unit tests through the Docker test runner to verify
    cross-shell compatibility:
    ```sh
-   sh .agents/skills/posix-shell/scripts/docker_test.sh unit-tests/unit-test_NNNN_*.sh
+   sh .agents/skills/posix-shell/source/scripts/docker_test.sh tests/unit-tests/unit-test_NNNN_*.sh
    ```
 2. Run the syntax check across all shells:
    ```sh
-   sh .agents/skills/posix-shell/scripts/docker_test.sh bin/lib/your-new-script.sh
+   sh .agents/skills/posix-shell/source/scripts/docker_test.sh bin/lib/your-new-script.sh
    ```
 3. Fix any shell-specific issues before committing.

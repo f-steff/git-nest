@@ -21,9 +21,9 @@ if not defined BASH_EXE (
 )
 
 rem Run the canonical shell suite next to this wrapper. All arguments are
-rem forwarded unchanged to run-all-tests.sh, including the commands list, only
-rem <ids>, except <ids>, and help, and the options --verbose, --stop-on-fail,
-rem --no-log, and --log FILE.
+rem forwarded unchanged to run-all-tests.sh, including the commands list,
+rem only <ids>, except <ids>, cleanup, and help, and the options --verbose,
+rem --stop-on-fail, --no-log, and --log FILE.
 set "SCRIPT=%~dp0run-all-tests.sh"
 if not exist "%SCRIPT%" (
     echo Error: Could not locate tests\run-all-tests.sh next to this wrapper.

@@ -21,7 +21,10 @@ printf 'content\n' >src/deep/file.txt
 git add .gitnest .gitignore .gitattributes src/deep/file.txt
 git commit -m "outer project" >/dev/null
 
-outer_manifest=$(CDPATH= cd -- "$outer" && pwd)/.gitnest
+# cd -P resolves through macOS symlinks (/var -> /private/var, /tmp -> /private/tmp)
+# so the test's computed path matches the physical path returned by
+# canonical_start_dir_for_path() which also uses cd -P.
+outer_manifest=$(CDPATH= cd -P -- "$outer" && pwd)/.gitnest
 
 [ "$("$GIT_NEST" __owning-manifest)" = "$outer_manifest" ] || {
     echo "owning manifest from project root should be the root manifest" >&2
@@ -46,7 +49,8 @@ cat >nested/.gitnest <<EOF
 [project]
 version=1
 EOF
-nested_manifest=$(CDPATH= cd -- "$outer/nested" && pwd)/.gitnest
+# Use cd -P for the same symlink-resolution reason as above.
+nested_manifest=$(CDPATH= cd -P -- "$outer/nested" && pwd)/.gitnest
 from_nested=$(cd nested/sub && "$GIT_NEST" __owning-manifest)
 [ "$from_nested" = "$nested_manifest" ] || {
     echo "owning manifest inside nested territory should be the nested manifest" >&2

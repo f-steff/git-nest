@@ -4,14 +4,16 @@
 # current directory. Supports list, only, except, help commands, and
 # --verbose/--stop-on-fail/--no-coverage options.
 #
-# Run from the unit-tests/ directory or via the main test runner with --unit-tests.
+# Run from the tests/unit-tests/ directory, from the repo root via
+# sh tests/unit-tests/run-all-tests.sh, or inside the full suite via
+# tests/integration-tests/test_0000_unit_tests.sh.
 #
 # ASCII only.
 
 set -eu
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-REPO_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/../.." && pwd)
 
 : "${TMPDIR:=/tmp}"
 UNIT_TEST_ROOT="${TMPDIR}/git-nest-unit-test-workspaces"
@@ -129,8 +131,8 @@ compute_coverage() {
 
     # Read deliberately untested from unit-tests.ini [untested] section.
     _cov_ini=$(mktemp)
-    if [ -f "$REPO_ROOT/unit-tests/unit-tests.ini" ]; then
-        sed -n '/^\[untested\]/,/^\[\(.*\)\]/{/^\[/d; /^#/d; /^$/d; p}' "$REPO_ROOT/unit-tests/unit-tests.ini" | grep -o '^[^=]*' | sort -u >"$_cov_ini"
+    if [ -f "$REPO_ROOT/tests/unit-tests/unit-tests.ini" ]; then
+        sed -n '/^\[untested\]/,/^\[\(.*\)\]/{/^\[/d; /^#/d; /^$/d; p}' "$REPO_ROOT/tests/unit-tests/unit-tests.ini" | grep -o '^[^=]*' | sort -u >"$_cov_ini"
     fi
 
     _cov_total=$(wc -l <"$_cov_all" | tr -d ' ')

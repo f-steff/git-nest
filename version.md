@@ -1,3 +1,18 @@
+## 0.8.16 - 2026-08-04
+
+### Runner, cleanup, and documentation
+  * Neutralized MSYS2 path-conversion in test runner and fixed mock/shim leaks.
+  * Added cleanup command to test runner; it starts each run with workspace cleanup.
+  * Added why-comments to all functions lacking purpose documentation.
+  * Moved test suites under tests/ with integration-tests/ and unit-tests/ structure.
+  * Dropped obsolete pending-workflow manifest keys and retired command handlers.
+  * Added macOS/zsh test compatibility (BSD tar, sed, sleep, branch naming, symlinks).
+  * Verified .bat and .ps1 launchers in the invocation smoke test.
+  * Reorganized README with workspace model diagram, trimmed syntax, and further reading.
+  * Reorganized todo.md into active, postponed, wont-do, and suggestions structure.
+  * Added docs/howto.md with multi-step scenario recipes.
+  * Documented two-tier test strategy in AGENTS.md testing guidelines.
+
 ## 0.8.15 - 2026-08-02
 
 ### PowerShell launcher and completions
@@ -100,11 +115,11 @@
 - Split monolithic `bin/git_nest.sh` (7414 lines) into 6 focused files under `bin/lib/` and `bin/git_nest.sh` (small entrypoint).
 - Added manifest cache: single awk pass populates shell variables, replacing N-per-key subprocess reads with O(1).
 - Added ShellCheck configuration (`bin/.shellcheckrc`) with documented suppressions; all warnings fixed.
-- Added `tests/check.sh` — unified quality script running `sh -n`, ShellCheck, `shfmt`, `checkbashisms` with auto-install of missing tools to `~/bin/`.
-- Added `test_0000_static_code_analysis.sh` — runs quality checks as part of the test suite.
+- Added `tests/check.sh` -- unified quality script running `sh -n`, ShellCheck, `shfmt`, `checkbashisms` with auto-install of missing tools to `~/bin/`.
+- Added `test_0000_static_code_analysis.sh` -- runs quality checks as part of the test suite.
 - Added command trace log (`$TEST_ROOT/.git-nest-commands.log`) for full-suite auditability.
 - Removed ~350 lines of dead code (old `start`/`upload`/`finalize` workflow).
-- Fixed `sleep_ms` lookup table → POSIX awk-based fractional sleep.
+- Fixed `sleep_ms` lookup table -> POSIX awk-based fractional sleep.
 - Fixed CRLF line endings in all shell files.
 - Added POSIX formatting via `shfmt -w -ln posix` across all shell files.
 - Added `-v` short flag for version.
@@ -113,7 +128,7 @@
 - Added `docs/exit-codes.md`.
 - Added `debug` and `release` to `DISCOVER_DEFAULT_EXCLUDES`.
 - Added Go port analysis to `todo.md`.
-- Renamed `docs/implementation-summary.md` → `docs/command-behavior-contract.md`.
+- Renamed `docs/implementation-summary.md` -> `docs/command-behavior-contract.md`.
 - Fixed `.bashrc` guard for optional `git-subrepo` sourcing.
 
 ## 0.8.2 - 2026-07-16

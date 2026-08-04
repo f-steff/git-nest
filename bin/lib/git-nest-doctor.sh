@@ -49,6 +49,8 @@ emit_doctor_json() {
 	printf ']}'
 }
 
+# Report a hook's status for doctor: absent, installed (git-nest managed), or
+# unmanaged (a user hook occupying the same path).
 doctor_hook_status() {
 	repo=$1
 	hook=$2
@@ -68,6 +70,8 @@ doctor_hook_status() {
 	fi
 }
 
+# Run the doctor diagnostics (git version, manifest, locks, hooks, remotes)
+# and emit human or JSON results, honoring --offline/--timeout/--exit-code.
 cmd_doctor() {
 	json=0
 	json_pretty=0

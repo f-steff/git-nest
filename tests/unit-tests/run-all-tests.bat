@@ -1,7 +1,7 @@
 : <<'BATCH'
 @echo off
 rem Polyglot launcher for cmd.exe and sh/bash users. Delegates to the
-rem adjacent shell runner, unit-tests\run-all-tests.sh, through Git Bash.
+rem adjacent shell runner, tests\unit-tests\run-all-tests.sh, through Git Bash.
 rem
 rem Keeps one command path usable from IDE post-build hooks on Windows,
 rem Linux, and macOS while still routing behavior through the canonical
