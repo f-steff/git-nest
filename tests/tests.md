@@ -33,7 +33,7 @@ tests/
 
 - **Cross-shell checks** (`docker/`): run syntax checks, unit tests, and the
   `__complete` engine under many shells in Alpine and Debian containers.
-  See `docs/dockerized_testing.md`.
+  See `docs/ci_and_dockerized_testing.md`.
 
 ## How The Pieces Fit Together
 

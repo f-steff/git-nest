@@ -16,8 +16,9 @@ Items in priority order. Each gets its own WIP commit.
    optionally install shell completions. GitHub CI (#2 below) would
    produce the release artifacts.
 
-2. **GitHub CI** -- see `docs/ci-setup.md` for a complete setup guide
-   (fast run on push/PR, full matrix on schedule/manual, badge snippet).
+2. **GitHub CI** -- see `docs/ci_and_dockerized_testing.md` for the workflow
+   reference (manual runs for now; fast run on push/PR and full matrix on
+   schedule/manual once the project is public, badge snippet).
    Run the test suite on push/PR and produce release artifacts so users
    can install git-nest without cloning the repo. Prerequisite: the
    repository must be public to use the free tier without quota

@@ -214,6 +214,28 @@ check_ascii() {
 	return "$found"
 }
 
+# The tool version reported by bin/git-nest version (GIT_NEST_VERSION) must
+# match the newest "## x.y.z" entry in version.md. The two are updated
+# together on every release, so a stale value in either file is a release
+# blocker (see docs/maintainer.md "Keep GIT_NEST_VERSION aligned with
+# README.md, version.md, and release tests").
+check_version_alignment() {
+	_version_file="$REPO_ROOT/version.md"
+	_shell_file="$REPO_ROOT/bin/git_nest.sh"
+	_code_version=$(sed -n 's/^GIT_NEST_VERSION=//p' "$_shell_file" | head -n 1)
+	_doc_version=$(sed -n 's/^## \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' "$_version_file" | head -n 1)
+	if [ -z "$_code_version" ] || [ -z "$_doc_version" ]; then
+		fail_ "could not extract version (code='$_code_version' doc='$_doc_version')"
+		return 1
+	fi
+	if [ "$_code_version" = "$_doc_version" ]; then
+		pass_ "GIT_NEST_VERSION $_code_version matches the newest version.md entry"
+		return 0
+	fi
+	fail_ "GIT_NEST_VERSION=$_code_version does not match the newest version.md entry $_doc_version; update both atomically"
+	return 1
+}
+
 # --- Stats ---
 
 print_stats() {
@@ -261,6 +283,10 @@ case "$(basename -- "$0")" in check.sh)
 
     echo "--- ASCII-only (bin, tests, docs, skills, root markdown) ---"
     check_ascii || rc=1
+    echo ""
+
+    echo "--- Version alignment (GIT_NEST_VERSION vs version.md) ---"
+    check_version_alignment || rc=1
     echo ""
 
     echo "${BOLD}Summary${NC}"

@@ -32,7 +32,7 @@ Branching, committing, and pushing remain normal Git operations inside each repo
 
 ## Manifest
 
-`.gitnest` records repository URLs and exact revisions. The current manifest does not contain pending review state. Only the keys documented in `MANIFEST.md` are recognized; unknown keys are preserved as extension data.
+`.gitnest` records repository URLs and exact revisions. The current manifest does not contain pending review state. Only the keys documented in `manifest.md` are recognized; unknown keys are preserved as extension data.
 
 ## Managed .gitignore Block
 

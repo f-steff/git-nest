@@ -1,0 +1,29 @@
+name: CI (Windows)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit tests + static analysis
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run unit tests and static analysis
+        shell: bash
+        run: sh tests/run-all-tests.sh only 0000,0004
+
+      - name: Upload test results and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-windows
+          path: |
+            run-all-tests-results.md
+            run-all-tests.log

@@ -1,6 +1,7 @@
 #!/bin/sh
 #
-# git-nest 0.8.3
+# git-nest: record and restore reproducible nests of independent Git repositories.
+# https://github.com/f-steff/git-nest
 #
 # Lightweight multi-repository workspace coordination for ordinary Git remotes.
 # A project root repository tracks a manifest of nested subproject repositories,
@@ -31,7 +32,7 @@ MANIFEST_FILE=${GIT_NEST_MANIFEST:-.gitnest}
 CONFIG_FILE=${GIT_NEST_CONFIG:-.gitnest-rc}
 BRANCH_MARKS_FILE=${GIT_NEST_BRANCH_MARKS:-.gitnest-branches}
 PUSH_CANDIDATES_FILE=${GIT_NEST_PUSH_CANDIDATES:-.gitnest-push-candidates}
-GIT_NEST_VERSION=0.8.3
+GIT_NEST_VERSION=0.8.16
 GIT_NEST_LOCK_TIMEOUT_SECONDS=${GIT_NEST_LOCK_TIMEOUT_SECONDS:-10}
 GIT_NEST_DOCTOR_TIMEOUT_SECONDS=${GIT_NEST_DOCTOR_TIMEOUT_SECONDS:-5}
 MANIFEST_SCHEMA_VERSION=1

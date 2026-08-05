@@ -77,7 +77,7 @@ available shells (dash, bash, ash, zsh, mksh, yash).
 These are snapshots from past verification runs. For current per-shell
 results, run the repository's own cross-shell runner:
 `sh tests/docker/run-cross-shell-tests.sh` (see
-`docs/dockerized_testing.md`).
+`docs/ci_and_dockerized_testing.md`).
 
 ### Syntax check (6 source files, 6 shells, 36 tests)
 

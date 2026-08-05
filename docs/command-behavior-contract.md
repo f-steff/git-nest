@@ -37,7 +37,7 @@ Allowed subproject keys are:
 - `revision=<sha>`: exact reproducible commit.
 - `tag=<name>`: optional tag name; requires `revision`.
 
-Only the keys listed above are recognized by git-nest. Unknown keys are preserved as extension data across manifest rewrites, so external tooling can store its own metadata in `.gitnest`; see `docs/MANIFEST.md` for the full format and validation rules.
+Only the keys listed above are recognized by git-nest. Unknown keys are preserved as extension data across manifest rewrites, so external tooling can store its own metadata in `.gitnest`; see `docs/manifest.md` for the full format and validation rules.
 
 Subproject paths in the manifest must be safe relative paths inside the nest. Schema validation rejects a manifest whose subproject path is absolute, escapes the nest with `..`, uses a backslash, or names Git-internal files, so no command clones, checks out, or removes outside the nest root.
 

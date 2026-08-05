@@ -67,7 +67,7 @@
 ### Documentation and survey improvements
   * Removed superseded survey_pull_feature design documents from the repository.
   * Added survey detection of un-initialized submodules with actionable next-step suggestions.
-  * Added CI setup guide (docs/ci-setup.md).
+  * Added CI documentation (docs/ci_and_dockerized_testing.md).
   * Fixed non-ASCII em-dash in docs/examples.md.
 
 ## 0.8.8 - 2026-07-25
@@ -178,6 +178,7 @@
 - Renamed the command surface from `git-lego` / `git lego` to `git-nest` / `git nest`.
 - Renamed project-owned state from `.gitlego` and `.gitlego-rc` to `.gitnest` and `.gitnest-rc`.
 - Renamed implementation, schema, documentation, tests, and the portable AI skill to use the `git-nest` name.
+- Renamed the command output JSON Schema from `schemas/git-lego-output-v1.schema.json` to `schemas/git-nest-output-v1.schema.json` (the `version` field and content contract are unchanged and backward-compatible).
 - Preserved the historical `git-stack` name and stack/module terminology in pre-0.5.0 version history entries.
 - Added the `\\_oOO_//` nest-and-eggs logo after the name and version in version command output, keeping the first two fields script-friendly.
 - Added platform-specific installation and invocation guidance for Windows, Linux, and macOS.
@@ -255,7 +256,7 @@ Polish and hardening release. No breaking changes.
 
 ## 0.5.1 - 2026-07-03
 
-- Added mandatory `.gitlego` manifest schema `version=1` and `MANIFEST.md`.
+- Added mandatory `.gitlego` manifest schema `version=1` and `manifest.md`.
 - Added command-scoped `.gitlego.lock` protection for manifest writers.
 - Hardened auto-finalize ticket matching, base revision resolution, tag drift checks, and `.gitignore` deduplication.
 - Added README security considerations.

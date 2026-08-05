@@ -50,7 +50,7 @@ Because `.gitnest` is a plain-text, human-readable file, every step the tool per
 The runtime requirements above apply, plus a shell that can run the test
 suite (`sh tests/run-all-tests.sh`). The optional Docker cross-shell matrix
 needs a local Docker install -- see
-[`docs/dockerized_testing.md`](docs/dockerized_testing.md) and
+[`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md) and
 [`docs/maintainer.md`](docs/maintainer.md) for the full development setup.
 Docker is only needed to verify portability across many shells; the regular
 suite runs without it.
@@ -184,7 +184,7 @@ Subprojects are ignored by the outer Git repository so their files do not get ac
 
 `.gitnest` is a plain-text, INI-like format: bracketed section headers, one `key=value` pair per line, blank lines and `#`-prefixed comment lines ignored anywhere. A `[project]` section with `version=1` is required, followed by one `[subproject "<path>"]` section per managed subproject. The `revision` key in a subproject is the reproducibility contract: it pins the exact commit another machine restores.
 
-See [`docs/MANIFEST.md`](docs/MANIFEST.md) for the complete key reference and the validation rules (`validate_manifest_schema`). In brief: `repo` is required per subproject, `target_branch` and `revision` are the usual recorded state, and `clone`/`depth`/`tag` are optional refinements. Keys not listed there are preserved verbatim across manifest rewrites so external tooling can add its own extension data (see [`docs/technical_docs.md`](docs/technical_docs.md) for the exact preservation contract).
+See [`docs/manifest.md`](docs/manifest.md) for the complete key reference and the validation rules (`validate_manifest_schema`). In brief: `repo` is required per subproject, `target_branch` and `revision` are the usual recorded state, and `clone`/`depth`/`tag` are optional refinements. Keys not listed there are preserved verbatim across manifest rewrites so external tooling can add its own extension data (see [`docs/technical_docs.md`](docs/technical_docs.md) for the exact preservation contract).
 
 ## Typical Workflows
 
@@ -430,6 +430,17 @@ git-nest verify
 
 For a copied-manifest startup, put `.gitnest` in an empty directory and run `git-nest restore`.
 
+### Continuous Integration
+
+CI runs on GitHub Actions as three manual-only workflows: the full test suite
+on Linux, plus a unit-test and static-analysis subset on macOS and Windows.
+See [`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md)
+for the workflow reference and how to trigger a run.
+
+[![CI (Linux)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml)
+[![CI (macOS)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml)
+[![CI (Windows)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml)
+
 ## Security Considerations
 
 `.gitnest` contains repository URLs that `git-nest restore` will clone from. Review manifest changes with the same care as dependency files such as `package.json`, `go.mod`, or `requirements.txt`.
@@ -456,7 +467,7 @@ git-nest ships as plain POSIX shell, split by responsibility rather than as one 
 | `bin/.shellcheckrc` | ShellCheck configuration and the small set of justified, commented suppressions for this codebase. |
 | `docs/` | User-facing and technical documentation: the behavior contract, technical notes, exit codes, and maintainer guidance. |
 | `docs/command-behavior-contract.md` | The behavior contract: what every command does and guarantees. |
-| `docs/MANIFEST.md` | Reference specification for the `.gitnest` manifest format (INI schema, keys, validation rules). |
+| `docs/manifest.md` | Reference specification for the `.gitnest` manifest format (INI schema, keys, validation rules). |
 | `docs/howto.md` | Step-by-step recipes for multi-step scenarios (e.g. moving a subproject between nests). |
 | `schemas/` | JSON output schema (`git-nest-output-v1.schema.json`) used by `--json`/`--json-pretty` output. |
 | `skills/git-nest/SKILL.md` | The portable AI-agent usage skill shipped to projects that consume git-nest (see "AI User Skill" below). |
@@ -558,7 +569,7 @@ TEST_WATCHDOG_SECONDS=300 sh tests/run-all-tests.sh
 
 - [`docs/command-behavior-contract.md`](docs/command-behavior-contract.md) --
   the authoritative behavior contract for every command.
-- [`docs/MANIFEST.md`](docs/MANIFEST.md) -- the `.gitnest` format and its
+- [`docs/manifest.md`](docs/manifest.md) -- the `.gitnest` format and its
   validation rules.
 - [`docs/examples.md`](docs/examples.md) -- walkthroughs of the workflows
   above with real commands and output.
@@ -568,8 +579,8 @@ TEST_WATCHDOG_SECONDS=300 sh tests/run-all-tests.sh
   architecture, the manifest cache, concurrency, and the preservation
   contract.
 - [`docs/exit-codes.md`](docs/exit-codes.md) -- the shared exit-code table.
-- [`docs/dockerized_testing.md`](docs/dockerized_testing.md) -- the Docker
-  cross-shell test runner.
+- [`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md) --
+  the GitHub Actions workflows and the Docker cross-shell test runner.
 - [`tests/tests.md`](tests/tests.md) and
   [`tests/unit-tests/unit-tests.md`](tests/unit-tests/unit-tests.md) -- the
   test suites.
