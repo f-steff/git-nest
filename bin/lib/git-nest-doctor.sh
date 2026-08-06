@@ -453,21 +453,21 @@ survey_collect_rows() {
 	# be invisible without this pass.
 	if [ -f .gitmodules ]; then
 		git config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null |
-		while IFS=' ' read -r scr_key scr_subm_path; do
-			[ -n "$scr_subm_path" ] || continue
-			# Already classified by the filesystem scan -- skip to avoid
-			# duplicates.
-			if grep -qxF "$scr_subm_path" "$scr_boundaries" >/dev/null 2>&1; then
-				continue
-			fi
-			# Only report un-initialized submodules (no .git on disk).
-			if [ ! -e "$scr_subm_path/.git" ]; then
-				scr_subm_q=$(shell_quote "$scr_subm_path")
-				printf 'S\t%s\tsubmodule\t-\t-\t-\tsubmodule %s is not checked out; run git submodule update --init %s first, then re-run survey\n' \
-					"$scr_subm_path" "$scr_subm_q" "$scr_subm_q" >>"$scr_rows"
-				printf '%s\n' "$scr_subm_path" >>"$scr_boundaries"
-			fi
-		done
+			while IFS=' ' read -r scr_key scr_subm_path; do
+				[ -n "$scr_subm_path" ] || continue
+				# Already classified by the filesystem scan -- skip to avoid
+				# duplicates.
+				if grep -qxF "$scr_subm_path" "$scr_boundaries" >/dev/null 2>&1; then
+					continue
+				fi
+				# Only report un-initialized submodules (no .git on disk).
+				if [ ! -e "$scr_subm_path/.git" ]; then
+					scr_subm_q=$(shell_quote "$scr_subm_path")
+					printf 'S\t%s\tsubmodule\t-\t-\t-\tsubmodule %s is not checked out; run git submodule update --init %s first, then re-run survey\n' \
+						"$scr_subm_path" "$scr_subm_q" "$scr_subm_q" >>"$scr_rows"
+					printf '%s\n' "$scr_subm_path" >>"$scr_boundaries"
+				fi
+			done
 	fi
 
 	rm -f "$scr_raw" "$scr_boundaries"

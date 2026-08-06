@@ -9,30 +9,69 @@ how to run everything locally. For the test suites themselves, see
 
 ## Continuous Integration (GitHub Actions)
 
-Three manual-only workflows live under `.github/workflows/`:
+Six manual-only workflows live under `.github/workflows/`, two per target: a
+**fast** one and a **full** one. The fast workflows run the same platform-focused
+set on every target; the full workflows run the whole suite.
 
 | File | Runner | What it runs | Approx. time |
 |------|--------|--------------|-------------|
-| `ci-linux.yml` | `ubuntu-latest` | Full test suite (all integration, unit, and static-analysis tests) | ~60 min |
-| `ci-macos.yml` | `macos-latest` | Unit tests + static analysis (`only 0000,0004`) | ~5 min |
-| `ci-windows.yml` | `windows-latest` | Unit tests + static analysis (`only 0000,0004`) | ~10 min |
+| `ci-linux-fast.yml` | `ubuntu-latest` | Platform-focused set (`only 0000,0004,0100,2090,3000,3010,3020,3030`) | ~1 min |
+| `ci-linux.yml` | `ubuntu-latest` | Full test suite | ~2.5 min |
+| `ci-macos-fast.yml` | `macos-latest` | Platform-focused set (`only 0000,0004,0100,2090,3000,3010,3020,3030`) | ~1.5 min |
+| `ci-macos.yml` | `macos-latest` | Full test suite | ~6 min |
+| `ci-windows-fast.yml` | `windows-latest` | Platform-focused set (`only 0000,0004,0100,2090,3000,3010,3020,3030`) | ~4 min |
+| `ci-windows.yml` | `windows-latest` | Full test suite | ~40 min |
 
-All three use the `workflow_dispatch` trigger, so they run only when started
-manually -- not on every push or pull request. This keeps CI usage
-deliberate and low-cost while the project is not yet public.
+Timings are from measured runs on GitHub-hosted runners (2026-08).
 
-### Why Linux runs everything
+### Why the fast set is platform-focused
 
-The full suite is Linux-only because it is the platform where the whole
-matrix is exercised end to end. macOS and Windows run the fast subset (unit
-tests and static analysis) to catch platform-specific breakage in the core
-shell code without the cost and runtime of the full suite on every OS.
+Windows process startup is roughly an order of magnitude slower than Linux
+(~40 ms per spawned process versus ~1 ms), and every git-nest command spawns
+many Git and shell processes. The full suite therefore takes ~40 minutes on
+Windows but only ~2.5 minutes on Linux, even though it runs the identical
+commands. Running the whole suite on Windows and macOS mostly re-verifies
+behavior that Linux already covers, at 10-20x the cost.
+
+The fast workflows therefore run the set of tests that can genuinely differ
+per platform:
+
+- `0000` unit tests and `0004` static analysis -- the core, run everywhere.
+- `3000` busybox compatibility, `3010` completion generation, `3020` git
+  invocation, and `3030` launcher smoke tests -- the platform tests, covering
+  the `.bat`/`.ps1` launchers and shell-specific completions.
+- `0100` export formats -- tar/zip/Python availability differs per platform.
+- `2090` paths with spaces -- explicitly Windows-relevant path handling.
+
+The full workflows exist for pre-release verification and run the entire
+suite on all three targets when you choose to run them.
+
+### Measured Windows startup overhead
+
+The ~19x gap is process startup, not git-nest behavior. Measured on
+GitHub-hosted runners (2026-08) running the identical full suite:
+
+| Metric | Linux | macOS | Windows |
+|--------|-------|-------|---------|
+| Full suite wall time | ~2.5 min | ~6 min | ~40 min |
+| git-nest invocations | 550 | - | 548 |
+| Average per invocation | 0.21 s | - | 4.07 s |
+| Slowest invocation | ~3 s | - | ~43 s |
+
+A direct micro-benchmark on a Windows machine: 100 invocations of
+`git --version` (each spawning one native git.exe) take about 4 seconds,
+versus well under a second on Linux. Because the full suite issues several
+hundred git-nest commands, each spawning many git processes, the overhead
+accumulates. This is inherent to Windows process creation and the MSYS2
+translation layer; it is not something the test suite can optimize away.
+Prefer the fast workflows on Windows and macOS for routine checks, and keep
+the full workflows for manual pre-release runs.
 
 ### Running a workflow
 
 1. Open the repository's **Actions** tab on GitHub.
 2. Select the workflow you want to run in the left sidebar (for example
-   "CI (Linux)").
+   "CI (Linux fast)").
 3. Click **Run workflow**, pick the branch, and confirm.
 
 Each workflow uploads `run-all-tests-results.md` and `run-all-tests.log` as a
@@ -46,8 +85,11 @@ reflects the most recent manual run of that workflow (it shows "no status"
 until a workflow has run at least once):
 
 ```markdown
+[![CI (Linux fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml)
 [![CI (Linux)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml)
+[![CI (macOS fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml)
 [![CI (macOS)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml)
+[![CI (Windows fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml)
 [![CI (Windows)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml)
 ```
 
@@ -67,7 +109,7 @@ on:
   workflow_dispatch:
 ```
 
-To broaden the macOS or Windows subset, change the `only` list, for example:
+To broaden a fast-workflow subset, change the `only` list, for example:
 
 ```sh
 sh tests/run-all-tests.sh only 0000,0004,2000,2010,2040,2060,2070,2080,3000,3010,3020,3030
@@ -207,3 +249,11 @@ The same commands run locally on any POSIX-like shell:
 | Windows (cmd.exe) | `tests\run-all-tests.bat` |
 | Fast subset (unit + static analysis) | `sh tests/run-all-tests.sh only 0000,0004` |
 | Cross-shell Docker matrix | `sh tests/docker/run-cross-shell-tests.sh` |
+
+### Local timing
+
+Timings depend on the machine. As a rough guide, measured on a developer
+laptop (2026-08): the fast subset takes about a minute, and the full suite
+takes roughly 45 minutes on Windows (Git Bash) and 5-10 minutes on Linux or
+macOS. The CI times in the workflow table above are the best reference since
+they come from consistent, dedicated runners.

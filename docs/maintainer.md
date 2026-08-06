@@ -14,6 +14,14 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
 - Keep manifest rewrites deterministic and readable.
 - Do not add mandatory provider integration or automatic PR creation.
 - Keep hooks opt-in; hooks may run `git-nest snapshot --quiet` or reproducibility checks but must not push automatically.
+- **Keep the CI fast-set list in sync.** The fast workflows
+  (`.github/workflows/ci-*-fast.yml`) run a fixed platform-focused subset
+  (`only 0000,0004,0100,2090,3000,3010,3020,3030`) because the full suite is
+  ~19x slower on Windows than on Linux. When you add a test, decide whether
+  it belongs in that subset and, if so, update all three `ci-*-fast.yml`
+  files, the "Platform-Focused CI Set" section in `tests/tests.md`, and the
+  workflow table in `docs/ci_and_dockerized_testing.md` together. See
+  `tests/tests.md` for the guidance on which tests belong in the fast set.
 - **Keep all files plain ASCII** (code and documentation alike). No em/en dashes, curly quotes, arrows, box-drawing characters, or other non-ASCII punctuation. Use `--` for em-dash, `-` for en-dash, `->` for arrows, and plain `-`/`=` characters for divider lines. Straight quotes only (`'` and `"`), never curly (`'` `'` `"` `"`). This keeps diffs clean across editors/terminals with inconsistent Unicode rendering and avoids encoding surprises on Windows. This is enforced automatically: `check_ascii` in `tests/integration-tests/check.sh`, run as a step of `tests/integration-tests/test_0004_static_code_analysis.sh`, fails the suite on any non-ASCII character under `bin`, `tests`, `docs`, `skills`, or root-level `*.md` files. To check manually: `grep -rPn "[^\x00-\x7F]" bin tests docs skills *.md` (should return nothing). This does not affect the optional ANSI color escapes in `--help` output (`help_setup_colors`): those are plain ASCII bytes (ESC + digits/letters), already gated to TTY-only output and disabled by `NO_COLOR`/`GIT_NEST_NO_COLOR`/`TERM=dumb`, so they are unrelated to this rule.
 
 ## Change Workflow

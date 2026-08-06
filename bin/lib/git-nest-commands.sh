@@ -345,7 +345,7 @@ usage() {
 	help_detail "--dry-run reports planned changes without writing; --json/--json-pretty print machine output."
 
 	help_command_group "Tooling"
-		help_command "completion <bash|zsh|fish|yash|powershell>"
+	help_command "completion <bash|zsh|fish|yash|powershell>"
 	help_text "Print a shell completion script to stdout."
 	help_command "version"
 	help_text "Print the git-nest version."
@@ -750,20 +750,20 @@ command_help() {
 		help_opposite "hooks-install installs the managed local hooks."
 		;;
 	foreach)
-	help_command "foreach [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
-	help_text "Run a command in every checked-out subproject in the current nest."
-	help_detail "The command runs inside each subproject checkout."
-	help_detail "--include-root-first runs the command on the nest root before subprojects."
-	help_detail "--include-root-last runs the command on the nest root after subprojects."
-	help_detail "--only-nested limits execution to subprojects that are themselves git-nest workspaces."
-	help_detail "--no-nested excludes nested nests, running only in plain subproject checkouts."
-	help_detail "The -- separator is optional. Omit it for ordinary commands: git-nest foreach git status."
-	help_detail "Use -- when the command starts with a word that could be confused with an option."
-	help_heading "Examples:"
-	help_example "git-nest foreach git status --short"
-	help_example "git-nest foreach -- sh -c 'git rev-parse --show-toplevel'"
-	help_example "git-nest foreach --include-root-last -- git add -A && git commit -m 'batch commit'"
-	help_example "git-nest foreach --only-nested -- git status"
+		help_command "foreach [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
+		help_text "Run a command in every checked-out subproject in the current nest."
+		help_detail "The command runs inside each subproject checkout."
+		help_detail "--include-root-first runs the command on the nest root before subprojects."
+		help_detail "--include-root-last runs the command on the nest root after subprojects."
+		help_detail "--only-nested limits execution to subprojects that are themselves git-nest workspaces."
+		help_detail "--no-nested excludes nested nests, running only in plain subproject checkouts."
+		help_detail "The -- separator is optional. Omit it for ordinary commands: git-nest foreach git status."
+		help_detail "Use -- when the command starts with a word that could be confused with an option."
+		help_heading "Examples:"
+		help_example "git-nest foreach git status --short"
+		help_example "git-nest foreach -- sh -c 'git rev-parse --show-toplevel'"
+		help_example "git-nest foreach --include-root-last -- git add -A && git commit -m 'batch commit'"
+		help_example "git-nest foreach --only-nested -- git status"
 		;;
 	foreach-modified)
 		help_command "foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
@@ -844,7 +844,7 @@ command_help() {
 		help_opposite "absorb brings outer-repo files into the nest as a subproject."
 		;;
 	completion)
-	help_command "completion <bash|zsh|fish|yash|powershell>"
+		help_command "completion <bash|zsh|fish|yash|powershell>"
 		help_text "Print a shell completion script to stdout."
 		help_heading "Examples:"
 		help_example "git-nest completion bash > ~/.local/share/bash-completion/completions/git-nest"
@@ -3327,7 +3327,10 @@ run_foreach() {
 				REPO_PATH=$path \
 				REPO_PROJECT=$path \
 				"$@"
-		) || { rc=$?; [ "$include_root_last" -eq 1 ] || break; }
+		) || {
+			rc=$?
+			[ "$include_root_last" -eq 1 ] || break
+		}
 	done <"$subprojects_tmp"
 
 	if [ "$include_root_last" -eq 1 ]; then
@@ -4392,7 +4395,7 @@ _GIT_NEST_emit_directive() {
 # Return 0 if argument is a flag that takes a value.
 _GIT_NEST_opt_takes_arg() {
 	case "$1" in
-	--output|--format|--clone-mode|--max-depth|--exclude|--include|--timeout|--since|--until|--max-count|--subproject|--branch|--url|--remote|--target-head|--revision|--tag|--message|--only|--depth) return 0 ;;
+	--output | --format | --clone-mode | --max-depth | --exclude | --include | --timeout | --since | --until | --max-count | --subproject | --branch | --url | --remote | --target-head | --revision | --tag | --message | --only | --depth) return 0 ;;
 	esac
 	return 1
 }
@@ -4400,16 +4403,29 @@ _GIT_NEST_opt_takes_arg() {
 # Complete a value for the given flag.
 _GIT_NEST_complete_opt_value() {
 	case "$1" in
-	--format)     _GIT_NEST_emit_value tar.gz "gzip tar archive"; _GIT_NEST_emit_value zip "zip archive"; _GIT_NEST_emit_value dir "directory"; _GIT_NEST_emit_directive no-file ;;
-	--clone-mode) _GIT_NEST_emit_value full  "full clone"; _GIT_NEST_emit_value partial "partial clone"; _GIT_NEST_emit_value shallow "shallow clone"; _GIT_NEST_emit_directive no-file ;;
-	--max-depth|--depth) _GIT_NEST_emit_directive no-file ;;
-	--exclude)    _GIT_NEST_emit_directive no-file ;;
-	--include|--output) _GIT_NEST_emit_directive file ;;
-	--timeout)    _GIT_NEST_emit_directive no-file ;;
-	--since|--until|--branch|--target-head|--revision|--tag) _GIT_NEST_emit_directive no-file ;;
-	--url|--remote) _GIT_NEST_emit_directive no-file ;;
-	--message|--only) _GIT_NEST_emit_directive no-file ;;
-	--subproject) _GIT_NEST_emit_subprojects; _GIT_NEST_emit_directive no-file ;;
+	--format)
+		_GIT_NEST_emit_value tar.gz "gzip tar archive"
+		_GIT_NEST_emit_value zip "zip archive"
+		_GIT_NEST_emit_value dir "directory"
+		_GIT_NEST_emit_directive no-file
+		;;
+	--clone-mode)
+		_GIT_NEST_emit_value full "full clone"
+		_GIT_NEST_emit_value partial "partial clone"
+		_GIT_NEST_emit_value shallow "shallow clone"
+		_GIT_NEST_emit_directive no-file
+		;;
+	--max-depth | --depth) _GIT_NEST_emit_directive no-file ;;
+	--exclude) _GIT_NEST_emit_directive no-file ;;
+	--include | --output) _GIT_NEST_emit_directive file ;;
+	--timeout) _GIT_NEST_emit_directive no-file ;;
+	--since | --until | --branch | --target-head | --revision | --tag) _GIT_NEST_emit_directive no-file ;;
+	--url | --remote) _GIT_NEST_emit_directive no-file ;;
+	--message | --only) _GIT_NEST_emit_directive no-file ;;
+	--subproject)
+		_GIT_NEST_emit_subprojects
+		_GIT_NEST_emit_directive no-file
+		;;
 	esac
 }
 
@@ -4427,7 +4443,7 @@ _GIT_NEST_complete() {
 	fi
 
 	_cmd="$1"
-	_cmd_ai=$((_cursor_index - 1))   # 0-based index within this command's args
+	_cmd_ai=$((_cursor_index - 1)) # 0-based index within this command's args
 	_prev=""
 
 	# Determine previous word (the word just before the one being completed)
@@ -4655,7 +4671,7 @@ _GIT_NEST_complete_for() {
 		fi
 		_GIT_NEST_emit_directive no-file
 		;;
-	remove|rm)
+	remove | rm)
 		if [ "$_ai" -eq 0 ]; then
 			_GIT_NEST_emit_subprojects
 			_GIT_NEST_emit_option --force "bypass metadata conflicts"
@@ -4665,7 +4681,7 @@ _GIT_NEST_complete_for() {
 		fi
 		_GIT_NEST_emit_directive no-file
 		;;
-	move|mv)
+	move | mv)
 		if [ "$_ai" -eq 0 ]; then
 			_GIT_NEST_emit_subprojects
 			_GIT_NEST_emit_option --force "bypass metadata conflicts"
@@ -4690,7 +4706,11 @@ _GIT_NEST_complete_for() {
 		0) for _v in get set list unset; do _GIT_NEST_emit_value "$_v" "config action"; done ;;
 		1) _GIT_NEST_emit_subprojects ;;
 		2) _GIT_NEST_emit_value "clone-mode" "configuration key" ;;
-		3) _GIT_NEST_emit_value full "full clone"; _GIT_NEST_emit_value partial "partial clone"; _GIT_NEST_emit_value shallow "shallow clone" ;;
+		3)
+			_GIT_NEST_emit_value full "full clone"
+			_GIT_NEST_emit_value partial "partial clone"
+			_GIT_NEST_emit_value shallow "shallow clone"
+			;;
 		esac
 		_GIT_NEST_emit_directive no-file
 		;;
@@ -4702,7 +4722,7 @@ _GIT_NEST_complete_for() {
 		_GIT_NEST_emit_value "--" "end of options"
 		_GIT_NEST_emit_directive no-file
 		;;
-	foreach-modified|foreach-clean)
+	foreach-modified | foreach-clean)
 		_GIT_NEST_emit_option --continue-on-error "keep iterating after failures"
 		_GIT_NEST_emit_option --porcelain "stable fixed-column records"
 		_GIT_NEST_emit_option --json "print JSON"
@@ -4731,10 +4751,10 @@ _GIT_NEST_complete_for() {
 		_GIT_NEST_emit_option --dry-run "show branches that would be removed"
 		_GIT_NEST_emit_directive no-file
 		;;
-	hooks-install|hooks-uninstall)
+	hooks-install | hooks-uninstall)
 		_GIT_NEST_emit_directive no-file
 		;;
-	__complete|__owning-manifest|__hook)
+	__complete | __owning-manifest | __hook)
 		_GIT_NEST_emit_directive no-file
 		;;
 	esac
@@ -4846,10 +4866,10 @@ GENEOF
 cmd_completion() {
 	[ $# -eq 1 ] || usage_error "usage: git-nest completion <bash|zsh|fish|yash|powershell>"
 	case "$1" in
-	bash)       completion_bash ;;
-	zsh)        completion_zsh ;;
-	fish)       completion_fish ;;
-	yash)       completion_yash ;;
+	bash) completion_bash ;;
+	zsh) completion_zsh ;;
+	fish) completion_fish ;;
+	yash) completion_yash ;;
 	powershell) completion_powershell ;;
 	*) usage_error "unknown completion shell: $1" ;;
 	esac

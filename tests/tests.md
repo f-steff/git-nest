@@ -94,6 +94,41 @@ ID blocks: 0010-0999 command, 1000-1999 unit, 2000-2999 contract,
 (unit-suite bridge) and `0004` (static code analysis) are reserved
 exceptions, and a `0205`-style insertion is allowed between blocks.
 
+## Platform-Focused CI Set
+
+The CI fast workflows (see `docs/ci_and_dockerized_testing.md`) run a fixed
+subset of tests on every target:
+
+```
+only 0000,0004,0100,2090,3000,3010,3020,3030
+```
+
+This set exists because Windows process startup is roughly an order of
+magnitude slower than Linux, so the full suite takes about 19x longer on
+Windows (~40 min) than on Linux (~2.5 min) while re-verifying the same
+behavior. The fast set keeps the tests that can genuinely differ per
+platform: unit tests, static analysis, the platform tests (launchers,
+completions, git invocation), export formats (tar/zip/Python availability),
+and paths-with-spaces.
+
+**When you add a new test, decide which set it belongs to and update the
+workflow files and this list accordingly:**
+
+- A test that exercises something platform-specific -- a launcher (`.bat`,
+  `.ps1`), a shell completion, a tool whose availability or behavior differs
+  by OS (tar, zip, Python, busybox), or path handling that differs on
+  Windows -- must be added to the fast set in
+  `.github/workflows/ci-*-fast.yml` (all three) and to the `only` list
+  documented here and in `docs/ci_and_dockerized_testing.md`.
+- A test that verifies command behavior, contracts, symmetry, or workflows
+  identical across platforms belongs in the full suite only; it still runs
+  on Windows and macOS via the full workflows, which are manual-only and
+  intended for pre-release verification.
+
+If you change the fast set, update all three places together: the three
+`ci-*-fast.yml` workflow files, this section, and the workflow table in
+`docs/ci_and_dockerized_testing.md`.
+
 ## Running Tests
 
 ```sh

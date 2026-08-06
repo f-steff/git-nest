@@ -169,7 +169,7 @@ acquire_manifest_lock() {
 # Escape a stream on stdin into a JSON string body (quotes, backslashes, and
 # control characters), used by json_string for safe machine output.
 json_escape() {
-    command awk '
+	command awk '
         BEGIN { ORS="" }
         {
             for (i = 1; i <= length($0); i++) {

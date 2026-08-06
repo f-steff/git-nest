@@ -1,4 +1,4 @@
-name: CI (Windows)
+name: CI (macOS fast)
 
 on:
   workflow_dispatch:
@@ -8,22 +8,21 @@ permissions:
 
 jobs:
   test:
-    name: Full test suite
-    runs-on: windows-latest
-    timeout-minutes: 120
+    name: Unit tests + static analysis
+    runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
 
-      - name: Run full test suite
-        shell: bash
-        run: sh tests/run-all-tests.sh
+      - name: Run platform-focused test set
+        run: sh tests/run-all-tests.sh only 0000,0004,0100,2090,3000,3010,3020,3030
 
       - name: Upload test results and log
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: test-results-windows
+          name: test-results-macos-fast
           path: |
             run-all-tests-results.md
             run-all-tests.log

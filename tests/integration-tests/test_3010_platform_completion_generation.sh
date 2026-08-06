@@ -46,7 +46,10 @@ assert_file_contains git-nest.ps1 "__complete"
 # --- Syntax checks ---
 
 bash -n git-nest.bash
-sh -n git-nest.yash
+
+if command -v yash >/dev/null 2>&1; then
+    yash -n git-nest.yash
+fi
 
 if command -v zsh >/dev/null 2>&1; then
     zsh -n git-nest.zsh
