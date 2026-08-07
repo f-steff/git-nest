@@ -8,9 +8,11 @@
 # while this script provides the command behavior for initializing, restoring,
 # snapshotting, and verifying that workspace state.
 #
-# This file is the shared shell implementation sourced by bin/git-nest.
-# The Windows wrapper reaches this code indirectly by launching bin/git-nest
-# through Git Bash.
+# This file is the shared shell implementation. bin/git-nest sources it and
+# then dispatches into git_nest_main; the Windows launchers (git-nest.bat /
+# git-nest.ps1) forward straight to this file through Git Bash thanks to the
+# self-dispatch guard at the bottom, so the extra bin/git-nest hop is not
+# needed on Windows.
 #
 # Command implementations live in bin/lib/*.sh and are sourced below so the
 # PATH-facing entrypoint stays thin while the library tree keeps each module
@@ -59,3 +61,12 @@ EXIT_USAGE=2
 EXIT_PRECONDITION=3
 EXIT_LOCK=4
 EXIT_GIT=5
+
+# Self-dispatch when executed directly (not sourced). bin/git-nest sources
+# this file and then calls git_nest_main itself; the Windows launchers run
+# this file directly through Git Bash, so they need this guard to dispatch.
+# When this file is sourced, $0 is the sourcing script and this block is
+# skipped.
+if [ "$(basename -- "$0")" = "git_nest.sh" ]; then
+	git_nest_main "$@"
+fi

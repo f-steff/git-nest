@@ -1,0 +1,40 @@
+; filter_lines -- small AmigaShell line filter
+;
+; Reads a text file line by line, keeps lines that do NOT contain a given
+; substring, and writes them to an output file. Used by bin/uninstall to
+; strip the git-nest PATH entry from S:Shell-Startup.
+;
+; Usage:  execute filter_lines <input> <output> <substring-to-remove>
+
+.key INPUT=""
+.key OUTPUT=""
+.key NEEDLE=""
+
+if "$INPUT" = "" OR "$OUTPUT" = "" OR "$NEEDLE" = ""
+    echo "filter_lines: usage: execute filter_lines <input> <output> <needle>"
+    failat 5
+endif
+
+; Iterate over the input lines using a number counter. AmigaShell loops
+; are limited, so a generous upper bound is used; the file is small.
+set n 0
+set line 0
+
+loop
+    set line 1
+    skip "$INPUT" $n 1
+    if WARN
+        break
+    endif
+    ; Read the current line into a temp file then inspect it.
+    skip "$INPUT" $n 1 > "T:fl.line"
+    search "T:fl.line" "$NEEDLE" quiet
+    if WARN
+        ; No match: keep this line.
+        type "T:fl.line" >> "$OUTPUT"
+    endif
+    delete "T:fl.line" quiet
+    set n `expr $n + 1`
+endloop
+
+exit 0

@@ -3,5 +3,12 @@ run-all-tests-results.md
 run-all-tests.log
 .gitnest-recovery-*/
 
+# Generated packaging output (assemble.sh, generate-docs.sh, generate-amigaguide.sh).
+dist/
+.docs-gen.*/
+
+# Personal, uncommitted investigation notes (distribution, packaging, etc.).
+temp-doc/
+
 # Installed copy of the external POSIX shell skill (see .agents/skills/posix-shell/SKILL.md).
 .agents/skills/posix-shell/source/

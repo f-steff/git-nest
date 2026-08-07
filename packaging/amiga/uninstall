@@ -1,0 +1,43 @@
+; git-nest uninstaller for AmigaOS (AmigaShell)
+;
+; Removes the git-nest installation made by bin/install and removes the
+; PATH entry from S:Shell-Startup.
+
+.key DEST="SYS:Utilities/git-nest"
+
+echo "Removing git-nest from $DEST"
+
+; Remove the payload directory.
+if EXISTS "$DEST"
+    delete "$DEST/#?" all quiet
+    delete "$DEST" quiet
+    echo "  removed $DEST"
+else
+    echo "  $DEST not found; nothing to remove"
+endif
+
+; Remove the PATH entry from S:Shell-Startup. AmigaShell has no stream
+; editor, so this is a best-effort rewrite: read the file line by line,
+; keep lines that do not mention the install path, write them back.
+if EXISTS "S:Shell-Startup"
+    echo "; rebuilding S:Shell-Startup without the git-nest PATH entry"
+    set tmp "T:Shell-Startup.new"
+    delete "$tmp" quiet
+    ; Copy the original for a manual fallback.
+    copy "S:Shell-Startup" "T:Shell-Startup.old" quiet
+    ; Line-by-line filter is done by a small companion script shipped in
+    ; this package (filter_lines); it keeps everything except the
+    ; Utilities/git-nest path line.
+    execute "`dir`/filter_lines" "S:Shell-Startup" "$tmp" "Utilities/git-nest"
+    if NOT WARN
+        copy "$tmp" "S:Shell-Startup" quiet
+        delete "$tmp" quiet
+        echo "  removed PATH entry from S:Shell-Startup"
+    else
+        echo "  could not rewrite S:Shell-Startup; a backup is at T:Shell-Startup.old"
+    endif
+endif
+
+echo "git-nest uninstalled."
+
+exit 0

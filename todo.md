@@ -62,13 +62,31 @@ the stated trigger condition actually occurs in practice.
   - Pros: native cross-compilation for Windows/Linux/macOS without Git
     Bash; typed data structures and proper JSON; goroutines for
     concurrent subproject operations (a huge win for `restore`/`foreach`
-    with 100+ subprojects); static binary distribution.
+    with 100+ subprojects); static binary distribution; eliminates the
+    Windows process-startup overhead that makes the shell test suite
+    ~19x slower than on Linux.
   - Cons: adds a build step and Go toolchain requirement; loses the
     edit-and-run iteration loop; `go-git` credential/transport handling
     may differ from system `git`; the tool's simplicity is a feature.
   - For the 0.x lifetime, keep shell and invest in module splits
     (`lib/`) and ShellCheck. The `--jobs` and awk-removal items below
     may accelerate this decision.
+  - Distribution impact if ported: per-target binaries replace the
+    universal shell tarball (GOOS/GOARCH matrix: linux/amd64+arm64,
+    darwin/amd64+arm64, windows/amd64, optional windows/arm64). Code
+    signing becomes mandatory on two platforms: Authenticode for
+    Windows (Azure Trusted Signing or OV/EV certificate, SmartScreen)
+    and Apple Developer ID + notarization/stapling for macOS
+    ($99/year). Linux needs none (distro repos carry trust). Every
+    package format (brew, Scoop, Winget, Chocolatey, APT, RPM, AUR,
+    Nix, Snap) gains per-arch artifacts and platform signing; see the
+    distribution investigation notes for the per-target table.
+  - CI-agent impact if ported: a single static binary is trivially
+    installed on runners (no interpreter, no MSYS layer, and the
+    Windows startup gap largely disappears); Windows agents still
+    benefit from Authenticode signing for corporate policies, macOS
+    agents want a notarized artifact if it doubles as the end-user
+    binary, and digest-pinned Docker images stay the Linux pattern.
 
 - **Architecture diagram** (`docs/architecture.md`) -- an ASCII or
   Mermaid diagram showing module relationships, data flow for key
