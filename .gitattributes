@@ -9,6 +9,8 @@
 bin/git-nest text eol=lf
 bin/git_nest.sh text eol=lf
 bin/git-nest.ps1 text eol=lf
+bin/install.sh text eol=lf
+bin/uninstall.sh text eol=lf
 
 # AI skills are shell-facing text; keep them LF on all platforms.
 */SKILL.md text eol=lf
@@ -18,3 +20,10 @@ bin/git-nest.ps1 text eol=lf
 # Batch files are intentionally CRLF for cmd.exe.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Distribution packaging files: extensionless AmigaShell scripts, Docker
+# images, and CI workflows are all LF text.
+packaging/amiga/* text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
