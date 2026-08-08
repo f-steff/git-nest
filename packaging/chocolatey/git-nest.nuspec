@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- git-nest Chocolatey package. The version and the release URL/checksum
+     are injected by the release workflow at pack time (see
+     scripts/package/release.sh). -->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>git-nest</id>
+    <version>__VERSION__</version>
+    <title>git-nest</title>
+    <authors>f-steff</authors>
+    <owners>f-steff</owners>
+    <license type="expression">MIT</license>
+    <projectUrl>https://github.com/f-steff/git-nest</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/f-steff/git-nest/main/docs/icon.png</iconUrl>
+    <description>Manage many independent Git repositories as one cohesive project - no submodules, subtrees, or subrepos. git-nest is a lightweight shell tool for modular codebases, using only plain Git.</description>
+    <summary>Multi-repository workspace tool that manages independent Git repositories as one cohesive project.</summary>
+    <releaseNotes>See https://github.com/f-steff/git-nest/blob/main/version.md</releaseNotes>
+    <copyright>Copyright (c) 2026 Flemming Steffensen</copyright>
+    <tags>git multi-repo workspace submodule alternative</tags>
+  </metadata>
+  <files>
+    <file src="tools/**" target="tools" />
+  </files>
+</package>

@@ -49,6 +49,10 @@ test_step "Version alignment" "GIT_NEST_VERSION in bin/git_nest.sh must match th
 check_version_alignment || exit 1
 describe_result "GIT_NEST_VERSION matches the newest version.md entry."
 
+test_step "Relative links in committed markdown" "Every relative link in a committed .md file must resolve to an existing file, so docs and the README never point at missing targets on any branch."
+check_links || exit 1
+describe_result "All relative links in committed markdown resolve to existing files."
+
 if [ "$skipped" -gt 0 ]; then
     describe_result "Static analysis passed ($skipped tool(s) skipped, install with: sh tests/integration-tests/check.sh)."
 else

@@ -123,6 +123,8 @@ rm -rf "$workdir"
 
 # Generate a simple site index linking every HTML page, so the HTML output
 # doubles as the GitHub Pages site content (see the package-content plan).
+# The start page shows the CI status badges (default-branch state; the
+# Pages site is the official release surface, so main is the right branch).
 index="$html_dir/index.html"
 {
     echo '<!DOCTYPE html>'
@@ -130,7 +132,21 @@ index="$html_dir/index.html"
     echo "<title>git-nest documentation</title>"
     echo '<style>body{font-family:sans-serif;max-width:52em;margin:2em auto;padding:0 1em;line-height:1.5}li{margin:.4em 0}</style>'
     echo '</head><body>'
-    echo '<h1>git-nest documentation</h1><ul>'
+    echo '<h1>git-nest documentation</h1>'
+    echo '<p>'
+    for badge in \
+        "ci-linux-fast.yml|CI (Linux fast)" \
+        "ci-linux.yml|CI (Linux)" \
+        "ci-macos-fast.yml|CI (macOS fast)" \
+        "ci-macos.yml|CI (macOS)" \
+        "ci-windows-fast.yml|CI (Windows fast)" \
+        "ci-windows.yml|CI (Windows)"; do
+        wf=$(echo "$badge" | cut -d'|' -f1)
+        label=$(echo "$badge" | cut -d'|' -f2)
+        echo "<img src=\"https://github.com/f-steff/git-nest/actions/workflows/$wf/badge.svg\" alt=\"$label\">"
+    done
+    echo '</p>'
+    echo '<ul>'
     for f in "$html_dir"/*.html; do
         [ "$(basename "$f")" = "index.html" ] && continue
         name=$(basename "$f" .html)

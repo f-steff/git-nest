@@ -1,0 +1,9 @@
+{
+  "version": "__VERSION__",
+  "description": "Manage many independent Git repositories as one cohesive project",
+  "homepage": "https://github.com/f-steff/git-nest",
+  "license": "MIT",
+  "url": "https://github.com/f-steff/git-nest/releases/download/__VERSION__/git-nest-__VERSION__.zip",
+  "hash": "__SHA256__",
+  "bin": ["git-nest.bat"]
+}

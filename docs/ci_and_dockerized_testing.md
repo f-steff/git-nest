@@ -80,21 +80,31 @@ workflow's summary page.
 
 ### Status badges
 
-Each workflow has a status badge that can be shown in the README. The badge
-reflects the most recent manual run of that workflow (it shows "no status"
-until a workflow has run at least once):
+Each workflow has a status badge. The badges are shown on the **GitHub
+Pages start page** (`https://f-steff.github.io/git-nest/`), not in the
+README: the README is cloned and re-hosted, so badge URLs pointing at this
+repository would show this repository's status to people viewing forks or
+clones of it. The Pages site is the official release surface, so the
+badges show the default-branch (main) state.
 
-```markdown
-[![CI (Linux fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml)
-[![CI (Linux)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml)
-[![CI (macOS fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml)
-[![CI (macOS)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml)
-[![CI (Windows fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml)
-[![CI (Windows)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml)
+A badge reflects the most recent run of its workflow on the default branch
+(it shows "no status" until a workflow has run at least once). The badge
+URLs are the standard GitHub Actions form:
+
+```
+https://github.com/f-steff/git-nest/actions/workflows/ci-<target>-<fast|full>.yml/badge.svg
 ```
 
-These are the standard GitHub Actions badges; they require no maintenance
-beyond the workflow files themselves.
+For a specific branch or event, GitHub's badge endpoint accepts `?branch=`
+and `?event=` query parameters, for example:
+
+```
+https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg?branch=dev
+```
+
+These require the URL to name the branch explicitly; they are only useful
+on external pages, not in the README (which cannot vary per branch).
+Note that badge URLs return 404 while the repository is private.
 
 ### Changing what runs
 

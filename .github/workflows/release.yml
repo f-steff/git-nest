@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'Release notes (optional; defaults to the version.md entry)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  test:
+    name: Full test suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Run full test suite
+        run: sh tests/run-all-tests.sh
+
+  version-check:
+    name: Verify version bumped upward
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Check out repository with tags
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Extract current version
+        id: version
+        run: |
+          V=$(sed -n 's/^GIT_NEST_VERSION=//p' bin/git_nest.sh | head -n 1)
+          echo "value=$V" >> "$GITHUB_OUTPUT"
+          echo "Current version: $V"
+
+      - name: Verify version is newer than the last release tag
+        run: |
+          V=${{ steps.version.outputs.value }}
+          LAST=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          LAST=${LAST#v}
+          echo "Last release: $LAST, current: $V"
+          if [ "$(printf '%s\n%s\n' "$LAST" "$V" | sort -V | tail -n1)" != "$V" ]; then
+            echo "ERROR: version $V is not newer than the last release $LAST" >&2
+            exit 1
+          fi
+          if [ "$LAST" = "$V" ]; then
+            echo "ERROR: version $V equals the last release; bump the version first" >&2
+            exit 1
+          fi
+          echo "Version check passed."
+
+  assemble:
+    name: Assemble artifacts
+    runs-on: ubuntu-latest
+    needs: version-check
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Assemble distribution artifacts
+        run: sh scripts/package/assemble.sh --out dist
+
+      - name: Upload assembled artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: dist/
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [version-check, assemble]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Download assembled artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version-check.outputs.version }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          NOTES_FILE=/tmp/release-notes.md
+          if [ -n "$NOTES" ]; then
+            printf '%s\n' "$NOTES" > "$NOTES_FILE"
+          else
+            # The newest version.md entry only (from the first "## x.y.z"
+            # heading to the next one).
+            awk '/^## / { if (n++) exit } { print }' version.md > "$NOTES_FILE"
+            [ -s "$NOTES_FILE" ] || echo "git-nest $VERSION" > "$NOTES_FILE"
+          fi
+          gh release create "v$VERSION" \
+            --title "git-nest $VERSION" \
+            --notes-file "$NOTES_FILE" \
+            dist/git-nest-$VERSION.tar.gz \
+            dist/git-nest-$VERSION.zip \
+            dist/git-nest-$VERSION-amiga.lha \
+            dist/SHA256SUMS
+
+  chocolatey:
+    name: Publish to Chocolatey
+    runs-on: windows-latest
+    needs: release
+    env:
+      VERSION: ${{ needs.version-check.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Download assembled artifacts (for checksum)
+        uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist
+
+      - name: Pack and push Chocolatey package
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+        run: |
+          $version = $env:VERSION
+          # Inject the version into the nuspec.
+          (Get-Content packaging/chocolatey/git-nest.nuspec -Raw) `
+            -replace '__VERSION__', $version |
+            Set-Content packaging/chocolatey/git-nest.nuspec -Encoding UTF8
+          # The install script also carries the version fallback.
+          (Get-Content packaging/chocolatey/tools/chocolateyinstall.ps1 -Raw) `
+            -replace '__VERSION__', $version |
+            Set-Content packaging/chocolatey/tools/chocolateyinstall.ps1 -Encoding UTF8
+          if (-not $env:CHOCO_API_KEY) {
+            Write-Error "CHOCO_API_KEY secret is not configured; skipping Chocolatey publish"
+            exit 1
+          }
+          choco pack packaging/chocolatey/git-nest.nuspec
+          choco push "git-nest.$version.nupkg" --key $env:CHOCO_API_KEY --source https://push.chocolatey.org/
+
+  pages:
+    name: Update Pages
+    uses: ./.github/workflows/pages.yml
+    needs: [release]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

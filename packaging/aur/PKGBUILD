@@ -1,0 +1,22 @@
+# Maintainer: Flemming Steffensen <fsteff@gmail.com>
+# Contributor: Flemming Steffensen <fsteff@gmail.com>
+# STUB -- not yet wired into the release workflow; see
+# temp-doc/external-setup-guide.md for the external setup (AUR account +
+# SSH key).
+
+pkgname=git-nest
+pkgver=__VERSION__
+pkgrel=1
+pkgdesc="Manage many independent Git repositories as one cohesive project"
+arch=('any')
+url="https://github.com/f-steff/git-nest"
+license=('MIT')
+depends=('git' 'sh')
+source=("https://github.com/f-steff/git-nest/releases/download/v$pkgver/git-nest-$pkgver.tar.gz")
+sha256sums=('__SHA256__')
+
+package() {
+    install -Dm755 "$srcdir/git-nest" "$pkgdir/usr/bin/git-nest"
+    install -Dm755 "$srcdir/git_nest.sh" "$pkgdir/usr/bin/git_nest.sh"
+    cp -r "$srcdir/lib" "$pkgdir/usr/bin/"
+}

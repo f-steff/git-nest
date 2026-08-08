@@ -1,0 +1,20 @@
+# Debian packaging for git-nest (STUB -- not yet wired into the release
+# workflow; see temp-doc/external-setup-guide.md for the external setup).
+#
+# When enabled, the release workflow builds a .deb from the assembled
+# tarball and publishes it to a Launchpad PPA or a self-hosted APT repo.
+
+Source: git-nest
+Section: utils
+Priority: optional
+Maintainer: Flemming Steffensen <fsteff@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.0
+Homepage: https://github.com/f-steff/git-nest
+
+Package: git-nest
+Architecture: all
+Depends: git, ${misc:Depends}
+Description: Manage many independent Git repositories as one cohesive project
+ git-nest records and restores reproducible workspaces made from
+ independent Git repositories, without submodules or monorepo pain.

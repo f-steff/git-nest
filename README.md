@@ -1,12 +1,5 @@
 # git-nest   `\\_oOO_//`
 
-[![CI (Linux fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml)
-[![CI (Linux)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml)
-[![CI (macOS fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml)
-[![CI (macOS)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml)
-[![CI (Windows fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml)
-[![CI (Windows)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml)
-
 `git-nest` records and restores a reproducible workspace made from independent Git repositories.
 
 git-nest is a thoughtful tool that solves a real problem: coordinating multiple independent Git repositories without submodules, monorepo pain, or heavy dependencies.
@@ -457,10 +450,12 @@ Windows. The fast subset covers unit tests, static analysis, the platform
 tests (launchers, completions, git invocation), export formats, and
 paths-with-spaces -- everything that can genuinely differ per platform --
 since Windows process startup makes the full suite about 19x slower there
-(~40 min) than on Linux (~2.5 min). The badges at the top of this file
-reflect the most recent manual run of each workflow. See
+(~40 min) than on Linux (~2.5 min). See
 [`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md)
 for the workflow reference, measured timings, and how to trigger a run.
+
+The CI status badges are shown on the [GitHub Pages start page]
+(https://f-steff.github.io/git-nest/).
 
 ## Security Considerations
 

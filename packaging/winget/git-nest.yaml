@@ -1,0 +1,23 @@
+# Winget manifest for git-nest (STUB -- not yet wired into the release
+# workflow; see temp-doc/external-setup-guide.md for the external setup
+# and the open question about zip-without-exe acceptance).
+#
+# When enabled, the release workflow builds these manifests with the
+# version, the release zip URL, and its sha256, then submits a PR to
+# microsoft/winget-pkgs via wingetcreate.
+
+PackageIdentifier: f-steff.git-nest
+PackageVersion: __VERSION__
+PackageLocale: en-US
+Publisher: f-steff
+PackageName: git-nest
+PackageUrl: https://github.com/f-steff/git-nest
+License: MIT
+ShortDescription: Manage many independent Git repositories as one cohesive project
+Installers:
+  - Architecture: x64
+    InstallerType: zip
+    InstallerUrl: https://github.com/f-steff/git-nest/releases/download/__VERSION__/git-nest-__VERSION__.zip
+    InstallerSha256: __SHA256__
+ManifestType: singleton
+ManifestVersion: 1.0.0
