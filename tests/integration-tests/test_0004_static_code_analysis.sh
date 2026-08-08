@@ -53,6 +53,10 @@ test_step "Relative links in committed markdown" "Every relative link in a commi
 check_links || exit 1
 describe_result "All relative links in committed markdown resolve to existing files."
 
+test_step "Release version gate" "The release workflow's version gate (scripts/package/version-check.sh) must accept the current GIT_NEST_VERSION, so the CI-verified logic matches what the workflow runs."
+check_version_gate || exit 1
+describe_result "GIT_NEST_VERSION passes the release version gate."
+
 if [ "$skipped" -gt 0 ]; then
     describe_result "Static analysis passed ($skipped tool(s) skipped, install with: sh tests/integration-tests/check.sh)."
 else

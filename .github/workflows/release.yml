@@ -44,20 +44,7 @@ jobs:
           echo "Current version: $V"
 
       - name: Verify version is newer than the last release tag
-        run: |
-          V=${{ steps.version.outputs.value }}
-          LAST=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-          LAST=${LAST#v}
-          echo "Last release: $LAST, current: $V"
-          if [ "$(printf '%s\n%s\n' "$LAST" "$V" | sort -V | tail -n1)" != "$V" ]; then
-            echo "ERROR: version $V is not newer than the last release $LAST" >&2
-            exit 1
-          fi
-          if [ "$LAST" = "$V" ]; then
-            echo "ERROR: version $V equals the last release; bump the version first" >&2
-            exit 1
-          fi
-          echo "Version check passed."
+        run: sh scripts/package/version-check.sh
 
   assemble:
     name: Assemble artifacts
@@ -108,26 +95,20 @@ jobs:
           gh release create "v$VERSION" \
             --title "git-nest $VERSION" \
             --notes-file "$NOTES_FILE" \
-            dist/git-nest-$VERSION.tar.gz \
-            dist/git-nest-$VERSION.zip \
-            dist/git-nest-$VERSION-amiga.lha \
-            dist/SHA256SUMS
+            "dist/git-nest-$VERSION.tar.gz" \
+            "dist/git-nest-$VERSION.zip" \
+            "dist/git-nest-$VERSION-amiga.lha" \
+            "dist/SHA256SUMS"
 
   chocolatey:
     name: Publish to Chocolatey
     runs-on: windows-latest
-    needs: release
+    needs: [release, version-check]
     env:
       VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-
-      - name: Download assembled artifacts (for checksum)
-        uses: actions/download-artifact@v5
-        with:
-          name: dist
-          path: dist
 
       - name: Pack and push Chocolatey package
         shell: pwsh
@@ -135,20 +116,28 @@ jobs:
           CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
         run: |
           $version = $env:VERSION
-          # Inject the version into the nuspec.
-          (Get-Content packaging/chocolatey/git-nest.nuspec -Raw) `
-            -replace '__VERSION__', $version |
-            Set-Content packaging/chocolatey/git-nest.nuspec -Encoding UTF8
-          # The install script also carries the version fallback.
-          (Get-Content packaging/chocolatey/tools/chocolateyinstall.ps1 -Raw) `
-            -replace '__VERSION__', $version |
-            Set-Content packaging/chocolatey/tools/chocolateyinstall.ps1 -Encoding UTF8
+          $work = Join-Path $env:RUNNER_TEMP "choco"
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+          # Copy the packaging files so __VERSION__ can be injected without
+          # touching the checkout.
+          Copy-Item -Recurse -Force packaging/chocolatey $work/
+          $nuspec = Join-Path $work "chocolatey/git-nest.nuspec"
+          $install = Join-Path $work "chocolatey/tools/chocolateyinstall.ps1"
+          (Get-Content $nuspec -Raw) -replace '__VERSION__', $version |
+            Set-Content $nuspec -Encoding UTF8
+          (Get-Content $install -Raw) -replace '__VERSION__', $version |
+            Set-Content $install -Encoding UTF8
           if (-not $env:CHOCO_API_KEY) {
             Write-Error "CHOCO_API_KEY secret is not configured; skipping Chocolatey publish"
             exit 1
           }
-          choco pack packaging/chocolatey/git-nest.nuspec
-          choco push "git-nest.$version.nupkg" --key $env:CHOCO_API_KEY --source https://push.chocolatey.org/
+          Push-Location $work/chocolatey
+          try {
+            choco pack git-nest.nuspec
+            choco push "git-nest.$version.nupkg" --key $env:CHOCO_API_KEY --source https://push.chocolatey.org/
+          } finally {
+            Pop-Location
+          }
 
   pages:
     name: Update Pages

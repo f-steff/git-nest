@@ -9,7 +9,7 @@
     <title>git-nest</title>
     <authors>f-steff</authors>
     <owners>f-steff</owners>
-    <license type="expression">MIT</license>
+    <licenseUrl>https://github.com/f-steff/git-nest/blob/main/LICENSE</licenseUrl>
     <projectUrl>https://github.com/f-steff/git-nest</projectUrl>
     <iconUrl>https://raw.githubusercontent.com/f-steff/git-nest/main/docs/icon.png</iconUrl>
     <description>Manage many independent Git repositories as one cohesive project - no submodules, subtrees, or subrepos. git-nest is a lightweight shell tool for modular codebases, using only plain Git.</description>
