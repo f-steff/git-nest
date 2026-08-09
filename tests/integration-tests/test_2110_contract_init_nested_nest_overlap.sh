@@ -25,7 +25,7 @@ make_repo "$outer"
 cd "$outer"
 "$GIT_NEST" init >/dev/null
 "$GIT_NEST" add "$remote_deep" a/b/c/d >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "add deep subproject" >/dev/null
 
 # Retroactively give an ancestor of the deep subproject its own Git repository --

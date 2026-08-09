@@ -61,7 +61,7 @@ cd "$detachwork"
 "$GIT_NEST" init >/dev/null
 printf 'keep-me/\n' >>.gitignore
 "$GIT_NEST" add "$remote" libs/bar >/dev/null
-git add .gitnest .gitignore .gitattributes >/dev/null 2>&1
+git add .gitnest .gitignore .gitattributes NEST_README.md >/dev/null 2>&1
 git commit -m init >/dev/null
 "$GIT_NEST" detach libs/bar >/dev/null
 # Detach keeps the entry in the block so it stays nest-owned and prunable.

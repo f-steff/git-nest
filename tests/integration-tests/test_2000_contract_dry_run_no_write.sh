@@ -20,7 +20,7 @@ cd "$outer"
 "$GIT_NEST" init >/dev/null
 "$GIT_NEST" add "$remote" libs/foo >/dev/null
 (cd libs/foo && git_config)
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "initial workspace" >/dev/null
 
 old_origin=$(git -C libs/foo rev-parse origin/main)

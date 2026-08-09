@@ -60,7 +60,7 @@ make_repo "$outer"
 cd "$outer"
 "$GIT_NEST" init >/dev/null
 "$GIT_NEST" add "$firmware_url" firmware >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "parent project" >/dev/null
 
 "$GIT_NEST" status >status.out 2>status.err

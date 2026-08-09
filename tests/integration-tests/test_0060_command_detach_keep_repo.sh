@@ -21,7 +21,7 @@ make_repo "$outer"
 cd "$outer"
 "$GIT_NEST" init >/dev/null
 "$GIT_NEST" add "file://$remote_one" libs/one >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "init workspace" >/dev/null
 one_head=$(git -C libs/one rev-parse HEAD)
 

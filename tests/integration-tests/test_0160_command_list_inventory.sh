@@ -30,7 +30,7 @@ assert_file_contains empty.out 'No subprojects are recorded'
 # --- Populate two subprojects ---
 "$GIT_NEST" add "file://$remote_foo" libs/foo >/dev/null
 "$GIT_NEST" add "file://$remote_bar" libs/bar >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "add subprojects" >/dev/null
 foo_rev=$(git -C libs/foo rev-parse HEAD)
 

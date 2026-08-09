@@ -28,7 +28,7 @@ awk '
     { print }
 ' .gitnest >.gitnest.tmp
 mv .gitnest.tmp .gitnest
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "initial workspace" >/dev/null
 
 test_step "Move a subproject with extension keys present" "manifest rewrites should preserve unknown sections and unknown keys where practical."
