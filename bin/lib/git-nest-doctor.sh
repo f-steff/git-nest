@@ -777,7 +777,7 @@ cmd_tree() {
 	else
 		# Feed the raw 4-column rows directly to the awk renderer for human output.
 		tree_tab=$(printf '\t')
-		sort -t "$tree_tab" -k2,2 "$tree_rows" | awk -v plain="$plain" -f "$SCRIPT_DIR/lib/tree-render.awk"
+		sort -t "$tree_tab" -k2,2 "$tree_rows" | awk -v plain="$plain" -f "$SCRIPT_DIR/lib/git-nest-tree-render.awk"
 		rm -f "$tree_rows"
 	fi
 }

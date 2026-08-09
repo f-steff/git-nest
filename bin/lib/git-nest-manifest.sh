@@ -798,11 +798,11 @@ manifest_load_cache() {
 	_MNF_LOADED=1
 	_MNF_CACHED_PWD=$(pwd -P)
 	[ -f "$MANIFEST_FILE" ] || return 0
-	eval "$(awk -f "$SCRIPT_DIR/lib/parse-gitnest.awk" "$MANIFEST_FILE")"
+	eval "$(awk -f "$SCRIPT_DIR/lib/git-nest-parse.awk" "$MANIFEST_FILE")"
 }
 
 # Build the encoded variable name for a section+key pair. Must match the naming
-# convention used by manifest_load_cache (parse-gitnest.awk computes the same
+# convention used by manifest_load_cache (git-nest-parse.awk computes the same
 # subproject hash independently; the two must always agree).
 #
 # The subproject path is hashed with cksum rather than lossily encoded by

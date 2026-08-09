@@ -100,37 +100,82 @@ Pinned version on Windows:
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex"
 ```
 
-The installers download the release tarball, verify it against the
+The installers download the release archive, verify it against the
 release's `SHA256SUMS`, and install into `$HOME/.local`
-(POSIX) or `%USERPROFILE%\.local` (Windows). Add that `bin/` directory to
-`PATH`:
+(POSIX) or `%USERPROFILE%\.local` (Windows). The `bin/` directory inside
+that prefix is the only thing that needs to be on `PATH`:
 
-- POSIX: `export PATH="$HOME/.local/bin:$PATH"`
-- Windows: `set PATH=%USERPROFILE%\.local\bin;%PATH%`
+- POSIX: `export PATH="$HOME/.local/bin:$PATH"` (or install with
+  `--add-path` to append it to your shell startup file permanently)
+- Windows: `set PATH=%USERPROFILE%\.local\bin;%PATH%` (or install with
+  `--add-path user` / `GIT_NEST_ADD_PATH=1` to add it to the user PATH
+  permanently)
 
-To install into a different prefix, run the scripts with `--prefix DIR`
-(POSIX) or set `GIT_NEST_PREFIX=DIR` (Windows); see the script headers for
-all options.
+The installers copy their own uninstaller into the same `bin/` directory,
+and `git-nest help` prints the install location. To install into a
+different prefix, use `--prefix DIR` (sh/bat) or `GIT_NEST_PREFIX=DIR`
+(ps1); the uninstaller must then be told the same prefix.
 
-The installers copy their own uninstaller into the same `bin/` directory
-(which is on PATH), and `git-nest help` prints the install location.
+### Installed Layout
+
+Everything lives under the install prefix (`$HOME/.local` on POSIX,
+`%USERPROFILE%\.local` on Windows):
+
+```text
+<prefix>/
+|-- bin/                        the payload; this directory goes on PATH
+|   |-- git-nest                the shell entrypoint (all platforms)
+|   |-- git_nest.sh             shared implementation
+|   |-- git-nest.bat            cmd.exe launcher        (Windows only)
+|   |-- git-nest.ps1            PowerShell launcher     (Windows only)
+|   |-- git-nest-install.sh     installer, kept for re-installs
+|   |-- git-nest-install.bat    installer                (Windows only)
+|   |-- git-nest-install.ps1    installer                (Windows only)
+|   |-- git-nest-uninstall.sh   uninstaller (on PATH)
+|   |-- git-nest-uninstall.bat  uninstaller             (Windows only)
+|   |-- git-nest-uninstall.ps1  uninstaller             (Windows only)
+|   `-- lib/                    library modules
+|       |-- git-nest-commands.sh
+|       |-- git-nest-conversion.sh
+|       |-- git-nest-doctor.sh
+|       |-- git-nest-hooks.sh
+|       |-- git-nest-manifest.sh
+|       |-- git-nest-parse.awk
+|       `-- git-nest-tree-render.awk
+`-- share/                      staged content from the release
+    |-- doc/git-nest/           raw markdown docs + generated HTML
+    |-- git-nest/skill/         AI usage skill (SKILL.md)
+    `-- man/                    man pages (man1 + man5)
+```
+
+Differences by installer:
+
+- `git-nest-install.sh` (POSIX) installs `bin/` + `share/` as above and
+  skips the Windows-only launchers.
+- `git-nest-install.ps1` (Windows, macOS, Linux) installs the same tree;
+  on Windows `git-nest.bat`/`git-nest.ps1` are included.
+- `git-nest-install.bat` (cmd.exe) installs the Windows launchers + `lib/`
+  and the docs (markdown + HTML), skipping man pages.
 
 ### Uninstalling
 
-The uninstaller lives in the installed `bin/` directory, so it is on PATH
-like the tool itself -- just run it:
+The uninstaller is copied into the installed `bin/` directory, so it is on
+PATH like the tool itself. Uninstall exactly what you installed:
 
-- POSIX (Linux, macOS, BSD, Git Bash): `git-nest-uninstall.sh`
-- PowerShell: `git-nest-uninstall.ps1`
-- cmd.exe: `git-nest-uninstall.bat`
+- **Linux, macOS, BSD (POSIX shell)** -- `git-nest-uninstall.sh` (or
+  `sh "$HOME/.local/bin/git-nest-uninstall.sh"` if PATH was not
+  configured). Removes `bin/`, `share/`, and the `export PATH=...` line
+  the installer added to your shell startup file.
+- **Windows (PowerShell)** -- `git-nest-uninstall.ps1`. Removes `bin/`,
+  `share/`, the user PATH entry, and the Apps & Features registration.
+- **Windows (cmd.exe)** -- `git-nest-uninstall.bat`. Same removals; use
+  `--remove-path current|system` to clean only the current session or the
+  system PATH instead of the user PATH.
 
-The uninstaller finds its own installation (the directory it sits in),
-removes the payload (`bin/`), the staged content (`share/`: man pages,
-docs, skill), and undoes the PATH configuration the installer made --
-the shell startup-file export on POSIX, the user PATH entry and the
-Windows Apps & Features registration on Windows. On Windows, git-nest
-also appears under Settings -> Apps -> Installed apps, where the normal
-"Uninstall" button runs the same uninstaller.
+The uninstaller finds its own installation (the directory it sits in), so
+no flags are needed for the default layout. On Windows, git-nest also
+appears under Settings -> Apps -> Installed apps; the "Uninstall" button
+runs the same uninstaller. `git-nest help` prints the install location.
 
 For a custom prefix, pass the same prefix you installed with: `sh
 /path/to/bin/git-nest-uninstall.sh --prefix DIR` (or set
@@ -529,8 +574,8 @@ git-nest ships as plain POSIX shell, split by responsibility rather than as one 
 | `bin/lib/git-nest-conversion.sh` | Nest-boundary conversions: `export`, `absorb` (all sources, including `--subrepo`/`--subtree`), and `inline`, plus the shared recovery-backup infrastructure the destructive conversions use. |
 | `bin/lib/git-nest-doctor.sh` | Read-only diagnostics: `doctor`, `survey`, and `tree`, plus the reproducibility-state classification `list` uses. |
 | `bin/lib/git-nest-hooks.sh` | Managed local Git hook installation, removal, and preflight (`hooks-install`/`hooks-uninstall`). |
-| `bin/lib/parse-gitnest.awk` | Single-pass `.gitnest` parser used by the manifest cache: emits shell-assignable variable declarations for `eval`, avoiding a subprocess per key read. |
-| `bin/lib/tree-render.awk` | Renders `tree`'s flat, pre-sorted row list as an ASCII-art tree grouped by shared path prefixes. |
+| `bin/lib/git-nest-parse.awk` | Single-pass `.gitnest` parser used by the manifest cache: emits shell-assignable variable declarations for `eval`, avoiding a subprocess per key read. |
+| `bin/lib/git-nest-tree-render.awk` | Renders `tree`'s flat, pre-sorted row list as an ASCII-art tree grouped by shared path prefixes. |
 | `bin/.shellcheckrc` | ShellCheck configuration and the small set of justified, commented suppressions for this codebase. |
 | `docs/` | User-facing and technical documentation: the behavior contract, technical notes, exit codes, and maintainer guidance. |
 | `docs/command-behavior-contract.md` | The behavior contract: what every command does and guarantees. |

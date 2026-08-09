@@ -17,7 +17,7 @@ bin/
   lib/                      library modules (git-nest-manifest.sh,
                             git-nest-commands.sh, git-nest-hooks.sh,
                             git-nest-conversion.sh, git-nest-doctor.sh,
-                            parse-gitnest.awk, tree-render.awk)
+                            git-nest-parse.awk, git-nest-tree-render.awk)
 tests/
   run-all-tests.sh/.bat     main runner (IDs 0000-5050) and cmd.exe launcher
   tests.md                  overall test strategy guide

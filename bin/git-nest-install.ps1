@@ -43,6 +43,9 @@ function Write-InstallError {
 # --- Resolve the install prefix -------------------------------------------
 $prefix = if ($env:GIT_NEST_PREFIX) { $env:GIT_NEST_PREFIX } else { Join-Path $HOME '.local' }
 
+# Platform flag: used for the download format and for the launcher set.
+$isWinOs = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+
 # --- Source: checkout or download -----------------------------------------
 $fromDir = $null
 $download = $false
@@ -76,7 +79,6 @@ try {
 
         # Windows expands the zip natively (Expand-Archive); POSIX shells
         # use tar. The download format therefore depends on the platform.
-        $isWinOs = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
         $ext = if ($isWinOs) { 'zip' } else { 'tar.gz' }
         $url = "https://github.com/$repo/releases/download/v$version/git-nest-$version.$ext"
         Write-Output "Downloading $url"

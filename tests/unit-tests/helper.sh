@@ -17,7 +17,7 @@ UNIT_TESTS_DIR="$_UNIT_HELPER_DIR"
 
 # Global variables normally set by bin/git_nest.sh. Tests that source library
 # modules directly must provide these so the modules can find their dependencies
-# (parse-gitnest.awk, tree-render.awk) and read the correct config file.
+# (git-nest-parse.awk, git-nest-tree-render.awk) and read the correct config file.
 SCRIPT_DIR="$REPO_ROOT/bin"
 : "${MANIFEST_FILE:=.gitnest}"
 : "${CONFIG_FILE:=.gitnest-rc}"

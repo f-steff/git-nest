@@ -125,9 +125,9 @@ Items in priority order.
    entries) or only standalone nested repos. Useful for migration
    scenarios where you want to convert only one kind at a time.
 
-5. **Remove awk dependency** -- replace `parse-gitnest.awk` with a
+5. **Remove awk dependency** -- replace `git-nest-parse.awk` with a
    pure-shell manifest parser (slower but awk-free). Replace
-   `tree-render.awk` with shell `printf`/`sed` loops. Replace 30+ awk
+   `git-nest-tree-render.awk` with shell `printf`/`sed` loops. Replace 30+ awk
    one-liners with `sed`/`cut`/`grep` equivalents. Eliminates
    GNU-vs-BSD-vs-BusyBox awk variance. Low priority -- the current awk
    usage is POSIX and a BusyBox compatibility test exists. Revisit if
