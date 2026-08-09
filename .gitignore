@@ -9,6 +9,7 @@ dist/
 
 # Local Jekyll site builds (development/github-pages.md).
 _site/
+_site-src/
 .sass-cache/
 
 

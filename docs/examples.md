@@ -1,9 +1,3 @@
----
-layout: default
-title: Examples
-nav_order: 5
----
-
 # git-nest Examples
 
 Walkthroughs of common git-nest workflows: a scenario sketch, then the real commands and the output they produce. All transcripts were captured from an actual scratch workspace running these exact commands (some incidental Git chatter -- Windows CRLF notices, detached-HEAD advice -- is trimmed for readability; nothing about git-nest's own output is altered).

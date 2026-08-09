@@ -12,8 +12,15 @@ and a dark mode that follows the visitor's OS preference.
   the site title/description, and the `exclude` list. Only user-facing
   content ships: `development/`, `tests/`, `bin/`, `scripts/`, and the
   root scratch files are excluded from the rendered site.
-- Every rendered page carries YAML front matter with `layout: default`,
-  `title:`, and `nav_order:` so the sidebar is ordered and readable.
+- The committed markdown files carry NO YAML front matter -- they are
+  pure markdown, so GitHub.com renders them cleanly (front matter would
+  show up as a visible table in the file view). Jekyll needs front matter
+  to convert a file into a page, so `scripts/package/site-prep.sh`
+  copies the user-facing markdown (index.md, README.md, SECURITY.md,
+  docs/*.md) into `_site-src/` and prepends `layout:`, `title:`, and
+  `nav_order:` there. The site is built from `_site-src`; the committed
+  files stay untouched. Adding a page = add the markdown file + one
+  `prepend_fm` line in site-prep.sh.
 - `index.md` is the landing page (`layout: home`): it inlines the logo
   SVG, shows the six CI status badges, and links the manual.
 - `assets/logo.svg` is the logo: the ASCII mark `\_oOO_//` as monospace
@@ -24,12 +31,16 @@ and a dark mode that follows the visitor's OS preference.
   favicon via `_includes/head_custom.html`.
 - `.github/workflows/pages.yml` deploys the site:
   1. `actions/configure-pages` prepares the Pages environment.
-  2. `actions/jekyll-build-pages` builds the site (this is the same
-     GitHub Pages build environment that renders markdown on GitHub).
-  3. `actions/upload-pages-artifact` + `actions/deploy-pages` publish it.
+  2. `sh scripts/package/site-prep.sh` stages the site source with the
+     front matter injected.
+  3. Jekyll builds the site inside the `jekyll/jekyll:pages` Docker
+     image (the same gem set GitHub Pages uses).
+  4. `actions/upload-pages-artifact` + `actions/deploy-pages` publish it.
 - The workflow is `workflow_dispatch` (manual) and reusable
   (`workflow_call`) so the release workflow can refresh the site after a
-  release.
+  release. Note: GitHub only allows dispatching workflows that exist on
+  the default branch, so pages.yml can be run manually once it lands on
+  main.
 
 ## Enabling Pages (one time, in repo Settings)
 
@@ -43,22 +54,25 @@ and a dark mode that follows the visitor's OS preference.
 The GitHub Pages build environment is reproducible in Docker:
 
 ```sh
+sh scripts/package/site-prep.sh
 MSYS_NO_PATHCONV=1 docker run --rm \
   -v "$PWD:/srv/jekyll" -w /srv/jekyll \
-  jekyll/jekyll:pages jekyll build
+  jekyll/jekyll:pages jekyll build --source _site-src --destination _site
 ```
 
-The rendered site lands in `_site/` (remove it afterwards; it is not
-committed). `jekyll/jekyll:pages` is the same gem set GitHub Pages uses.
+The rendered site lands in `_site/` (remove `_site/` and `_site-src/`
+afterwards; both are gitignored). `jekyll/jekyll:pages` is the same gem
+set GitHub Pages uses.
 
 ## Adding A Page
 
-1. Add or edit the markdown file under the site source (README.md, or
-   docs/ for user-facing content).
-2. Give it front matter: `layout: default`, a `title:`, and a
-   `nav_order:` (1 = Home via index.md, then the manual, then the docs).
+1. Add the markdown file under the site source set: README.md, SECURITY.md,
+   index.md, or docs/ for user-facing content.
+2. Register it in `scripts/package/site-prep.sh` with one `prepend_fm`
+   line carrying its title and nav order (1 = Home via index.md, then the
+   manual, then the docs).
 3. Keep the content ASCII-only (the static analysis suite enforces this).
-4. Rebuild locally with the Docker command above and check the new page.
+4. Rebuild locally with the commands above and check the new page.
 
 ## Why Not The Pandoc-HTML Approach
 

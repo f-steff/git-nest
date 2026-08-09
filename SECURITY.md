@@ -1,9 +1,3 @@
----
-layout: default
-title: Security Policy
-nav_order: 8
----
-
 # Security Policy
 
 ## Supported Versions

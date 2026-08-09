@@ -1,9 +1,3 @@
----
-layout: default
-title: Manual
-nav_order: 2
----
-
 # git-nest   `\\_oOO_//`
 
 git-nest pins your multi-repo workspace as a manifest in your own repository -- versioned like your code, restorable on any machine.

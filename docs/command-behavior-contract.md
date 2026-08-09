@@ -1,9 +1,3 @@
----
-layout: default
-title: Behavior Contract
-nav_order: 3
----
-
 # git-nest Implementation Summary
 
 This file is the behavior contract for the current shell implementation.

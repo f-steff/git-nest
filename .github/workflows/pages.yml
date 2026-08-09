@@ -23,8 +23,14 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Stage the site source (inject front matter)
+        run: sh scripts/package/site-prep.sh
+
       - name: Build the docs site (Jekyll, just-the-docs theme)
-        uses: actions/jekyll-build-pages@v1
+        run: |
+          docker run --rm \
+            -v "$PWD:/srv/jekyll" -w /srv/jekyll \
+            jekyll/jekyll:pages jekyll build --source _site-src --destination _site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

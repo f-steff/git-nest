@@ -1,9 +1,3 @@
----
-layout: default
-title: CI Consumer Guide
-nav_order: 9
----
-
 # Using git-nest In CI Pipelines
 
 This guide is written from the perspective of a DevOps engineer who wants
