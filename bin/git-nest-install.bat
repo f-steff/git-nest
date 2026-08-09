@@ -6,14 +6,15 @@ rem Installs the bin/ payload into a user-local directory and optionally adds
 rem it to the PATH.
 rem
 rem Usage:
-rem   git-nest-install.bat [--prefix DIR] [--from PATH] [--add-path (user|current|system)]
+rem   git-nest-install.bat [--prefix DIR] [--from PATH] [--no-add-path]
 rem
 rem   --prefix DIR   Install under DIR (default: %LOCALAPPDATA%\Programs\git-nest).
 rem                  The bin/ payload is installed to DIR\bin and that is the
 rem                  only directory that needs to be on PATH.
 rem   --from PATH    Source: a release zip or a directory containing bin\
 rem                  (default: the checkout this script lives in).
-rem   --add-path     Add DIR\bin to PATH:
+rem   --no-add-path  Do NOT touch PATH. Default is --add-path user.
+rem   --add-path     Add DIR\bin to PATH (the default):
 rem                    user    - permanently for this user (setx, HKCU; default)
 rem                    current - only in this shell session (no persistence)
 rem                    system  - system-wide (HKLM; requires an elevated
@@ -32,7 +33,7 @@ set "SCRIPT_DIR=%~dp0"
 
 set "PREFIX=%LOCALAPPDATA%\Programs\git-nest"
 set "FROM="
-set "ADD_PATH=off"
+set "ADD_PATH=user"
 
 :parse
 if "%~1"=="" goto parsed
@@ -45,6 +46,11 @@ if /i "%~1"=="--prefix" (
 if /i "%~1"=="--from" (
     set "FROM=%~2"
     shift
+    shift
+    goto parse
+)
+if /i "%~1"=="--no-add-path" (
+    set "ADD_PATH=off"
     shift
     goto parse
 )
@@ -158,7 +164,7 @@ if exist "%PREFIX%\share" echo   docs/man/skill: %PREFIX%\share
 
 if "%ADD_PATH%"=="off" (
     echo Add to PATH: setx Path "!DEST!;%%PATH%%"
-    echo "re-run with --add-path user,current,system to configure it"
+    echo "PATH was left untouched because --no-add-path was given"
     exit /b 0
 )
 
@@ -190,12 +196,12 @@ exit /b 0
 :help
 echo git-nest installer for Windows
 echo.
-echo   git-nest-install.bat [--prefix DIR] [--from PATH] [--add-path user^|current^|system]
+echo   git-nest-install.bat [--prefix DIR] [--from PATH] [--no-add-path]
 echo.
 echo   --prefix DIR        Install under DIR (default: %%LOCALAPPDATA%%\Programs\git-nest)
 echo   --from PATH         Source: a release zip or a directory containing bin\
-echo   --add-path user     Add DIR\bin to the user PATH permanently (setx; also the
-echo                       default when --add-path is given without a mode)
+echo   --no-add-path       Do not touch PATH (print the instructions instead)
+echo   --add-path user     Add DIR\bin to the user PATH permanently (setx; the default)
 echo   --add-path current  Add DIR\bin to the current shell session only
 echo   --add-path system   Add DIR\bin to the system PATH (elevated prompt required)
 echo.

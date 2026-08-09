@@ -17,18 +17,24 @@ just fetching the release tarball and putting `bin/` on PATH.
 
 ## Install One-Liners
 
+For interactive installs the installers append `bin/` to the user's PATH
+by default. In CI the pipeline manages PATH itself (e.g. `$GITHUB_PATH`),
+so the recipes below install with `--no-add-path` (POSIX) or
+`GIT_NEST_ADD_PATH=0` (Windows) and add the prefix's `bin/` to the
+pipeline PATH explicitly.
+
 ### POSIX runners (Linux, macOS, BSD, Git Bash)
 
 Pinned version (recommended for reproducible builds):
 
 ```sh
-VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
 ```
 
 Latest release (default when `VERSION` is unset):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
 ```
 
 The installer downloads the release tarball, verifies it against the
@@ -36,7 +42,7 @@ release's `SHA256SUMS`, and installs into `$HOME/.local/bin`. Add that to
 PATH in the pipeline, or install to a known prefix with `--prefix`:
 
 ```sh
-VERSION=0.8.16 sh <(curl -fsSL .../git-nest-install.sh) --prefix "$RUNNER_TOOL_CACHE/git-nest"
+VERSION=0.8.16 sh <(curl -fsSL .../git-nest-install.sh) --prefix "$RUNNER_TOOL_CACHE/git-nest" --no-add-path
 ```
 
 ### Windows runners (PowerShell 5.1+ or pwsh)
@@ -44,13 +50,13 @@ VERSION=0.8.16 sh <(curl -fsSL .../git-nest-install.sh) --prefix "$RUNNER_TOOL_C
 Pinned version:
 
 ```bat
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; $env:GIT_NEST_ADD_PATH='0'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex"
 ```
 
 Latest release:
 
 ```bat
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:GIT_NEST_ADD_PATH='0'; & { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
 ```
 
 The `-ExecutionPolicy Bypass` flag makes the one-liner work regardless of
@@ -67,7 +73,8 @@ whether runners are ephemeral or long-lived:
 
 - **Install-once at the infrastructure level** (Jenkins-style): install
   git-nest once on the agent, or bake it into the agent Docker image
-  (`RUN sh -c 'curl -fsSL .../git-nest-install.sh | sh'` in the image build).
+  (`RUN curl -fsSL .../git-nest-install.sh | sh -s -- --no-add-path` in the
+  image build, with an `ENV PATH` for the install prefix).
   Every job on that agent then has git-nest on PATH. This works on
   long-lived agents: Jenkins agents, self-hosted Gitea/GitLab/GitHub
   runners, Azure self-hosted agents. It behaves exactly like a provisioned
@@ -90,7 +97,7 @@ steps:
   - uses: actions/checkout@v5
   - name: Install git-nest
     run: |
-      VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+      VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
       echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   - name: Restore subprojects
     run: git-nest restore
@@ -109,7 +116,7 @@ repeated builds.
 steps:
   - checkout: self
   - bash: |
-      VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+      VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
       echo "##vso[task.prependpath]$HOME/.local/bin"
     displayName: Install git-nest
   - bash: git-nest restore
@@ -128,7 +135,7 @@ Windows one-liner. macOS/Linux hosted agents work with the same snippet.
 image: alpine:3.21
 before_script:
   - apk add --no-cache git curl
-  - VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+  - VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
   - export PATH="$HOME/.local/bin:$PATH"
 script:
   - git-nest restore
@@ -149,7 +156,7 @@ runs-on: ubuntu-latest
 steps:
   - uses: actions/checkout@v5
   - run: |
-      VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+      VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
       echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   - run: git-nest restore && git-nest verify
 ```
@@ -172,7 +179,7 @@ pipeline {
     stage('Build') {
       steps {
         sh '''
-          VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+          VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
           export PATH="$HOME/.local/bin:$PATH"
           git-nest restore
           git-nest verify
@@ -195,7 +202,7 @@ Windows batch command"** steps (Windows):
 
 ```sh
 # Build step 1: install git-nest and restore
-VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
 export PATH="$HOME/.local/bin:$PATH"
 git-nest restore
 git-nest verify
@@ -240,14 +247,16 @@ For self-hosted agents that run jobs in containers, bake git-nest into the
 agent image at build time:
 
 ```dockerfile
-RUN curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+RUN curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
+ENV PATH="/root/.local/bin:${PATH}"
 ```
 
 Pin the version with an ARG for reproducible images:
 
 ```dockerfile
 ARG GIT_NEST_VERSION=0.8.16
-RUN VERSION=$GIT_NEST_VERSION curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+RUN VERSION=$GIT_NEST_VERSION curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh -s -- --no-add-path
+ENV PATH="/root/.local/bin:${PATH}"
 ```
 
 The image digest (sha256) then serves as the trust anchor for every job

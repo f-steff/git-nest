@@ -20,8 +20,9 @@
 #   VERSION           release version, "latest" (default) or "x.y.z"
 #   GIT_NEST_REPO     repository to download from (default: f-steff/git-nest)
 #   GIT_NEST_PREFIX   install prefix (default: $HOME/.local)
-#   GIT_NEST_ADD_PATH when set to '1', permanently append DIR/bin to the
-#                     user PATH (default: only print the export line)
+#   GIT_NEST_ADD_PATH when set to '0', do NOT touch PATH. By default the
+#                     DIR/bin entry is appended to the user PATH and the
+#                     app is registered in Windows Apps & Features.
 #
 # When run as a file from a git-nest checkout (bin/git-nest-install.ps1), the
 # script installs from that checkout instead of downloading.
@@ -145,7 +146,9 @@ try {
     Write-Output "Installed git-nest $version"
     Write-Output "  payload: $dest"
 
-    if ($env:GIT_NEST_ADD_PATH -eq '1') {
+    # PATH configuration is the default; GIT_NEST_ADD_PATH=0 disables it
+    # (CI pipelines and scripted installs that manage PATH themselves).
+    if ($env:GIT_NEST_ADD_PATH -ne '0') {
         $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
         if ($userPath -notlike "*$dest*") {
             $newPath = if ($userPath) { $dest + ';' + $userPath } else { $dest }
@@ -166,7 +169,7 @@ try {
         Write-Output "  registered in Apps & Features"
     } else {
         Write-Output "Add to PATH: `$env:PATH = `"$dest;`$env:PATH`""
-        Write-Output "(re-run with the environment variable GIT_NEST_ADD_PATH=1 to configure it permanently)"
+        Write-Output "(PATH was left untouched because GIT_NEST_ADD_PATH=0)"
         Write-Output "(to remove the installation, run bin/git-nest-uninstall.ps1)"
     }
 } finally {

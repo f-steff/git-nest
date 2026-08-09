@@ -103,13 +103,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; i
 The installers download the release archive, verify it against the
 release's `SHA256SUMS`, and install into `$HOME/.local`
 (POSIX) or `%USERPROFILE%\.local` (Windows). The `bin/` directory inside
-that prefix is the only thing that needs to be on `PATH`:
+that prefix is the only thing that needs to be on `PATH`. Configuring
+PATH is the installer's default behavior:
 
-- POSIX: `export PATH="$HOME/.local/bin:$PATH"` (or install with
-  `--add-path` to append it to your shell startup file permanently)
-- Windows: `set PATH=%USERPROFILE%\.local\bin;%PATH%` (or install with
-  `--add-path user` / `GIT_NEST_ADD_PATH=1` to add it to the user PATH
-  permanently)
+- POSIX (`git-nest-install.sh`): appends `export PATH="$HOME/.local/bin:$PATH"`
+  to your shell startup file (`~/.profile`, `~/.bashrc`, or `~/.zshrc`).
+  Pass `--no-add-path` to only print the line.
+- Windows (`git-nest-install.ps1` / `.bat`): adds
+  `%USERPROFILE%\.local\bin` to the user PATH and registers git-nest in
+  Apps & Features (Settings -> Apps). Pass `--no-add-path` (bat) or
+  `GIT_NEST_ADD_PATH=0` (ps1) to leave PATH untouched.
+
+CI pipelines that manage PATH themselves (e.g. `$GITHUB_PATH`) should
+install with `--no-add-path` / `GIT_NEST_ADD_PATH=0`.
 
 The installers copy their own uninstaller into the same `bin/` directory,
 and `git-nest help` prints the install location. To install into a

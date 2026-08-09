@@ -6,7 +6,7 @@
 # plain shell, so there is no build step.
 #
 # Usage:
-#   sh git-nest-install.sh [--prefix DIR] [--from PATH] [--add-path]
+#   sh git-nest-install.sh [--prefix DIR] [--from PATH] [--no-add-path]
 #
 #   --prefix DIR   Install under DIR (default: $HOME/.local).
 #                  The bin/ payload is installed to DIR/bin and that is the
@@ -14,10 +14,13 @@
 #   --from PATH    Source: a release tarball (.tar.gz) or a directory
 #                  containing bin/ (default: this script's checkout, or a
 #                  download from GitHub when the script is piped in).
-#   --add-path     Permanently add DIR/bin to PATH by appending an export
-#                  to the user's shell startup file (~/.profile, ~/.bashrc,
-#                  or ~/.zshrc depending on the login shell). Default is to
-#                  only print the export line; CI should NOT use --add-path.
+#   --no-add-path  Do NOT touch PATH. Default is to append DIR/bin to PATH
+#                  permanently by adding an export to the user's shell
+#                  startup file (~/.profile, ~/.bashrc, or ~/.zshrc
+#                  depending on the login shell); with --no-add-path only
+#                  the export line is printed. CI pipelines should pass
+#                  --no-add-path (or sh -s -- --no-add-path when piped).
+#   --add-path     Explicitly force the PATH append (the default).
 #
 # Download mode (curl | sh) -- the script fetches the release tarball
 # itself when it is not run from a checkout and no --from is given:
@@ -36,7 +39,8 @@
 #
 # To remove the installation, run bin/git-nest-uninstall.sh with the same --prefix.
 #
-# After install, add DIR/bin to PATH:
+# The installer appends DIR/bin to PATH by default; pass --no-add-path to
+# skip that and configure PATH manually:
 #   export PATH="$HOME/.local/bin:$PATH"
 #
 # The payload mirrors the repository's bin/ layout: git-nest, git_nest.sh,
@@ -48,7 +52,7 @@ set -eu
 
 prefix=${HOME:-~}/.local
 from=
-add_path=0
+add_path=1
 fetch=0
 
 while [ $# -gt 0 ]; do
@@ -65,6 +69,10 @@ while [ $# -gt 0 ]; do
             ;;
         --add-path)
             add_path=1
+            shift
+            ;;
+        --no-add-path)
+            add_path=0
             shift
             ;;
         -h|--help)
@@ -219,5 +227,5 @@ if [ "$add_path" -eq 1 ]; then
     fi
 else
     echo 'Add to PATH: export PATH="'"$prefix"'/bin:$PATH"'
-    echo "(re-run with --add-path to configure it permanently)"
+    echo "(PATH was left untouched because --no-add-path was given)"
 fi
