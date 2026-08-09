@@ -131,7 +131,7 @@ if exist "%WORK%\payload\lib" (
     xcopy /e /i /q /y "%WORK%\payload\lib\*" "%DEST%\lib\" >nul
 )
 
-rem Windows-relevant docs: md + html only (no man pages, no AmigaGuide).
+rem Windows-relevant docs: md + html only (no man pages).
 if exist "%WORK%\staged-share" (
     if exist "%PREFIX%\share" rmdir /s /q "%PREFIX%\share"
     if exist "%WORK%\staged-share\doc\git-nest" (

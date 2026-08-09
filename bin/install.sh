@@ -118,8 +118,7 @@ cp "$work/payload/git-nest" "$work/payload/git_nest.sh" "$dest/"
 [ -f "$work/payload/uninstall.sh" ] && cp "$work/payload/uninstall.sh" "$dest/"
 cp -R "$work/payload/lib" "$dest/"
 
-# Staged content for full-tree tarballs: man pages, docs, skill. The
-# AmigaGuide (.guide) docs are Amiga-only and are not installed here.
+# Staged content for full-tree tarballs: man pages, docs, skill.
 if [ -d "$work/staged/share" ]; then
     mkdir -p "$prefix/share/man" "$prefix/share/doc" "$prefix/share/git-nest"
     if [ -d "$work/staged/share/man" ]; then
@@ -127,7 +126,7 @@ if [ -d "$work/staged/share" ]; then
     fi
     if [ -d "$work/staged/share/doc/git-nest" ]; then
         mkdir -p "$prefix/share/doc/git-nest"
-        # Copy the shipping markdown and HTML, skip the Amiga guide dir.
+        # Copy the shipping markdown and HTML.
         for f in "$work/staged/share/doc/git-nest"/*; do
             case "$(basename "$f")" in
                 guide) continue ;;

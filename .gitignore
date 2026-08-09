@@ -3,7 +3,7 @@ run-all-tests-results.md
 run-all-tests.log
 .gitnest-recovery-*/
 
-# Generated packaging output (assemble.sh, generate-docs.sh, generate-amigaguide.sh).
+# Generated packaging output (assemble.sh, generate-docs.sh).
 dist/
 .docs-gen.*/
 

@@ -97,7 +97,6 @@ jobs:
             --notes-file "$NOTES_FILE" \
             "dist/git-nest-$VERSION.tar.gz" \
             "dist/git-nest-$VERSION.zip" \
-            "dist/git-nest-$VERSION-amiga.lha" \
             "dist/SHA256SUMS"
 
   chocolatey:

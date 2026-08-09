@@ -21,9 +21,8 @@ bin/uninstall.sh text eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
-# Distribution packaging files: extensionless AmigaShell scripts, Docker
-# images, and CI workflows are all LF text.
-packaging/amiga/* text eol=lf
+# Distribution packaging files: Docker images and CI workflows are all LF
+# text.
 Dockerfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
