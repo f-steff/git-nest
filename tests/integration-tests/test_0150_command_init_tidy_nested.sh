@@ -20,6 +20,18 @@ cd "$outer"
 "$GIT_NEST" init >/dev/null
 test -f .gitnest
 test -f .gitattributes
+test -f NEST_README.md
+assert_file_contains NEST_README.md "git-nest restore"
+assert_file_contains NEST_README.md "git-nest workspace"
+
+# A maintainer edit is preserved; init never overwrites NEST_README.md.
+printf '# custom nest notes\n' >NEST_README.md
+"$GIT_NEST" init >init_again2.out
+assert_file_contains init_again2.out "already initialized"
+grep -q '# custom nest notes' NEST_README.md || {
+    echo "UNEXPECTED RESULT: init overwrote the maintainer NEST_README.md" >&2
+    exit 1
+}
 
 cp .gitattributes expected.gitattributes
 printf 'broken\n' >.gitattributes
@@ -29,7 +41,15 @@ assert_file_contains init_again.out "git-nest tidy"
 assert_file_contains .gitattributes "broken"
 "$GIT_NEST" tidy >/dev/null
 assert_file_contains .gitattributes ".gitnest text eol=lf"
-assert_file_contains .gitattributes "bin/git_nest.sh text eol=lf"
+assert_file_contains .gitattributes "bin/git-nest-main.sh text eol=lf"
+
+# tidy does not resurrect a deleted NEST_README.md (it is init-only).
+rm NEST_README.md
+"$GIT_NEST" tidy >/dev/null
+test ! -f NEST_README.md || {
+    echo "UNEXPECTED RESULT: tidy recreated NEST_README.md" >&2
+    exit 1
+}
 
 "$GIT_NEST" add "$remote" libs/foo >/dev/null
 git add .gitnest .gitignore .gitattributes

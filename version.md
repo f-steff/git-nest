@@ -1,3 +1,41 @@
+## 0.8.17 - 2026-08-10
+
+### Distribution, installation, and project publishing
+  * Added GitHub Pages site: Jekyll `just-the-docs` theme, inline SVG logo
+    (the `\_oOO_//` mark, dark-mode aware, also the favicon), and automatic
+    deployment on merge to main.
+  * Added one-line installers: `git-nest-install.sh` (POSIX shells) and
+    `git-nest-install.ps1` (PowerShell), supporting `VERSION=latest`
+    (GitHub API) and `VERSION=x.y.z`, with SHA256SUMS verification.
+  * Installers append the payload `bin/` to PATH by default;
+    `--no-add-path` (sh/bat) or `GIT_NEST_ADD_PATH=0` (ps1) disables it
+    for CI and scripted installs.
+  * Renamed install/uninstall scripts to `git-nest-install.*` /
+    `git-nest-uninstall.*`; uninstallers self-locate their installation,
+    remove payload, staged docs/man/skill, and PATH configuration, and
+    delete themselves.
+  * Windows installers register git-nest in Apps & Features (Settings ->
+    Apps) with a working uninstall entry; uninstallers remove it.
+  * `git-nest help` prints the install path and the uninstaller name;
+    README documents the installed layout tree and per-system
+    install/uninstall instructions.
+  * Added `docs/ci-consumer-guide.md` for DevOps engineers: per-CI-system
+    install recipes (GitHub Actions, Azure Pipelines, GitLab CI, Gitea,
+    Jenkins), private-subproject credentials, agent-image pattern.
+  * Split docs: user-facing documentation stays in `docs/` (shipped in
+    packages); maintainer documentation moved to `development/`.
+  * Removed native package-manager stubs (Chocolatey, Homebrew, Scoop,
+    Winget, APT, RPM, AUR) and the Amiga packaging target; the universal
+    release tarball + install scripts are the sole distribution channel.
+  * Renamed the implementation and awk modules to the `git-nest-*` naming
+    convention (`git-nest-main.sh`, `git-nest-parse.awk`,
+    `git-nest-tree-render.awk`).
+  * CI automation: full test suites gate pull requests (Linux, macOS,
+    Windows); merge to main runs the full Linux + fast macOS/Windows
+    suites, deploys Pages, and auto-triggers the release workflow, which
+    creates the `vX.Y.Z` tag and GitHub Release when the version gate
+    passes.
+
 ## 0.8.16 - 2026-08-04
 
 ### Runner, cleanup, and documentation

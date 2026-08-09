@@ -17,7 +17,7 @@ make_repo "$outer"
 cd "$outer"
 "$GIT_NEST" init >/dev/null
 "$GIT_NEST" add "$remote" libs/one >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "initial workspace" >/dev/null
 
 test_step "Create a subproject commit ahead of the manifest revision" "diff should report subproject commits not represented by .gitnest."

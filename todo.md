@@ -1,28 +1,11 @@
 # todo
 
-Items in priority order. Each gets its own WIP commit.
+TBD.
 
-1. **Distribution method** -- decide how users install git-nest without
-   cloning the repo. Candidates by platform:
-
-   - Cross-OS: Homebrew (macOS + Linux), Nix, a plain shell installer
-     script hosted on the releases page, GitHub Releases with `bin/`
-     tarballs
-   - Linux: APT (`.deb`), RPM (`.rpm`), Snap, AUR (Arch)
-   - macOS: Homebrew
-   - Windows: Chocolatey, Winget, Scoop
-
-   The installer (or each package) should place `bin/` on PATH and
-   optionally install shell completions. GitHub CI (#2 below) would
-   produce the release artifacts.
-
-2. **GitHub CI** -- see `docs/ci_and_dockerized_testing.md` for the workflow
-   reference (manual runs for now; fast run on push/PR and full matrix on
-   schedule/manual once the project is public, badge snippet).
-   Run the test suite on push/PR and produce release artifacts so users
-   can install git-nest without cloning the repo. Prerequisite: the
-   repository must be public to use the free tier without quota
-   concerns.
+The former distribution-method and GitHub-CI items are done: distribution
+is the universal release tarball plus the install scripts (see
+`development/distribution-overview.md`), and CI is PR-gated with
+automatic release on merge (see `development/release-process.md`).
 
 # won't do
 
@@ -62,13 +45,31 @@ the stated trigger condition actually occurs in practice.
   - Pros: native cross-compilation for Windows/Linux/macOS without Git
     Bash; typed data structures and proper JSON; goroutines for
     concurrent subproject operations (a huge win for `restore`/`foreach`
-    with 100+ subprojects); static binary distribution.
+    with 100+ subprojects); static binary distribution; eliminates the
+    Windows process-startup overhead that makes the shell test suite
+    ~19x slower than on Linux.
   - Cons: adds a build step and Go toolchain requirement; loses the
     edit-and-run iteration loop; `go-git` credential/transport handling
     may differ from system `git`; the tool's simplicity is a feature.
   - For the 0.x lifetime, keep shell and invest in module splits
     (`lib/`) and ShellCheck. The `--jobs` and awk-removal items below
     may accelerate this decision.
+  - Distribution impact if ported: per-target binaries replace the
+    universal shell tarball (GOOS/GOARCH matrix: linux/amd64+arm64,
+    darwin/amd64+arm64, windows/amd64, optional windows/arm64). Code
+    signing becomes mandatory on two platforms: Authenticode for
+    Windows (Azure Trusted Signing or OV/EV certificate, SmartScreen)
+    and Apple Developer ID + notarization/stapling for macOS
+    ($99/year). Linux needs none (distro repos carry trust). Every
+    package format (brew, Scoop, Winget, Chocolatey, APT, RPM, AUR,
+    Nix, Snap) gains per-arch artifacts and platform signing; see the
+    distribution investigation notes for the per-target table.
+  - CI-agent impact if ported: a single static binary is trivially
+    installed on runners (no interpreter, no MSYS layer, and the
+    Windows startup gap largely disappears); Windows agents still
+    benefit from Authenticode signing for corporate policies, macOS
+    agents want a notarized artifact if it doubles as the end-user
+    binary, and digest-pinned Docker images stay the Linux pattern.
 
 - **Architecture diagram** (`docs/architecture.md`) -- an ASCII or
   Mermaid diagram showing module relationships, data flow for key
@@ -115,9 +116,9 @@ Items in priority order.
    entries) or only standalone nested repos. Useful for migration
    scenarios where you want to convert only one kind at a time.
 
-5. **Remove awk dependency** -- replace `parse-gitnest.awk` with a
+5. **Remove awk dependency** -- replace `git-nest-parse.awk` with a
    pure-shell manifest parser (slower but awk-free). Replace
-   `tree-render.awk` with shell `printf`/`sed` loops. Replace 30+ awk
+   `git-nest-tree-render.awk` with shell `printf`/`sed` loops. Replace 30+ awk
    one-liners with `sed`/`cut`/`grep` equivalents. Eliminates
    GNU-vs-BSD-vs-BusyBox awk variance. Low priority -- the current awk
    usage is POSIX and a BusyBox compatibility test exists. Revisit if

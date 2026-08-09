@@ -25,7 +25,7 @@ cd "$outer"
 "$GIT_NEST" add "file://$remote_foo" libs/foo >/dev/null
 "$GIT_NEST" add "file://$remote_bar" libs/bar >/dev/null
 "$GIT_NEST" add "file://$remote_foo" tools/x >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "init nest" >/dev/null
 
 # --- Plain tree: root [N], managed [M], URLs ---
@@ -120,7 +120,7 @@ mkdir -p nested
     cd nested
     "$GIT_NEST" init --sure >/dev/null
     "$GIT_NEST" add "file://$remote_foo" inner >/dev/null
-    git add .gitnest .gitignore .gitattributes
+    git add .gitnest .gitignore .gitattributes NEST_README.md
     git commit -qm "nested nest init"
 )
 run_capture "tree without --recursive does not descend" norec.out norec.err -- "$GIT_NEST" tree

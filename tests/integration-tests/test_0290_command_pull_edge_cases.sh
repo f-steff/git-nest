@@ -36,7 +36,7 @@ cd "$outer"
 "$GIT_NEST" add "file://$remote_noup" libs/noup >/dev/null
 "$GIT_NEST" add "file://$remote_dirty" libs/dirty >/dev/null
 "$GIT_NEST" add "file://$remote_netfail" libs/netfail >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "init nest" >/dev/null
 
 # --- libs/ff: remote gets a new commit; a plain pull must fast-forward it ---
@@ -140,7 +140,7 @@ make_bare_remote "$remote_nested" "$root/seed/nested"
 mkdir -p nested
 (cd nested && git init -q && git_config && echo seed >f.txt && git add -A && git commit -qm seed)
 "$GIT_NEST" absorb nested "file://$remote_nested" >/dev/null
-(cd nested && "$GIT_NEST" init --sure >/dev/null && "$GIT_NEST" add "file://$remote_ff" inner-ff >/dev/null && git add .gitnest .gitignore .gitattributes && git commit -qm "nested nest init")
+(cd nested && "$GIT_NEST" init --sure >/dev/null && "$GIT_NEST" add "file://$remote_ff" inner-ff >/dev/null && git add .gitnest .gitignore .gitattributes NEST_README.md && git commit -qm "nested nest init")
 (
     cd "$root/seed/ff"
     printf 'even-more\n' >>file.txt

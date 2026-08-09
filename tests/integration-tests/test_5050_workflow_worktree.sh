@@ -16,7 +16,7 @@ make_repo "$outer"
 cd "$outer"
 "$GIT_NEST" init >/dev/null
 "$GIT_NEST" add "file://$remote" libs/sub >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "initial workspace" >/dev/null
 
 test_step "Create a linked worktree with git worktree add" "A consumer may have multiple branches checked out via worktrees; git-nest should work inside each one."

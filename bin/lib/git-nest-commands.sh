@@ -3,7 +3,7 @@
 # git-nest: record and restore reproducible nests of independent Git repositories.
 # https://github.com/f-steff/git-nest
 #
-# git-nest commands -- sourced by bin/git_nest.sh
+# git-nest commands -- sourced by bin/git-nest-main.sh
 #
 # All command implementations not covered by the manifest, hooks, export,
 # or doctor library modules.
@@ -351,6 +351,7 @@ usage() {
 	help_text "Print the git-nest version."
 
 	printf '\nManifest: %s\n' "$MANIFEST_FILE"
+	printf 'Install: %s -- uninstall with: git-nest-uninstall.sh (or .bat/.ps1)\n' "$SCRIPT_DIR"
 }
 
 # Print one dimmed example line under a help "Examples:" heading.
@@ -1421,6 +1422,7 @@ cmd_init() {
 	ensure_gitattributes_guard
 	[ -f .gitignore ] || : >.gitignore
 	ensure_gitignore_hygiene
+	ensure_nest_readme
 	[ "$create_rc" -eq 0 ] || ensure_config
 	printf 'Initialized git-nest workspace.\n'
 }

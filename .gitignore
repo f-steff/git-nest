@@ -3,5 +3,15 @@ run-all-tests-results.md
 run-all-tests.log
 .gitnest-recovery-*/
 
+# Generated packaging output (assemble.sh, generate-docs.sh).
+dist/
+.docs-gen.*/
+
+# Local Jekyll site builds (development/github-pages.md).
+_site/
+_site-src/
+.sass-cache/
+
+
 # Installed copy of the external POSIX shell skill (see .agents/skills/posix-shell/SKILL.md).
 .agents/skills/posix-shell/source/

@@ -25,7 +25,7 @@ cd "$outer"
 "$GIT_NEST" add "$remote_one" libs/one >/dev/null
 "$GIT_NEST" add "$remote_two" libs/two >/dev/null
 "$GIT_NEST" add "$remote_three" libs/three >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "initial workspace" >/dev/null
 
 test_step "Dirty one subproject" "foreach-modified and foreach-clean should partition checked-out subprojects by working-tree state."
@@ -87,7 +87,7 @@ git clone "$remote_nested" nested >/dev/null 2>&1
     cd nested
     "$GIT_NEST" init --sure >/dev/null
     "$GIT_NEST" add "$remote_one" nested-inner >/dev/null
-    git add .gitnest .gitignore .gitattributes
+    git add .gitnest .gitignore .gitattributes NEST_README.md
     git commit -qm "nested nest init"
 )
 rm -f foreach_nested.out

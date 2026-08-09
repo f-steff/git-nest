@@ -25,7 +25,7 @@ cd "$outer"
 "$GIT_NEST" add "$remote_one" libs/one >/dev/null
 "$GIT_NEST" add "$remote_two" libs/two >/dev/null
 "$GIT_NEST" add "$remote_three" libs/three >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "initial workspace" >/dev/null
 
 three_before=$(git -C libs/three rev-parse HEAD)

@@ -18,7 +18,7 @@ cd "$outer"
 "$GIT_NEST" init >/dev/null
 mkdir -p src/deep nested/sub
 printf 'content\n' >src/deep/file.txt
-git add .gitnest .gitignore .gitattributes src/deep/file.txt
+git add .gitnest .gitignore .gitattributes NEST_README.md src/deep/file.txt
 git commit -m "outer project" >/dev/null
 
 # cd -P resolves through macOS symlinks (/var -> /private/var, /tmp -> /private/tmp)

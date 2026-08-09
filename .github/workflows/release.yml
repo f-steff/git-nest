@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'Release notes (optional; defaults to the version.md entry)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  version-check:
+    name: Verify version bumped upward
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      is_release: ${{ steps.gate.outputs.value }}
+    steps:
+      - name: Check out repository with tags
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Extract current version
+        id: version
+        run: |
+          V=$(sed -n 's/^GIT_NEST_VERSION=//p' bin/git-nest-main.sh | head -n 1)
+          echo "value=$V" >> "$GITHUB_OUTPUT"
+          echo "Current version: $V"
+
+      # The version gate: a push to main whose version is not strictly
+      # newer than the last release tag is not a release (e.g. a docs
+      # merge). The gate sets is_release=false and the remaining jobs are
+      # skipped instead of failing the workflow. PR CI runs the same gate
+      # via test_0004, so merges carrying a version bump already passed.
+      - name: Verify version is newer than the last release tag
+        id: gate
+        run: |
+          if sh scripts/package/version-check.sh; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  assemble:
+    name: Assemble artifacts
+    runs-on: ubuntu-latest
+    needs: version-check
+    if: needs.version-check.outputs.is_release == 'true'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Assemble distribution artifacts
+        run: sh scripts/package/assemble.sh --out dist
+
+      - name: Upload assembled artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: dist/
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [version-check, assemble]
+    if: needs.version-check.outputs.is_release == 'true'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Download assembled artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist
+
+      # Creates both the vX.Y.Z tag and the GitHub Release.
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version-check.outputs.version }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          NOTES_FILE=/tmp/release-notes.md
+          if [ -n "$NOTES" ]; then
+            printf '%s\n' "$NOTES" > "$NOTES_FILE"
+          else
+            # The newest version.md entry only (from the first "## x.y.z"
+            # heading to the next one).
+            awk '/^## / { if (n++) exit } { print }' version.md > "$NOTES_FILE"
+            [ -s "$NOTES_FILE" ] || echo "git-nest $VERSION" > "$NOTES_FILE"
+          fi
+          gh release create "v$VERSION" \
+            --title "git-nest $VERSION" \
+            --notes-file "$NOTES_FILE" \
+            "dist/git-nest-$VERSION.tar.gz" \
+            "dist/git-nest-$VERSION.zip" \
+            "dist/SHA256SUMS"
+
+  pages:
+    name: Update Pages
+    uses: ./.github/workflows/pages.yml
+    needs: [version-check, release]
+    if: needs.version-check.outputs.is_release == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

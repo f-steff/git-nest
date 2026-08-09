@@ -8,7 +8,7 @@ set -eu
 setup_unit_test
 load_lib "git-nest-conversion.sh"
 
-# RECOVERY_BACKUP_PREFIX is defined in git_nest.sh. Set it here.
+# RECOVERY_BACKUP_PREFIX is defined in git-nest-main.sh. Set it here.
 RECOVERY_BACKUP_PREFIX=.gitnest-recovery
 
 # backup_timestamp: outputs a UTC timestamp in compact form.

@@ -9,9 +9,13 @@ how to run everything locally. For the test suites themselves, see
 
 ## Continuous Integration (GitHub Actions)
 
-Six manual-only workflows live under `.github/workflows/`, two per target: a
-**fast** one and a **full** one. The fast workflows run the same platform-focused
-set on every target; the full workflows run the whole suite.
+Six workflows live under `.github/workflows/`, two per target: a **fast**
+one and a **full** one. The fast workflows run the same platform-focused
+set on every target; the full workflows run the whole suite. The full
+workflows also run on every pull request (they gate merges to `main`);
+on a merge to `main`, the full Linux workflow plus the fast macOS and
+Windows workflows run, and the Pages and Release workflows fire (see
+`release-process.md` for the trigger matrix).
 
 | File | Runner | What it runs | Approx. time |
 |------|--------|--------------|-------------|
@@ -64,8 +68,8 @@ versus well under a second on Linux. Because the full suite issues several
 hundred git-nest commands, each spawning many git processes, the overhead
 accumulates. This is inherent to Windows process creation and the MSYS2
 translation layer; it is not something the test suite can optimize away.
-Prefer the fast workflows on Windows and macOS for routine checks, and keep
-the full workflows for manual pre-release runs.
+Prefer the fast workflows on Windows and macOS for routine checks; the
+full suites run on every pull request and gate merges to `main`.
 
 ### Running a workflow
 
@@ -80,21 +84,31 @@ workflow's summary page.
 
 ### Status badges
 
-Each workflow has a status badge that can be shown in the README. The badge
-reflects the most recent manual run of that workflow (it shows "no status"
-until a workflow has run at least once):
+Each workflow has a status badge. The badges are shown on the **GitHub
+Pages start page** (`https://f-steff.github.io/git-nest/`), not in the
+README: the README is cloned and re-hosted, so badge URLs pointing at this
+repository would show this repository's status to people viewing forks or
+clones of it. The Pages site is the official release surface, so the
+badges show the default-branch (main) state.
 
-```markdown
-[![CI (Linux fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml)
-[![CI (Linux)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml)
-[![CI (macOS fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml)
-[![CI (macOS)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml)
-[![CI (Windows fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml)
-[![CI (Windows)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml)
+A badge reflects the most recent run of its workflow on the default branch
+(it shows "no status" until a workflow has run at least once). The badge
+URLs are the standard GitHub Actions form:
+
+```
+https://github.com/f-steff/git-nest/actions/workflows/ci-<target>-<fast|full>.yml/badge.svg
 ```
 
-These are the standard GitHub Actions badges; they require no maintenance
-beyond the workflow files themselves.
+For a specific branch or event, GitHub's badge endpoint accepts `?branch=`
+and `?event=` query parameters, for example:
+
+```
+https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg?branch=dev
+```
+
+These require the URL to name the branch explicitly; they are only useful
+on external pages, not in the README (which cannot vary per branch).
+Note that badge URLs return 404 while the repository is private.
 
 ### Changing what runs
 
@@ -165,7 +179,7 @@ Combined they cover all 10 target shells:
 #### Syntax check (6 source files + 1 pwsh)
 
 Each POSIX shell runs `sh -n` on the 6 implementation files
-(`bin/git_nest.sh` + the 5 modules in `bin/lib/`). This verifies that every
+(`bin/git-nest-main.sh` + the 5 modules in `bin/lib/`). This verifies that every
 script is syntactically valid for that shell's parser.
 
 PowerShell 7+ (`pwsh`) is not a POSIX shell, so instead it runs a

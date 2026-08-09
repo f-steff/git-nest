@@ -8,7 +8,7 @@
 #>
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$shellScript = Join-Path $scriptDir "git-nest"
+$shellScript = Join-Path $scriptDir "git-nest-main.sh"
 
 if ($IsWindows) {
     # Locate Git Bash from git.exe on PATH (same intent as bin/git-nest.bat).
@@ -34,9 +34,9 @@ if ($IsWindows) {
     }
     if (-not (Test-Path $shellScript)) {
         # Fall back to PATH search.
-        $shellScript = Get-Command git-nest -ErrorAction SilentlyContinue
+        $shellScript = Get-Command git-nest-main.sh -ErrorAction SilentlyContinue
         if (-not $shellScript) {
-            Write-Error "git-nest not found next to this script or on PATH."
+            Write-Error "git-nest-main.sh not found next to this script or on PATH."
             exit 2
         }
         $shellScript = $shellScript.Source
@@ -46,7 +46,7 @@ if ($IsWindows) {
 } else {
     # Linux / macOS: run via /bin/sh directly.
     if (-not (Test-Path $shellScript)) {
-        Write-Error "git-nest not found at $shellScript"
+        Write-Error "git-nest-main.sh not found at $shellScript"
         exit 2
     }
     & /bin/sh $shellScript @args

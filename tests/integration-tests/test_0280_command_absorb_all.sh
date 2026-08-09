@@ -23,7 +23,7 @@ make_repo "$outer"
 
 cd "$outer"
 "$GIT_NEST" init >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "init nest" >/dev/null
 
 # --- Nothing to absorb ---

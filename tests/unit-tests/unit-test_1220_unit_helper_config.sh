@@ -8,7 +8,7 @@ set -eu
 setup_unit_test
 load_lib "git-nest-manifest.sh"
 
-# Set required globals normally defined by git_nest.sh.
+# Set required globals normally defined by git-nest-main.sh.
 CONFIG_FILE=.gitnest-rc
 MANIFEST_FILE=.gitnest
 SCRIPT_DIR="$REPO_ROOT/bin"

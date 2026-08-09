@@ -7,8 +7,12 @@
 .gitignore text eol=lf
 *.sh text eol=lf
 bin/git-nest text eol=lf
-bin/git_nest.sh text eol=lf
+bin/git-nest-main.sh text eol=lf
 bin/git-nest.ps1 text eol=lf
+bin/git-nest-install.sh text eol=lf
+bin/git-nest-uninstall.sh text eol=lf
+bin/git-nest-install.ps1 text eol=lf
+bin/git-nest-uninstall.ps1 text eol=lf
 
 # AI skills are shell-facing text; keep them LF on all platforms.
 */SKILL.md text eol=lf
@@ -18,3 +22,9 @@ bin/git-nest.ps1 text eol=lf
 # Batch files are intentionally CRLF for cmd.exe.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# CI workflows, Jekyll config, and assets are all LF text.
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.svg text eol=lf

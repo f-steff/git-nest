@@ -9,7 +9,7 @@ Use this skill when working in a project that already uses `git-nest`. The goal 
 
 ## Hard Rules
 
-- Do not modify `bin/git-nest`, `bin/git-nest.bat`, `bin/git-nest.ps1`, or `bin/git_nest.sh` unless the user explicitly asks to change the tool.
+- Do not modify `bin/git-nest`, `bin/git-nest.bat`, `bin/git-nest.ps1`, or `bin/git-nest-main.sh` unless the user explicitly asks to change the tool.
 - Treat `.gitnest` as project coordination state. Prefer `git-nest` commands over manual edits.
 - Do not push branches, install hooks, discard work, or alter `.gitnest` unless the user explicitly asks.
 - Do not delete subprojects or rewrite branches to clean up unless the user explicitly asks.

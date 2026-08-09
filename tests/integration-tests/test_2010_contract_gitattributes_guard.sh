@@ -14,7 +14,7 @@ assert_git_nest_attrs() {
     assert_file_contains .gitattributes ".gitnest text eol=lf"
     assert_file_contains .gitattributes ".gitnest-rc text eol=lf"
     assert_file_contains .gitattributes "bin/git-nest text eol=lf"
-    assert_file_contains .gitattributes "bin/git_nest.sh text eol=lf"
+    assert_file_contains .gitattributes "bin/git-nest-main.sh text eol=lf"
     assert_file_contains .gitattributes "bin/git-nest.bat text eol=crlf"
     assert_file_contains .gitattributes "# END git-nest attributes"
 }

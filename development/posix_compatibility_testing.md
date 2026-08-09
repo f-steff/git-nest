@@ -54,7 +54,7 @@ available shells. This script ships in the external skill and is present here
 only after installing it (see "Installing the Skill" above):
 
 ```sh
-sh .agents/skills/posix-shell/source/scripts/test_runner.sh bin/git_nest.sh
+sh .agents/skills/posix-shell/source/scripts/test_runner.sh bin/git-nest-main.sh
 sh .agents/skills/posix-shell/source/scripts/test_runner.sh tests/unit-tests/
 ```
 
@@ -77,7 +77,7 @@ available shells (dash, bash, ash, zsh, mksh, yash).
 These are snapshots from past verification runs. For current per-shell
 results, run the repository's own cross-shell runner:
 `sh tests/docker/run-cross-shell-tests.sh` (see
-`docs/ci_and_dockerized_testing.md`).
+`development/ci_and_dockerized_testing.md`).
 
 ### Syntax check (6 source files, 6 shells, 36 tests)
 
@@ -86,7 +86,7 @@ set:
 
 | File | dash | bash | ash | zsh | mksh | yash |
 |------|------|------|-----|-----|------|------|
-| `bin/git_nest.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
+| `bin/git-nest-main.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
 | `bin/lib/git-nest-manifest.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
 | `bin/lib/git-nest-commands.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
 | `bin/lib/git-nest-conversion.sh` | PASS | PASS | PASS | PASS | PASS | PASS |

@@ -26,7 +26,7 @@ cd "$outer"
 "$GIT_NEST" add "$url_two" moved/two >/dev/null
 git -C "$outer" init --bare "$outer_remote" >/dev/null
 git -C "$outer" remote add origin "$outer_remote"
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "clone restore modes state" >/dev/null
 git push -u origin HEAD:main >/dev/null
 git --git-dir="$outer_remote" symbolic-ref HEAD refs/heads/main

@@ -20,7 +20,7 @@ make_repo "$outer"
 cd "$outer"
 "$GIT_NEST" init >/dev/null
 "$GIT_NEST" add "file://$remote" libs/foo >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "initial workspace" >/dev/null
 
 # Collect JSON output from every command that supports --json. Output files go

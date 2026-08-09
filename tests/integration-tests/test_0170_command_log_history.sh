@@ -36,7 +36,7 @@ cd "$outer"
 "$GIT_NEST" add "$remote_one" libs/one >/dev/null
 "$GIT_NEST" add "$remote_two" libs/two >/dev/null
 (cd "$outer" && git_config)
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 GIT_AUTHOR_DATE="2030-01-01T00:00:00+0000" GIT_COMMITTER_DATE="2030-01-01T00:00:00+0000" \
     git commit -m "LOG-100 outer baseline" >/dev/null
 

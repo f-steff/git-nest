@@ -5,7 +5,7 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
 ## Maintenance Rules
 
 - Keep `GIT_NEST_VERSION` aligned with `README.md`, `version.md`, and release tests.
-- Keep business logic in `bin/git_nest.sh`; keep `bin/git-nest` and `bin/git-nest.bat` thin.
+- Keep business logic in `bin/git-nest-main.sh`; keep `bin/git-nest` and `bin/git-nest.bat` thin.
 - Preserve the polyglot behavior of `bin/git-nest.bat` so one IDE build-hook command can work across Windows, Linux, and macOS.
 - Write portable `sh` where practical. Prefer `case`, `while`, `sed`, `awk`, `grep`, and `git`.
 - Avoid arrays, `mapfile`, process substitution, associative arrays, and Bash-only conveniences unless clearly justified.
@@ -20,7 +20,7 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
   ~19x slower on Windows than on Linux. When you add a test, decide whether
   it belongs in that subset and, if so, update all three `ci-*-fast.yml`
   files, the "Platform-Focused CI Set" section in `tests/tests.md`, and the
-  workflow table in `docs/ci_and_dockerized_testing.md` together. See
+  workflow table in `development/ci_and_dockerized_testing.md` together. See
   `tests/tests.md` for the guidance on which tests belong in the fast set.
 - **Keep all files plain ASCII** (code and documentation alike). No em/en dashes, curly quotes, arrows, box-drawing characters, or other non-ASCII punctuation. Use `--` for em-dash, `-` for en-dash, `->` for arrows, and plain `-`/`=` characters for divider lines. Straight quotes only (`'` and `"`), never curly (`'` `'` `"` `"`). This keeps diffs clean across editors/terminals with inconsistent Unicode rendering and avoids encoding surprises on Windows. This is enforced automatically: `check_ascii` in `tests/integration-tests/check.sh`, run as a step of `tests/integration-tests/test_0004_static_code_analysis.sh`, fails the suite on any non-ASCII character under `bin`, `tests`, `docs`, `skills`, or root-level `*.md` files. To check manually: `grep -rPn "[^\x00-\x7F]" bin tests docs skills *.md` (should return nothing). This does not affect the optional ANSI color escapes in `--help` output (`help_setup_colors`): those are plain ASCII bytes (ESC + digits/letters), already gated to TTY-only output and disabled by `NO_COLOR`/`GIT_NEST_NO_COLOR`/`TERM=dumb`, so they are unrelated to this rule.
 
@@ -29,9 +29,9 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
 For behavior changes:
 
 1. Read `docs/command-behavior-contract.md`.
-2. Inspect the relevant command implementation in `bin/git_nest.sh`.
+2. Inspect the relevant command implementation in `bin/git-nest-main.sh`.
 3. Add or update focused integration tests under `tests/`.
-4. Update `README.md`, `docs/command-behavior-contract.md`, `docs/technical_docs.md`, and `skills/git-nest/SKILL.md` when user-facing behavior changes. `skills/git-nest/SKILL.md` is the single source of truth for the usage skill; `.agents/skills/git-nest/SKILL.md` is only a pointer to it, so never edit workflow guidance there.
+4. Update `README.md`, `docs/command-behavior-contract.md`, `development/technical_docs.md`, and `skills/git-nest/SKILL.md` when user-facing behavior changes. `skills/git-nest/SKILL.md` is the single source of truth for the usage skill; `.agents/skills/git-nest/SKILL.md` is only a pointer to it, so never edit workflow guidance there.
 5. Every minor and patch release must include a README pass and a version-string audit. Any command name, flag, or example in the docs that does not match the code is a release blocker.
 5. Run the full suite:
 

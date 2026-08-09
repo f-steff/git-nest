@@ -21,7 +21,7 @@ make_repo "$outer"
 cd "$outer"
 "$GIT_NEST" init >/dev/null
 "$GIT_NEST" add "$remote_foo" libs/foo >/dev/null
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "initial workspace" >/dev/null
 
 # --- Clean uninstall removes the full managed set ---

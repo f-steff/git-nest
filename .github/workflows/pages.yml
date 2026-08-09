@@ -1,0 +1,49 @@
+name: Pages
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Stage the site source (inject front matter)
+        run: sh scripts/package/site-prep.sh
+
+      - name: Build the docs site (Jekyll, just-the-docs theme)
+        run: |
+          docker run --rm \
+            -v "$PWD:/srv/jekyll" -w /srv/jekyll \
+            jekyll/jekyll:pages jekyll build --source _site-src --destination _site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,10 +1,10 @@
 # git-nest ShellCheck configuration
 # https://www.shellcheck.net/wiki/
 #
-# Run with: shellcheck -s sh bin/git_nest.sh bin/lib/*.sh
+# Run with: shellcheck -s sh bin/git-nest-main.sh bin/lib/*.sh
 # The .shellcheckrc in this directory is picked up automatically.
 # On Windows where shellcheck.exe is not in Git Bash PATH:
-#   PATH="$PATH:/c/Users/DKfls/AppData/Local/UniGetUI/Chocolatey/bin" shellcheck -s sh bin/git_nest.sh bin/lib/*.sh
+#   PATH="$PATH:/c/Users/DKfls/AppData/Local/UniGetUI/Chocolatey/bin" shellcheck -s sh bin/git-nest-main.sh bin/lib/*.sh
 
 # Project-wide suppressions:
 

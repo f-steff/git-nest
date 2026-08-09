@@ -35,7 +35,7 @@ mkdir -p src/nonempty
 printf 'remote check\n' >src/nonempty/file.txt
 mkdir -p hist/lib
 printf 'history\n' >hist/lib/file.txt
-git add .gitnest .gitignore .gitattributes src/lib src/nonempty hist/lib
+git add .gitnest .gitignore .gitattributes NEST_README.md src/lib src/nonempty hist/lib
 git commit -m "initial outer files" >/dev/null
 
 # --preserve-history needs git-filter-repo; without it, absorb must refuse and

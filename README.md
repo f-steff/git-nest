@@ -1,13 +1,6 @@
 # git-nest   `\\_oOO_//`
 
-[![CI (Linux fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux-fast.yml)
-[![CI (Linux)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml)
-[![CI (macOS fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos-fast.yml)
-[![CI (macOS)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml)
-[![CI (Windows fast)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows-fast.yml)
-[![CI (Windows)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml)
-
-`git-nest` records and restores a reproducible workspace made from independent Git repositories.
+git-nest pins your multi-repo workspace as a manifest in your own repository -- versioned like your code, restorable on any machine.
 
 git-nest is a thoughtful tool that solves a real problem: coordinating multiple independent Git repositories without submodules, monorepo pain, or heavy dependencies.
 
@@ -57,8 +50,8 @@ Because `.gitnest` is a plain-text, human-readable file, every step the tool per
 The runtime requirements above apply, plus a shell that can run the test
 suite (`sh tests/run-all-tests.sh`). The optional Docker cross-shell matrix
 needs a local Docker install -- see
-[`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md) and
-[`docs/maintainer.md`](docs/maintainer.md) for the full development setup.
+[`development/ci_and_dockerized_testing.md`](development/ci_and_dockerized_testing.md) and
+[`development/README.md`](development/README.md) for the full development setup.
 Docker is only needed to verify portability across many shells; the regular
 suite runs without it.
 
@@ -75,22 +68,126 @@ run everywhere. The gap only becomes visible when running the full automated
 test suite, which issues several hundred git-nest commands and therefore
 takes about 40 minutes on Windows versus ~2.5 minutes on Linux. CI accounts
 for this with a fast platform-focused test set; see
-[`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md)
+[`development/ci_and_dockerized_testing.md`](development/ci_and_dockerized_testing.md)
 for the measured numbers.
 
 ## Installation And Invocation
 
-Copy the `bin/` directory to any location already on `PATH` (or add it to `PATH`):
-
-- On Windows, either add the checkout's `bin` directory to `PATH`, or copy it
-  to a folder that is already on `PATH`.
-- On Linux and macOS, add `bin/` to your shell startup file:
+Install the latest release from any POSIX shell (Linux, macOS, BSD, Git
+Bash):
 
 ```sh
-export PATH="$HOME/src/git-nest/bin:$PATH"
+curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
 ```
 
-Or run directly from the checkout:
+Pin a specific version:
+
+```sh
+VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+```
+
+Windows (cmd.exe or PowerShell) -- the `-ExecutionPolicy Bypass` flag makes
+the one-liner work regardless of the machine's PowerShell execution
+policy:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
+```
+
+Pinned version on Windows:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex"
+```
+
+The installers download the release archive, verify it against the
+release's `SHA256SUMS`, and install into `$HOME/.local`
+(POSIX) or `%USERPROFILE%\.local` (Windows). The `bin/` directory inside
+that prefix is the only thing that needs to be on `PATH`. Configuring
+PATH is the installer's default behavior:
+
+- POSIX (`git-nest-install.sh`): appends `export PATH="$HOME/.local/bin:$PATH"`
+  to your shell startup file (`~/.profile`, `~/.bashrc`, or `~/.zshrc`).
+  Pass `--no-add-path` to only print the line.
+- Windows (`git-nest-install.ps1` / `.bat`): adds
+  `%USERPROFILE%\.local\bin` to the user PATH and registers git-nest in
+  Apps & Features (Settings -> Apps). Pass `--no-add-path` (bat) or
+  `GIT_NEST_ADD_PATH=0` (ps1) to leave PATH untouched.
+
+CI pipelines that manage PATH themselves (e.g. `$GITHUB_PATH`) should
+install with `--no-add-path` / `GIT_NEST_ADD_PATH=0`.
+
+The installers copy their own uninstaller into the same `bin/` directory,
+and `git-nest help` prints the install location. To install into a
+different prefix, use `--prefix DIR` (sh/bat) or `GIT_NEST_PREFIX=DIR`
+(ps1); the uninstaller must then be told the same prefix.
+
+### Installed Layout
+
+Everything lives under the install prefix (`$HOME/.local` on POSIX,
+`%USERPROFILE%\.local` on Windows):
+
+```text
+<prefix>/
+|-- bin/                        the payload; this directory goes on PATH
+|   |-- git-nest                the shell entrypoint (all platforms)
+|   |-- git-nest-main.sh             shared implementation
+|   |-- git-nest.bat            cmd.exe launcher        (Windows only)
+|   |-- git-nest.ps1            PowerShell launcher     (Windows only)
+|   |-- git-nest-install.sh     installer, kept for re-installs
+|   |-- git-nest-install.bat    installer                (Windows only)
+|   |-- git-nest-install.ps1    installer                (Windows only)
+|   |-- git-nest-uninstall.sh   uninstaller (on PATH)
+|   |-- git-nest-uninstall.bat  uninstaller             (Windows only)
+|   |-- git-nest-uninstall.ps1  uninstaller             (Windows only)
+|   `-- lib/                    library modules
+|       |-- git-nest-commands.sh
+|       |-- git-nest-conversion.sh
+|       |-- git-nest-doctor.sh
+|       |-- git-nest-hooks.sh
+|       |-- git-nest-manifest.sh
+|       |-- git-nest-parse.awk
+|       `-- git-nest-tree-render.awk
+`-- share/                      staged content from the release
+    |-- doc/git-nest/           raw markdown docs + generated HTML
+    |-- git-nest/skill/         AI usage skill (SKILL.md)
+    `-- man/                    man pages (man1 + man5)
+```
+
+Differences by installer:
+
+- `git-nest-install.sh` (POSIX) installs `bin/` + `share/` as above and
+  skips the Windows-only launchers.
+- `git-nest-install.ps1` (Windows, macOS, Linux) installs the same tree;
+  on Windows `git-nest.bat`/`git-nest.ps1` are included.
+- `git-nest-install.bat` (cmd.exe) installs the Windows launchers + `lib/`
+  and the docs (markdown + HTML), skipping man pages.
+
+### Uninstalling
+
+The uninstaller is copied into the installed `bin/` directory, so it is on
+PATH like the tool itself. Uninstall exactly what you installed:
+
+- **Linux, macOS, BSD (POSIX shell)** -- `git-nest-uninstall.sh` (or
+  `sh "$HOME/.local/bin/git-nest-uninstall.sh"` if PATH was not
+  configured). Removes `bin/`, `share/`, and the `export PATH=...` line
+  the installer added to your shell startup file.
+- **Windows (PowerShell)** -- `git-nest-uninstall.ps1`. Removes `bin/`,
+  `share/`, the user PATH entry, and the Apps & Features registration.
+- **Windows (cmd.exe)** -- `git-nest-uninstall.bat`. Same removals; use
+  `--remove-path current|system` to clean only the current session or the
+  system PATH instead of the user PATH.
+
+The uninstaller finds its own installation (the directory it sits in), so
+no flags are needed for the default layout. On Windows, git-nest also
+appears under Settings -> Apps -> Installed apps; the "Uninstall" button
+runs the same uninstaller. `git-nest help` prints the install location.
+
+For a custom prefix, pass the same prefix you installed with: `sh
+/path/to/bin/git-nest-uninstall.sh --prefix DIR` (or set
+`GIT_NEST_PREFIX=DIR` for the PowerShell variant).
+
+Or use git-nest directly from a checkout:
 
 ```sh
 sh bin/git-nest version
@@ -98,9 +195,7 @@ sh bin/git-nest version
 
 Once `bin/` is on `PATH`, the entrypoint is available under all three names
 (`git-nest`, the `.bat` polyglot on Windows, and the `.ps1` PowerShell
-launcher), and Git's subcommand discovery finds it as `git nest`. Proper
-platform installers (Homebrew, Chocolatey, Winget, APT, and similar) are on
-the todo list; see [todo.md](todo.md).
+launcher), and Git's subcommand discovery finds it as `git nest`.
 
 Use either form:
 
@@ -203,7 +298,7 @@ Subprojects are ignored by the outer Git repository so their files do not get ac
 
 `.gitnest` is a plain-text, INI-like format: bracketed section headers, one `key=value` pair per line, blank lines and `#`-prefixed comment lines ignored anywhere. A `[project]` section with `version=1` is required, followed by one `[subproject "<path>"]` section per managed subproject. The `revision` key in a subproject is the reproducibility contract: it pins the exact commit another machine restores.
 
-See [`docs/manifest.md`](docs/manifest.md) for the complete key reference and the validation rules (`validate_manifest_schema`). In brief: `repo` is required per subproject, `target_branch` and `revision` are the usual recorded state, and `clone`/`depth`/`tag` are optional refinements. Keys not listed there are preserved verbatim across manifest rewrites so external tooling can add its own extension data (see [`docs/technical_docs.md`](docs/technical_docs.md) for the exact preservation contract).
+See [`docs/manifest.md`](docs/manifest.md) for the complete key reference and the validation rules (`validate_manifest_schema`). In brief: `repo` is required per subproject, `target_branch` and `revision` are the usual recorded state, and `clone`/`depth`/`tag` are optional refinements. Keys not listed there are preserved verbatim across manifest rewrites so external tooling can add its own extension data (see [`development/technical_docs.md`](development/technical_docs.md) for the exact preservation contract).
 
 ## Typical Workflows
 
@@ -364,7 +459,7 @@ This is a working-tree convenience, not a manifest authority. It does not replac
 
 | Command | Brief use |
 | --- | --- |
-| `init [--rc] [--sure]` | Create a new `.gitnest`; `--sure` confirms an intentional nested nest inside an existing nest. |
+| `init [--rc] [--sure]` | Create a new `.gitnest`; `--sure` confirms an intentional nested nest inside an existing nest. Also creates `NEST_README.md` (a short pointer for anyone who clones the nest) if it does not exist. |
 | `tidy [--rc]` | Refresh managed support files such as `.gitattributes`, `.gitignore`, and optional `.gitnest-rc`. |
 | `add [--clone <full\|partial\|shallow>] [--depth <n>] <repo> <path>` | Add and clone a subproject at a path relative to the current nest root; `.` is not valid. `--clone` records future `restore` clone mode; `--depth` sets shallow clone depth (default 1). |
 | `remove` / `rm [--force] [--dry-run] [--json\|--json-pretty] <path>` | Remove a managed subproject from the current nest and delete its checkout on disk; the remote is untouched. |
@@ -451,16 +546,21 @@ For a copied-manifest startup, put `.gitnest` in an empty directory and run `git
 
 ### Continuous Integration
 
-CI runs on GitHub Actions as six manual-only workflows -- a fast,
-platform-focused subset and the full test suite, each on Linux, macOS, and
-Windows. The fast subset covers unit tests, static analysis, the platform
-tests (launchers, completions, git invocation), export formats, and
-paths-with-spaces -- everything that can genuinely differ per platform --
-since Windows process startup makes the full suite about 19x slower there
-(~40 min) than on Linux (~2.5 min). The badges at the top of this file
-reflect the most recent manual run of each workflow. See
-[`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md)
+CI runs on GitHub Actions: every pull request runs the **full** test
+suite on Linux, macOS, and Windows (required before merge to `main`);
+a merge to `main` re-runs the full Linux suite plus a fast,
+platform-focused subset on macOS and Windows, deploys the documentation
+site, and automatically creates the release (tag + GitHub Release) when
+the version was bumped. The fast subset covers unit tests, static
+analysis, the platform tests (launchers, completions, git invocation),
+export formats, and paths-with-spaces -- everything that can genuinely
+differ per platform -- since Windows process startup makes the full
+suite about 19x slower there (~40 min) than on Linux (~2.5 min). See
+[`development/ci_and_dockerized_testing.md`](development/ci_and_dockerized_testing.md)
 for the workflow reference, measured timings, and how to trigger a run.
+
+The CI status badges are shown on the [GitHub Pages start page]
+(https://f-steff.github.io/git-nest/).
 
 ## Security Considerations
 
@@ -474,17 +574,17 @@ git-nest ships as plain POSIX shell, split by responsibility rather than as one 
 
 | Path | Role |
 |------|------|
-| `bin/git-nest` | Thin POSIX entrypoint. Locates and sources `git_nest.sh`, then dispatches into it. Keep this file small; put real behavior in the library modules below. |
+| `bin/git-nest` | Thin POSIX entrypoint. Locates and sources `git-nest-main.sh`, then dispatches into it. Keep this file small; put real behavior in the library modules below. |
 | `bin/git-nest.ps1` | PowerShell 7+ launcher. On Windows finds Git Bash then forwards; on Linux/macOS runs via `/bin/sh`. |
 | `bin/git-nest.bat` | Polyglot Windows launcher: runs from `cmd.exe` and from sh/bash contexts alike, then forwards to `bin/git-nest` through Git Bash. |
-| `bin/git_nest.sh` | Main shared implementation entrypoint. Defines shared constants and sources every module in `bin/lib/`; the command dispatch table (`git_nest_main`) lives in `bin/lib/git-nest-commands.sh`. |
+| `bin/git-nest-main.sh` | Main shared implementation entrypoint. Defines shared constants and sources every module in `bin/lib/`; the command dispatch table (`git_nest_main`) lives in `bin/lib/git-nest-commands.sh`. |
 | `bin/lib/git-nest-manifest.sh` | Core manifest reading/writing, the manifest cache, path-safety and boundary guards, `.gitignore`/`.gitattributes` hygiene, locking, and other helpers shared across every command. |
 | `bin/lib/git-nest-commands.sh` | Command implementations not covered by the other modules: `init`, `add`, `remove`, `move`, `status`, `outdated`, `verify`, `diff`, `log`, `list`, `restore`, `snapshot`, `pull`, `freeze`, `foreach*`, `branch-*`, `config`, `update`, help text, and shell completions. |
 | `bin/lib/git-nest-conversion.sh` | Nest-boundary conversions: `export`, `absorb` (all sources, including `--subrepo`/`--subtree`), and `inline`, plus the shared recovery-backup infrastructure the destructive conversions use. |
 | `bin/lib/git-nest-doctor.sh` | Read-only diagnostics: `doctor`, `survey`, and `tree`, plus the reproducibility-state classification `list` uses. |
 | `bin/lib/git-nest-hooks.sh` | Managed local Git hook installation, removal, and preflight (`hooks-install`/`hooks-uninstall`). |
-| `bin/lib/parse-gitnest.awk` | Single-pass `.gitnest` parser used by the manifest cache: emits shell-assignable variable declarations for `eval`, avoiding a subprocess per key read. |
-| `bin/lib/tree-render.awk` | Renders `tree`'s flat, pre-sorted row list as an ASCII-art tree grouped by shared path prefixes. |
+| `bin/lib/git-nest-parse.awk` | Single-pass `.gitnest` parser used by the manifest cache: emits shell-assignable variable declarations for `eval`, avoiding a subprocess per key read. |
+| `bin/lib/git-nest-tree-render.awk` | Renders `tree`'s flat, pre-sorted row list as an ASCII-art tree grouped by shared path prefixes. |
 | `bin/.shellcheckrc` | ShellCheck configuration and the small set of justified, commented suppressions for this codebase. |
 | `docs/` | User-facing and technical documentation: the behavior contract, technical notes, exit codes, and maintainer guidance. |
 | `docs/command-behavior-contract.md` | The behavior contract: what every command does and guarantees. |
@@ -596,17 +696,19 @@ TEST_WATCHDOG_SECONDS=300 sh tests/run-all-tests.sh
   above with real commands and output.
 - [`docs/howto.md`](docs/howto.md) -- recipes for multi-step scenarios such
   as moving a subproject between a nest and a nested nest.
-- [`docs/technical_docs.md`](docs/technical_docs.md) -- implementation
-  architecture, the manifest cache, concurrency, and the preservation
-  contract.
+- [`docs/ci-consumer-guide.md`](docs/ci-consumer-guide.md) -- for DevOps
+  engineers integrating git-nest into CI pipelines on any system.
+- [`development/technical_docs.md`](development/technical_docs.md) --
+  implementation architecture, the manifest cache, concurrency, and the
+  preservation contract.
 - [`docs/exit-codes.md`](docs/exit-codes.md) -- the shared exit-code table.
-- [`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md) --
+- [`development/ci_and_dockerized_testing.md`](development/ci_and_dockerized_testing.md) --
   the GitHub Actions workflows and the Docker cross-shell test runner.
 - [`tests/tests.md`](tests/tests.md) and
   [`tests/unit-tests/unit-tests.md`](tests/unit-tests/unit-tests.md) -- the
   test suites.
-- [`docs/maintainer.md`](docs/maintainer.md) -- for contributors working on
-  git-nest itself.
+- [`development/README.md`](development/README.md) -- for contributors
+  working on git-nest itself.
 - [`todo.md`](todo.md) -- planned work, postponed ideas, and things git-nest
   deliberately will not do.
 

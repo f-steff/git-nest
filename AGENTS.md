@@ -2,7 +2,7 @@
 
 ## Project Structure & Subproject Organization
 
-This repository contains the behavior contract in `docs/command-behavior-contract.md`, the user manual in `README.md`, maintainer guidance in `docs/maintainer.md`, and a user-facing AI skill in `skills/git-nest/SKILL.md`.
+This repository contains the behavior contract in `docs/command-behavior-contract.md`, the user manual in `README.md`, maintainer guidance in `development/README.md`, and a user-facing AI skill in `skills/git-nest/SKILL.md`.
 
 Keep implementation files organized by responsibility:
 
@@ -11,13 +11,13 @@ bin/
   git-nest                  main executable shell entrypoint
   git-nest.bat              polyglot launcher (cmd.exe and sh/bash)
   git-nest.ps1              PowerShell 7+ launcher
-  git_nest.sh               thin shared entrypoint: sources bin/lib/;
+  git-nest-main.sh               thin shared entrypoint: sources bin/lib/;
                             the command dispatch table (git_nest_main) lives
                             in lib/git-nest-commands.sh
   lib/                      library modules (git-nest-manifest.sh,
                             git-nest-commands.sh, git-nest-hooks.sh,
                             git-nest-conversion.sh, git-nest-doctor.sh,
-                            parse-gitnest.awk, tree-render.awk)
+                            git-nest-parse.awk, git-nest-tree-render.awk)
 tests/
   run-all-tests.sh/.bat     main runner (IDs 0000-5050) and cmd.exe launcher
   tests.md                  overall test strategy guide
@@ -26,7 +26,13 @@ tests/
                             standalone runner, unit-tests.ini coverage map
   integration-tests/        end-to-end suite (real Git repositories),
                             helper.sh, check.sh
-docs/                       user-facing and technical documentation
+docs/                       user-facing documentation (shipped in packages)
+development/                repository development/maintenance docs (CI,
+                            dockerized testing, POSIX notes, technical
+                            implementation) -- not shipped
+index.md, _config.yml,      GitHub Pages site (Jekyll, just-the-docs theme):
+assets/logo.svg,            rendered from README.md + docs/; see
+_includes/head_custom.html  development/github-pages.md
 skills/git-nest/SKILL.md    portable AI usage skill shipped to consumers;
                             single source of truth for that skill
 .agents/skills/<name>/SKILL.md  skill tree for development agents

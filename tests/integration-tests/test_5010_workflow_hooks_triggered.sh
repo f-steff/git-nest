@@ -27,7 +27,7 @@ cd "$outer"
 "$GIT_NEST" init >/dev/null
 "$GIT_NEST" add "$foo_remote" libs/foo >/dev/null
 git remote add origin "$nest_remote"
-git add .gitnest .gitignore .gitattributes
+git add .gitnest .gitignore .gitattributes NEST_README.md
 git commit -m "initial nest" >/dev/null
 git push -u origin main >/dev/null 2>&1
 

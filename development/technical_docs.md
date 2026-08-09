@@ -5,7 +5,7 @@ modules that are sourced together:
 
 ```mermaid
 graph LR
-    entry["bin/git-nest"] --> sh["bin/git_nest.sh"]
+    entry["bin/git-nest"] --> sh["bin/git-nest-main.sh"]
     sh --> manifest["bin/lib/git-nest-manifest.sh"]
     sh --> commands["bin/lib/git-nest-commands.sh"]
     sh --> hooks["bin/lib/git-nest-hooks.sh"]
@@ -17,7 +17,7 @@ graph LR
     manifest -->|helpers| doctor
 ```
 
-`bin/git-nest` stays thin: it sources `git_nest.sh`, which sources the five
+`bin/git-nest` stays thin: it sources `git-nest-main.sh`, which sources the five
 modules and defines shared constants. `git_nest_main` (the command dispatch
 table) lives in `git-nest-commands.sh`. The manifest module is the shared
 core the other modules build on.
