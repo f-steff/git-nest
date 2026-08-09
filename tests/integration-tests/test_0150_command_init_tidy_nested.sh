@@ -52,7 +52,7 @@ test ! -f NEST_README.md || {
 }
 
 "$GIT_NEST" add "$remote" libs/foo >/dev/null
-git add .gitnest .gitignore .gitattributes NEST_README.md
+git add .gitnest .gitignore .gitattributes
 git commit -m "initial workspace" >/dev/null
 
 if (cd libs/foo && "$GIT_NEST" init >nested_init.out 2>nested_init.err); then
