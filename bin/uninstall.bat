@@ -12,7 +12,8 @@ rem   --prefix DIR      Remove the installation under DIR (default:
 rem                     %LOCALAPPDATA%\Programs\git-nest, matching
 rem                     install.bat's default).
 rem   --remove-path     Remove DIR\bin from PATH:
-rem                       user    - permanently for this user (setx, HKCU; default)
+rem                       user    - permanently for this user (setx, HKCU; default,
+rem                                 matching install.bat's --add-path user)
 rem                       current - only in this shell session
 rem                       system  - system-wide (HKLM; elevated prompt required)
 rem ===========================================================================
@@ -23,7 +24,7 @@ rem Capture the script location BEFORE any shift so %~dp0 stays valid.
 set "SCRIPT_DIR=%~dp0"
 
 set "PREFIX=%LOCALAPPDATA%\Programs\git-nest"
-set "REMOVE_PATH=off"
+set "REMOVE_PATH=user"
 
 :parse
 if "%~1"=="" goto parsed
@@ -75,14 +76,10 @@ rmdir /s /q "%DEST%"
 rem Remove staged content (man pages, docs, skill) if present.
 if exist "%PREFIX%\share" rmdir /s /q "%PREFIX%\share"
 
-rem --- PATH removal ---
-if "%REMOVE_PATH%"=="off" (
-    echo Removed git-nest from %PREFIX%
-    echo   payload removed; PATH was not changed
-    echo   "use --remove-path user,current,system to also clean the PATH"
-    exit /b 0
-)
+rem Remove the now-empty prefix directory if nothing remains.
+rd "%PREFIX%" 2>nul
 
+rem --- PATH removal (default: user, matching install.bat's --add-path user) ---
 if /i "%REMOVE_PATH%"=="current" (
     rem Strip DEST; from the current session PATH.
     set "NEWPATH="
@@ -112,7 +109,7 @@ echo   uninstall.bat [--prefix DIR] [--remove-path user^|current^|system]
 echo.
 echo   --prefix DIR         Remove the installation under DIR (default:
 echo                        %%LOCALAPPDATA%%\Programs\git-nest)
-echo   --remove-path user   Remove DIR\bin from the user PATH (setx, default)
+echo   --remove-path user   Remove DIR\bin from the user PATH (default)
 echo   --remove-path current  Remove DIR\bin from the current shell session
 echo   --remove-path system   Remove DIR\bin from the system PATH (elevated)
 exit /b 0

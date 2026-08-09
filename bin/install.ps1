@@ -26,6 +26,9 @@
 # When run as a file from a git-nest checkout (bin/install.ps1), the
 # script installs from that checkout instead of downloading.
 #
+# To remove the installation, run bin/uninstall.ps1 with the same
+# GIT_NEST_PREFIX.
+#
 # After install, add DIR/bin to PATH:
 #   $env:PATH = "$HOME\.local\bin;$env:PATH"
 
@@ -152,6 +155,7 @@ try {
     } else {
         Write-Output "Add to PATH: `$env:PATH = `"$dest;`$env:PATH`""
         Write-Output "(re-run with the environment variable GIT_NEST_ADD_PATH=1 to configure it permanently)"
+        Write-Output "(to remove the installation, run bin/uninstall.ps1)"
     }
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue

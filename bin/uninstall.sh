@@ -61,8 +61,16 @@ case "${SHELL:-}" in
 esac
 if [ -f "$rc_file" ]; then
     tmp=$(mktemp "${TMPDIR:-/tmp}/gitnest-uninstall.XXXXXX")
-    # Drop the "# git-nest" comment line and the export line for this prefix.
-    sed "/^# git-nest$/d; \|^export PATH=\"$dest:\$PATH\"\$|d" "$rc_file" >"$tmp"
+    # Drop the "# git-nest" comment line, the export line for this prefix,
+    # and the blank line the installer put before the block. Blanks are
+    # accumulated and discarded when the block is found; elsewhere they
+    # are restored verbatim.
+    awk -v d="$dest" '
+        /^$/ { blank++; next }
+        /^# git-nest$/ { blank=0; next }
+        $0 == "export PATH=\"" d ":$PATH\"" { next }
+        { while (blank > 0) { print ""; blank-- }; print }
+    ' "$rc_file" >"$tmp"
     mv "$tmp" "$rc_file"
     echo "  removed PATH export from $rc_file"
 fi

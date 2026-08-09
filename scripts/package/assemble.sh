@@ -12,6 +12,9 @@
 #                      install/uninstall.bat, md + html docs, skill
 #                      (the launchers forward straight to git_nest.sh,
 #                      which self-dispatches -- git-nest is not needed)
+#   install.ps1     -> git-nest, git-nest.ps1, git_nest.sh, lib/,
+#                      install/uninstall.ps1, man pages, md + html docs,
+#                      skill (cross-platform PowerShell installer)
 #
 # Artifacts:
 #   git-nest-<v>.tar.gz         universal (POSIX-readable)
@@ -83,7 +86,7 @@ mkdir -p "$stage/bin" "$stage/share/man/man1" "$stage/share/man/man5" \
 cp "$repo/bin/git-nest" "$repo/bin/git-nest.bat" "$repo/bin/git-nest.ps1" \
     "$repo/bin/git_nest.sh" "$repo/bin/install.sh" "$repo/bin/install.bat" \
     "$repo/bin/install.ps1" "$repo/bin/uninstall.sh" "$repo/bin/uninstall.bat" \
-    "$stage/bin/"
+    "$repo/bin/uninstall.ps1" "$stage/bin/"
 cp -R "$repo/bin/lib" "$stage/bin/"
 
 # Docs: raw md (shipping set), man pages, HTML, skill.
