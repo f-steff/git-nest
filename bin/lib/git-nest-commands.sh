@@ -351,6 +351,7 @@ usage() {
 	help_text "Print the git-nest version."
 
 	printf '\nManifest: %s\n' "$MANIFEST_FILE"
+	printf 'Install: %s -- uninstall with: git-nest-uninstall.sh (or .bat/.ps1)\n' "$SCRIPT_DIR"
 }
 
 # Print one dimmed example line under a help "Examples:" heading.

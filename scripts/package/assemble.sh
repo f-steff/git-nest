@@ -6,15 +6,18 @@
 # One universal package holds every file (all launchers, man pages, raw
 # markdown, HTML site, skill, and all installers). The per-platform
 # installers copy only the files relevant to their system:
-#   install.sh      -> git-nest, git_nest.sh, lib/, install/uninstall.sh,
-#                      man pages, md + html docs, skill
-#   install.bat     -> git-nest.bat, git-nest.ps1, git_nest.sh, lib/,
-#                      install/uninstall.bat, md + html docs, skill
-#                      (the launchers forward straight to git_nest.sh,
-#                      which self-dispatches -- git-nest is not needed)
-#   install.ps1     -> git-nest, git-nest.ps1, git_nest.sh, lib/,
-#                      install/uninstall.ps1, man pages, md + html docs,
-#                      skill (cross-platform PowerShell installer)
+#   git-nest-install.sh      -> git-nest, git_nest.sh, lib/,
+#                               git-nest-install/uninstall.sh,
+#                               man pages, md + html docs, skill
+#   git-nest-install.bat     -> git-nest.bat, git-nest.ps1, git_nest.sh,
+#                               lib/, git-nest-install/uninstall.bat,
+#                               md + html docs, skill (the launchers
+#                               forward straight to git_nest.sh, which
+#                               self-dispatches -- git-nest is not needed)
+#   git-nest-install.ps1     -> git-nest, git-nest.ps1, git_nest.sh, lib/,
+#                               git-nest-install/uninstall.ps1,
+#                               man pages, md + html docs, skill
+#                               (cross-platform PowerShell installer)
 #
 # Artifacts:
 #   git-nest-<v>.tar.gz         universal (POSIX-readable)
@@ -84,9 +87,10 @@ mkdir -p "$stage/bin" "$stage/share/man/man1" "$stage/share/man/man5" \
 
 # Full bin/: every launcher + installers.
 cp "$repo/bin/git-nest" "$repo/bin/git-nest.bat" "$repo/bin/git-nest.ps1" \
-    "$repo/bin/git_nest.sh" "$repo/bin/install.sh" "$repo/bin/install.bat" \
-    "$repo/bin/install.ps1" "$repo/bin/uninstall.sh" "$repo/bin/uninstall.bat" \
-    "$repo/bin/uninstall.ps1" "$stage/bin/"
+    "$repo/bin/git_nest.sh" "$repo/bin/git-nest-install.sh" \
+    "$repo/bin/git-nest-install.bat" "$repo/bin/git-nest-install.ps1" \
+    "$repo/bin/git-nest-uninstall.sh" "$repo/bin/git-nest-uninstall.bat" \
+    "$repo/bin/git-nest-uninstall.ps1" "$stage/bin/"
 cp -R "$repo/bin/lib" "$stage/bin/"
 
 # Docs: raw md (shipping set), man pages, HTML, skill.

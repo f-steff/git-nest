@@ -12,19 +12,19 @@ tarball/zip of the payload, and the SAME artifact works on every platform
 - **GitHub Releases** host the artifacts: a universal
   `git-nest-<version>.tar.gz` (POSIX-readable), a universal
   `git-nest-<version>.zip` (Windows-readable), and `SHA256SUMS`.
-- **Install scripts** are the install path on every platform: `bin/install.sh`
-  for POSIX shells (Linux, macOS, BSD, Git Bash) and `bin/install.ps1`
+- **Install scripts** are the install path on every platform: `bin/git-nest-install.sh`
+  for POSIX shells (Linux, macOS, BSD, Git Bash) and `bin/git-nest-install.ps1`
   for PowerShell. Both support `VERSION=latest` (default, resolved via
   the GitHub API) and `VERSION=x.y.z` (direct download), verify the
   download against `SHA256SUMS`, and install into a user-local prefix.
   One-liners:
 
   ```sh
-  curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
   ```
 
   ```bat
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.ps1 | iex }"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
   ```
 
 - **No native package managers.** We decided against Chocolatey, Homebrew,

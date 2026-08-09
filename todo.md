@@ -3,8 +3,8 @@
 Items in priority order. Each gets its own WIP commit.
 
 1. **Distribution method** -- DONE. Users install git-nest from GitHub
-   Releases via the install scripts (`bin/install.sh` for POSIX shells,
-   `bin/install.ps1` for PowerShell), which support `VERSION=latest`
+   Releases via the install scripts (`bin/git-nest-install.sh` for POSIX shells,
+   `bin/git-nest-install.ps1` for PowerShell), which support `VERSION=latest`
    (default) and `VERSION=x.y.z`. Native package managers (Homebrew,
    Scoop, Chocolatey, Winget, APT, RPM, AUR) were considered and
    rejected; see `development/distribution-overview.md`. The repository

@@ -6,7 +6,7 @@
 # plain shell, so there is no build step.
 #
 # Usage:
-#   sh install.sh [--prefix DIR] [--from PATH] [--add-path]
+#   sh git-nest-install.sh [--prefix DIR] [--from PATH] [--add-path]
 #
 #   --prefix DIR   Install under DIR (default: $HOME/.local).
 #                  The bin/ payload is installed to DIR/bin and that is the
@@ -23,10 +23,10 @@
 # itself when it is not run from a checkout and no --from is given:
 #
 #   Latest release (default):
-#     curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
+#     curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
 #
 #   Pinned version:
-#     VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
+#     VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
 #
 #   VERSION=latest (default) resolves the newest release via the GitHub
 #   API; VERSION=x.y.z downloads that release directly. GIT_NEST_REPO
@@ -34,7 +34,7 @@
 #   verified against the release's SHA256SUMS when a checksum tool is
 #   available.
 #
-# To remove the installation, run bin/uninstall.sh with the same --prefix.
+# To remove the installation, run bin/git-nest-uninstall.sh with the same --prefix.
 #
 # After install, add DIR/bin to PATH:
 #   export PATH="$HOME/.local/bin:$PATH"
@@ -54,12 +54,12 @@ fetch=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --prefix)
-            [ $# -ge 2 ] || { echo "install.sh: --prefix needs a directory" >&2; exit 2; }
+            [ $# -ge 2 ] || { echo "git-nest-install.sh: --prefix needs a directory" >&2; exit 2; }
             prefix=$2
             shift 2
             ;;
         --from)
-            [ $# -ge 2 ] || { echo "install.sh: --from needs a path" >&2; exit 2; }
+            [ $# -ge 2 ] || { echo "git-nest-install.sh: --from needs a path" >&2; exit 2; }
             from=$2
             shift 2
             ;;
@@ -72,7 +72,7 @@ while [ $# -gt 0 ]; do
             exit 0
             ;;
         *)
-            echo "install.sh: unknown argument: $1 (see --help)" >&2
+            echo "git-nest-install.sh: unknown argument: $1 (see --help)" >&2
             exit 2
             ;;
     esac
@@ -105,7 +105,7 @@ if [ "$fetch" -eq 1 ]; then
         tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
             | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
         [ -n "$tag" ] || {
-            echo "install.sh: cannot resolve the latest release via the GitHub API" >&2
+            echo "git-nest-install.sh: cannot resolve the latest release via the GitHub API" >&2
             exit 1
         }
         fetch_version=${tag#v}
@@ -113,7 +113,7 @@ if [ "$fetch" -eq 1 ]; then
     url="https://github.com/$repo/releases/download/v$fetch_version/git-nest-$fetch_version.tar.gz"
     echo "Downloading $url"
     curl -fsSL -o "$work/git-nest.tar.gz" "$url" || {
-        echo "install.sh: download failed: $url" >&2
+        echo "git-nest-install.sh: download failed: $url" >&2
         exit 1
     }
     # Best-effort checksum verification against the release SHA256SUMS.
@@ -122,12 +122,12 @@ if [ "$fetch" -eq 1 ]; then
             "https://github.com/$repo/releases/download/v$fetch_version/SHA256SUMS" 2>/dev/null; then
             if command -v sha256sum >/dev/null 2>&1; then
                 (cd "$work" && grep -F "git-nest-$fetch_version.tar.gz" SHA256SUMS \
-                    | sha256sum -c -) || { echo "install.sh: SHA256SUMS verification failed" >&2; exit 1; }
+                    | sha256sum -c -) || { echo "git-nest-install.sh: SHA256SUMS verification failed" >&2; exit 1; }
             else
                 (cd "$work" && grep -F "git-nest-$fetch_version.tar.gz" SHA256SUMS \
-                    | shasum -a 256 -c -) || { echo "install.sh: SHA256SUMS verification failed" >&2; exit 1; }
+                    | shasum -a 256 -c -) || { echo "git-nest-install.sh: SHA256SUMS verification failed" >&2; exit 1; }
             fi
-            echo "install.sh: tarball checksum verified"
+            echo "git-nest-install.sh: tarball checksum verified"
         fi
     fi
     from="$work/git-nest.tar.gz"
@@ -157,7 +157,7 @@ else
 fi
 
 [ -f "$work/payload/git-nest" ] || {
-    echo "install.sh: source does not contain bin/git-nest" >&2
+    echo "git-nest-install.sh: source does not contain bin/git-nest" >&2
     exit 1
 }
 
@@ -174,8 +174,8 @@ mkdir -p "$dest"
 rm -rf "$dest"
 mkdir -p "$dest"
 cp "$work/payload/git-nest" "$work/payload/git_nest.sh" "$dest/"
-[ -f "$work/payload/install.sh" ] && cp "$work/payload/install.sh" "$dest/"
-[ -f "$work/payload/uninstall.sh" ] && cp "$work/payload/uninstall.sh" "$dest/"
+[ -f "$work/payload/git-nest-install.sh" ] && cp "$work/payload/git-nest-install.sh" "$dest/"
+[ -f "$work/payload/git-nest-uninstall.sh" ] && cp "$work/payload/git-nest-uninstall.sh" "$dest/"
 cp -R "$work/payload/lib" "$dest/"
 
 # Staged content for full-tree tarballs: man pages, docs, skill.

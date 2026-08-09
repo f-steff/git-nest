@@ -77,13 +77,13 @@ Install the latest release from any POSIX shell (Linux, macOS, BSD, Git
 Bash):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
 ```
 
 Pin a specific version:
 
 ```sh
-VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
+VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
 ```
 
 Windows (cmd.exe or PowerShell) -- the `-ExecutionPolicy Bypass` flag makes
@@ -91,13 +91,13 @@ the one-liner work regardless of the machine's PowerShell execution
 policy:
 
 ```bat
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.ps1 | iex }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
 ```
 
 Pinned version on Windows:
 
 ```bat
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex"
 ```
 
 The installers download the release tarball, verify it against the
@@ -111,6 +111,30 @@ release's `SHA256SUMS`, and install into `$HOME/.local`
 To install into a different prefix, run the scripts with `--prefix DIR`
 (POSIX) or set `GIT_NEST_PREFIX=DIR` (Windows); see the script headers for
 all options.
+
+The installers copy their own uninstaller into the same `bin/` directory
+(which is on PATH), and `git-nest help` prints the install location.
+
+### Uninstalling
+
+The uninstaller lives in the installed `bin/` directory, so it is on PATH
+like the tool itself -- just run it:
+
+- POSIX (Linux, macOS, BSD, Git Bash): `git-nest-uninstall.sh`
+- PowerShell: `git-nest-uninstall.ps1`
+- cmd.exe: `git-nest-uninstall.bat`
+
+The uninstaller finds its own installation (the directory it sits in),
+removes the payload (`bin/`), the staged content (`share/`: man pages,
+docs, skill), and undoes the PATH configuration the installer made --
+the shell startup-file export on POSIX, the user PATH entry and the
+Windows Apps & Features registration on Windows. On Windows, git-nest
+also appears under Settings -> Apps -> Installed apps, where the normal
+"Uninstall" button runs the same uninstaller.
+
+For a custom prefix, pass the same prefix you installed with: `sh
+/path/to/bin/git-nest-uninstall.sh --prefix DIR` (or set
+`GIT_NEST_PREFIX=DIR` for the PowerShell variant).
 
 Or use git-nest directly from a checkout:
 

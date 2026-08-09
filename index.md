@@ -28,13 +28,13 @@ repository -- versioned like your code, restorable on any machine.
 Install git-nest (latest release):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
 ```
 
 Windows (cmd.exe):
 
 ```bat
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.ps1 | iex }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
 ```
 
 Then, inside any multi-repo workspace:

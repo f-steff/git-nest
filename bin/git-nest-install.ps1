@@ -7,10 +7,10 @@
 # VERSION=x.y.z downloads that release directly:
 #
 #   Latest release (cmd.exe / PowerShell):
-#     powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.ps1 | iex }"
+#     powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
 #
 #   Pinned version:
-#     powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.ps1 | iex"
+#     powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex"
 #
 # The -ExecutionPolicy Bypass flag makes the one-liner work regardless of
 # the machine's PowerShell execution policy.
@@ -23,10 +23,10 @@
 #   GIT_NEST_ADD_PATH when set to '1', permanently append DIR/bin to the
 #                     user PATH (default: only print the export line)
 #
-# When run as a file from a git-nest checkout (bin/install.ps1), the
+# When run as a file from a git-nest checkout (bin/git-nest-install.ps1), the
 # script installs from that checkout instead of downloading.
 #
-# To remove the installation, run bin/uninstall.ps1 with the same
+# To remove the installation, run bin/git-nest-uninstall.ps1 with the same
 # GIT_NEST_PREFIX.
 #
 # After install, add DIR/bin to PATH:
@@ -48,7 +48,7 @@ $fromDir = $null
 $download = $false
 
 if ($PSScriptRoot) {
-    # Run as a file: use the surrounding checkout when bin/install.ps1 sits
+    # Run as a file: use the surrounding checkout when bin/git-nest-install.ps1 sits
     # next to bin/git-nest.
     if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'git-nest')) {
         $fromDir = Split-Path $PSScriptRoot -Parent
@@ -76,8 +76,8 @@ try {
 
         # Windows expands the zip natively (Expand-Archive); POSIX shells
         # use tar. The download format therefore depends on the platform.
-        $isWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
-        $ext = if ($isWindows) { 'zip' } else { 'tar.gz' }
+        $isWinOs = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+        $ext = if ($isWinOs) { 'zip' } else { 'tar.gz' }
         $url = "https://github.com/$repo/releases/download/v$version/git-nest-$version.$ext"
         Write-Output "Downloading $url"
         Invoke-WebRequest -UseBasicParsing -OutFile (Join-Path $work ("git-nest.$ext")) -Uri $url
@@ -100,7 +100,7 @@ try {
 
         $extract = Join-Path $work 'extract'
         New-Item -ItemType Directory -Path $extract | Out-Null
-        if ($isWindows) {
+        if ($isWinOs) {
             Expand-Archive -LiteralPath (Join-Path $work 'git-nest.zip') -DestinationPath $extract
         } else {
             tar -xzf (Join-Path $work 'git-nest.tar.gz') -C $extract
@@ -121,7 +121,7 @@ try {
     # .ps1 launcher also runs under pwsh on Linux/macOS).
     Get-ChildItem -LiteralPath $dest -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
     Get-ChildItem -LiteralPath $payload | ForEach-Object {
-        if (-not $isWindows -and $_.Name -eq 'git-nest.bat') { return }
+        if (-not $isWinOs -and $_.Name -eq 'git-nest.bat') { return }
         Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse -Force
     }
 
@@ -152,10 +152,20 @@ try {
         } else {
             Write-Output "  PATH already contains $dest"
         }
+        # Register the app in Windows Apps & Features (Settings -> Apps)
+        # with a normal uninstall entry pointing at the co-located
+        # uninstaller.
+        $un = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\git-nest"
+        New-Item -Path $un -Force | Out-Null
+        New-ItemProperty -Path $un -Name DisplayName -Value 'git-nest' -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path $un -Name DisplayVersion -Value $version -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path $un -Name InstallLocation -Value $prefix -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path $un -Name UninstallString -Value ('"' + (Join-Path $dest 'git-nest-uninstall.bat') + '" --prefix "' + $prefix + '"') -PropertyType String -Force | Out-Null
+        Write-Output "  registered in Apps & Features"
     } else {
         Write-Output "Add to PATH: `$env:PATH = `"$dest;`$env:PATH`""
         Write-Output "(re-run with the environment variable GIT_NEST_ADD_PATH=1 to configure it permanently)"
-        Write-Output "(to remove the installation, run bin/uninstall.ps1)"
+        Write-Output "(to remove the installation, run bin/git-nest-uninstall.ps1)"
     }
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue

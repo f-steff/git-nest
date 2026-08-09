@@ -6,7 +6,7 @@ rem Installs the bin/ payload into a user-local directory and optionally adds
 rem it to the PATH.
 rem
 rem Usage:
-rem   install.bat [--prefix DIR] [--from PATH] [--add-path (user|current|system)]
+rem   git-nest-install.bat [--prefix DIR] [--from PATH] [--add-path (user|current|system)]
 rem
 rem   --prefix DIR   Install under DIR (default: %LOCALAPPDATA%\Programs\git-nest).
 rem                  The bin/ payload is installed to DIR\bin and that is the
@@ -73,7 +73,7 @@ if /i "%~1"=="--add-path" (
     goto parse
 )
 if /i "%~1"=="--help" goto help
-echo install.bat: unknown argument: %~1
+echo git-nest-install.bat: unknown argument: %~1
 exit /b 2
 :parsed
 
@@ -107,7 +107,7 @@ if exist "%FROM%\bin" (
     )
 )
 if not exist "%WORK%\payload\git-nest" (
-    echo install.bat: source does not contain bin\git-nest
+    echo git-nest-install.bat: source does not contain bin\git-nest
     exit /b 1
 )
 
@@ -125,8 +125,8 @@ rem lib/ and the Windows install/uninstall scripts are needed.
 copy /y "%WORK%\payload\git-nest.bat" "%DEST%\" >nul
 copy /y "%WORK%\payload\git-nest.ps1" "%DEST%\" >nul
 copy /y "%WORK%\payload\git_nest.sh" "%DEST%\" >nul
-if exist "%WORK%\payload\install.bat" copy /y "%WORK%\payload\install.bat" "%DEST%\" >nul
-if exist "%WORK%\payload\uninstall.bat" copy /y "%WORK%\payload\uninstall.bat" "%DEST%\" >nul
+if exist "%WORK%\payload\git-nest-install.bat" copy /y "%WORK%\payload\git-nest-install.bat" "%DEST%\" >nul
+if exist "%WORK%\payload\git-nest-uninstall.bat" copy /y "%WORK%\payload\git-nest-uninstall.bat" "%DEST%\" >nul
 if exist "%WORK%\payload\lib" (
     xcopy /e /i /q /y "%WORK%\payload\lib\*" "%DEST%\lib\" >nul
 )
@@ -182,14 +182,15 @@ if /i "%ADD_PATH%"=="system" (
     exit /b 0
 )
 
-rem Default: user PATH (HKCU).
-powershell -NoProfile -Command "$d='%DEST%'; $p=[Environment]::GetEnvironmentVariable('Path','User'); if ($p -and ($p -split ';' -contains $d)) { Write-Output ('already on the user PATH') } else { $n=if ($p) { $p.TrimEnd(';') + ';' + $d } else { $d }; [Environment]::SetEnvironmentVariable('Path',$n,'User'); Write-Output ('added ' + $d + ' to the user PATH - new shells will see it') }"
+rem Default: user PATH (HKCU). Also registers the app in Windows
+rem Apps & Features (Settings -> Apps) with a normal uninstall entry.
+powershell -NoProfile -Command "& { $q=[char]34; $d='%DEST%'; $p=[Environment]::GetEnvironmentVariable('Path','User'); if ($p -and ($p -split ';' -contains $d)) { Write-Output ('already on the user PATH') } else { $n=if ($p) { $p.TrimEnd(';') + ';' + $d } else { $d }; [Environment]::SetEnvironmentVariable('Path',$n,'User'); Write-Output ('added ' + $d + ' to the user PATH - new shells will see it') }; $u='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\git-nest'; New-Item -Path $u -Force | Out-Null; New-ItemProperty -Path $u -Name DisplayName -Value 'git-nest' -PropertyType String -Force | Out-Null; New-ItemProperty -Path $u -Name DisplayVersion -Value '%VERSION%' -PropertyType String -Force | Out-Null; New-ItemProperty -Path $u -Name InstallLocation -Value '%PREFIX%' -PropertyType String -Force | Out-Null; New-ItemProperty -Path $u -Name UninstallString -Value ($q + '%DEST%\git-nest-uninstall.bat' + $q + ' --prefix ' + $q + '%PREFIX%' + $q) -PropertyType String -Force | Out-Null; Write-Output ('registered in Apps & Features') }"
 exit /b 0
 
 :help
 echo git-nest installer for Windows
 echo.
-echo   install.bat [--prefix DIR] [--from PATH] [--add-path user^|current^|system]
+echo   git-nest-install.bat [--prefix DIR] [--from PATH] [--add-path user^|current^|system]
 echo.
 echo   --prefix DIR        Install under DIR (default: %%LOCALAPPDATA%%\Programs\git-nest)
 echo   --from PATH         Source: a release zip or a directory containing bin\
@@ -198,5 +199,5 @@ echo                       default when --add-path is given without a mode)
 echo   --add-path current  Add DIR\bin to the current shell session only
 echo   --add-path system   Add DIR\bin to the system PATH (elevated prompt required)
 echo.
-echo To remove the installation, run bin\uninstall.bat with the same --prefix.
+echo To remove the installation, run bin\git-nest-uninstall.bat with the same --prefix.
 exit /b 0
