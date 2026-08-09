@@ -484,6 +484,43 @@ print_gitattributes_guard() {
 	printf '%s\n' "$GITATTRIBUTES_END"
 }
 
+# Create NEST_README.md in the nest root if it does not exist. The file is
+# a short pointer for someone who clones the repository without having met
+# git-nest: it says what the workspace is and how to materialize it with
+# git-nest restore. It is created only by init (never by tidy), and never
+# overwritten, so the maintainer can edit, commit, ignore, or delete it
+# freely and tidy will not resurrect it.
+ensure_nest_readme() {
+	[ -f NEST_README.md ] && return 0
+	cat >NEST_README.md <<'EOF'
+# NEST_README - this repository is a git-nest workspace
+
+This repository coordinates independent Git repositories (its
+subprojects) through the `.gitnest` manifest. The subproject checkouts
+are not part of a plain clone; they are materialized by git-nest.
+
+## Restore the workspace
+
+Install git-nest (https://github.com/f-steff/git-nest), then from a
+fresh clone of this repository run:
+
+    git-nest restore
+
+This clones and checks out every subproject at the exact revision the
+manifest pins, so the workspace is reproducible on any machine.
+
+## Everyday commands
+
+    git-nest status        show nest root and subproject state
+    git-nest verify        validate the manifest and checkouts
+    git-nest snapshot      record clean subproject revisions
+    git-nest add <url> <path>   bring a repository into the nest
+    git-nest update <path>      move a subproject to a new revision
+
+See the project README and docs/ for the full command reference.
+EOF
+}
+
 # Create or refresh the managed .gitattributes block, removing any stale
 # git-nest entries outside the block and preserving user lines.
 ensure_gitattributes_guard() {

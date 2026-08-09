@@ -1421,6 +1421,7 @@ cmd_init() {
 	ensure_gitattributes_guard
 	[ -f .gitignore ] || : >.gitignore
 	ensure_gitignore_hygiene
+	ensure_nest_readme
 	[ "$create_rc" -eq 0 ] || ensure_config
 	printf 'Initialized git-nest workspace.\n'
 }

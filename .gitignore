@@ -7,7 +7,8 @@ run-all-tests.log
 dist/
 .docs-gen.*/
 
-# Personal, uncommitted investigation notes (distribution, packaging, etc.).
+# Personal investigation notes (distribution, packaging, etc.). Tracked on
+# the distribution-investigation branch only; removed before merging to main.
 temp-doc/
 
 # Installed copy of the external POSIX shell skill (see .agents/skills/posix-shell/SKILL.md).

@@ -357,7 +357,7 @@ This is a working-tree convenience, not a manifest authority. It does not replac
 
 | Command | Brief use |
 | --- | --- |
-| `init [--rc] [--sure]` | Create a new `.gitnest`; `--sure` confirms an intentional nested nest inside an existing nest. |
+| `init [--rc] [--sure]` | Create a new `.gitnest`; `--sure` confirms an intentional nested nest inside an existing nest. Also creates `NEST_README.md` (a short pointer for anyone who clones the nest) if it does not exist. |
 | `tidy [--rc]` | Refresh managed support files such as `.gitattributes`, `.gitignore`, and optional `.gitnest-rc`. |
 | `add [--clone <full\|partial\|shallow>] [--depth <n>] <repo> <path>` | Add and clone a subproject at a path relative to the current nest root; `.` is not valid. `--clone` records future `restore` clone mode; `--depth` sets shallow clone depth (default 1). |
 | `remove` / `rm [--force] [--dry-run] [--json\|--json-pretty] <path>` | Remove a managed subproject from the current nest and delete its checkout on disk; the remote is untouched. |
