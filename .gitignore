@@ -7,9 +7,10 @@ run-all-tests.log
 dist/
 .docs-gen.*/
 
-# Personal investigation notes (distribution, packaging, etc.). Tracked on
-# the distribution-investigation branch only; removed before merging to main.
-temp-doc/
+# Local Jekyll site builds (development/github-pages.md).
+_site/
+.sass-cache/
+
 
 # Installed copy of the external POSIX shell skill (see .agents/skills/posix-shell/SKILL.md).
 .agents/skills/posix-shell/source/

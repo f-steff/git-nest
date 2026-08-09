@@ -65,8 +65,8 @@ ship_docs_md() {
     cp "$repo/LICENSE" "$repo/README.md" "$repo/SECURITY.md" "$repo/version.md" "$dst/"
     # Only user-targeted docs ship; technical_docs.md (implementation
     # architecture) and maintainer/CI docs stay out of packages.
-    for f in command-behavior-contract.md examples.md exit-codes.md howto.md \
-             manifest.md; do
+    for f in command-behavior-contract.md ci-consumer-guide.md examples.md \
+             exit-codes.md howto.md manifest.md; do
         cp "$repo/docs/$f" "$dst/"
     done
 }
@@ -82,7 +82,8 @@ mkdir -p "$stage/bin" "$stage/share/man/man1" "$stage/share/man/man5" \
 # Full bin/: every launcher + installers.
 cp "$repo/bin/git-nest" "$repo/bin/git-nest.bat" "$repo/bin/git-nest.ps1" \
     "$repo/bin/git_nest.sh" "$repo/bin/install.sh" "$repo/bin/install.bat" \
-    "$repo/bin/uninstall.sh" "$repo/bin/uninstall.bat" "$stage/bin/"
+    "$repo/bin/install.ps1" "$repo/bin/uninstall.sh" "$repo/bin/uninstall.bat" \
+    "$stage/bin/"
 cp -R "$repo/bin/lib" "$stage/bin/"
 
 # Docs: raw md (shipping set), man pages, HTML, skill.

@@ -21,8 +21,8 @@ bin/uninstall.sh text eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
-# Distribution packaging files: Docker images and CI workflows are all LF
-# text.
+# CI workflows, Jekyll config, and assets are all LF text.
 Dockerfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.svg text eol=lf

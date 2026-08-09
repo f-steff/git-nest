@@ -1139,7 +1139,7 @@ absorb_all_ensure_nest() {
 # nested repo into the nest in one step. It never absorbs git-subrepos or
 # subtrees (always a conscious absorb --subrepo/--subtree action) and never
 # absorbs anything found underneath a boundary the scan already classified
-# (survey's boundary rule -- see docs/technical_docs.md).
+# (survey's boundary rule -- see development/technical_docs.md).
 cmd_absorb_all() {
 	sure=0
 	force_partial=0

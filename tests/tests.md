@@ -33,7 +33,7 @@ tests/
 
 - **Cross-shell checks** (`docker/`): run syntax checks, unit tests, and the
   `__complete` engine under many shells in Alpine and Debian containers.
-  See `docs/ci_and_dockerized_testing.md`.
+  See `development/ci_and_dockerized_testing.md`.
 
 ## How The Pieces Fit Together
 
@@ -96,7 +96,7 @@ exceptions, and a `0205`-style insertion is allowed between blocks.
 
 ## Platform-Focused CI Set
 
-The CI fast workflows (see `docs/ci_and_dockerized_testing.md`) run a fixed
+The CI fast workflows (see `development/ci_and_dockerized_testing.md`) run a fixed
 subset of tests on every target:
 
 ```
@@ -119,7 +119,7 @@ workflow files and this list accordingly:**
   by OS (tar, zip, Python, busybox), or path handling that differs on
   Windows -- must be added to the fast set in
   `.github/workflows/ci-*-fast.yml` (all three) and to the `only` list
-  documented here and in `docs/ci_and_dockerized_testing.md`.
+  documented here and in `development/ci_and_dockerized_testing.md`.
 - A test that verifies command behavior, contracts, symmetry, or workflows
   identical across platforms belongs in the full suite only; it still runs
   on Windows and macOS via the full workflows, which are manual-only and
@@ -127,7 +127,7 @@ workflow files and this list accordingly:**
 
 If you change the fast set, update all three places together: the three
 `ci-*-fast.yml` workflow files, this section, and the workflow table in
-`docs/ci_and_dockerized_testing.md`.
+`development/ci_and_dockerized_testing.md`.
 
 ## Running Tests
 

@@ -1,9 +1,9 @@
 #!/bin/sh
 #
-# git-nest installer -- install git-nest from a release tarball or a local
-# checkout into a user-local prefix. Works on Linux, macOS, and Windows
-# (Git Bash). CI agents can run this in any pipeline; the tool is plain
-# shell, so there is no build step.
+# git-nest installer -- install git-nest from a release tarball, from a
+# local checkout, or directly from GitHub. Works on Linux, macOS, BSD, and
+# Windows (Git Bash). CI agents can run this in any pipeline; the tool is
+# plain shell, so there is no build step.
 #
 # Usage:
 #   sh install.sh [--prefix DIR] [--from PATH] [--add-path]
@@ -12,12 +12,27 @@
 #                  The bin/ payload is installed to DIR/bin and that is the
 #                  only directory that needs to be on PATH.
 #   --from PATH    Source: a release tarball (.tar.gz) or a directory
-#                  containing bin/ (default: the checkout this script
-#                  lives in, i.e. install from the repo itself).
+#                  containing bin/ (default: this script's checkout, or a
+#                  download from GitHub when the script is piped in).
 #   --add-path     Permanently add DIR/bin to PATH by appending an export
 #                  to the user's shell startup file (~/.profile, ~/.bashrc,
 #                  or ~/.zshrc depending on the login shell). Default is to
 #                  only print the export line; CI should NOT use --add-path.
+#
+# Download mode (curl | sh) -- the script fetches the release tarball
+# itself when it is not run from a checkout and no --from is given:
+#
+#   Latest release (default):
+#     curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
+#
+#   Pinned version:
+#     VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
+#
+#   VERSION=latest (default) resolves the newest release via the GitHub
+#   API; VERSION=x.y.z downloads that release directly. GIT_NEST_REPO
+#   overrides the repository (default: f-steff/git-nest). The tarball is
+#   verified against the release's SHA256SUMS when a checksum tool is
+#   available.
 #
 # To remove the installation, run bin/uninstall.sh with the same --prefix.
 #
@@ -34,6 +49,7 @@ set -eu
 prefix=${HOME:-~}/.local
 from=
 add_path=0
+fetch=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -64,7 +80,14 @@ done
 
 if [ -z "$from" ]; then
     # Default: this script's own checkout (bin/ sits next to install.sh).
-    from=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+    # When the script is piped via stdin (curl | sh), $0 has no checkout,
+    # so fall back to downloading the release tarball from GitHub.
+    self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)
+    if [ -n "$self_dir" ] && [ -f "$self_dir/git-nest" ]; then
+        from=$(CDPATH= cd -- "$self_dir/.." && pwd)
+    else
+        fetch=1
+    fi
 fi
 
 echo "Installing git-nest to $prefix"
@@ -72,6 +95,43 @@ echo "Installing git-nest to $prefix"
 # Resolve the payload (bin/ directory) from the source.
 work=$(mktemp -d "${TMPDIR:-/tmp}/gitnest-install.XXXXXX")
 trap 'rm -rf "$work"' EXIT
+
+if [ "$fetch" -eq 1 ]; then
+    # Download mode: VERSION=latest (default) resolves the newest release
+    # via the GitHub API; VERSION=x.y.z downloads that release directly.
+    fetch_version=${VERSION:-latest}
+    repo=${GIT_NEST_REPO:-f-steff/git-nest}
+    if [ "$fetch_version" = "latest" ]; then
+        tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+            | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
+        [ -n "$tag" ] || {
+            echo "install.sh: cannot resolve the latest release via the GitHub API" >&2
+            exit 1
+        }
+        fetch_version=${tag#v}
+    fi
+    url="https://github.com/$repo/releases/download/v$fetch_version/git-nest-$fetch_version.tar.gz"
+    echo "Downloading $url"
+    curl -fsSL -o "$work/git-nest.tar.gz" "$url" || {
+        echo "install.sh: download failed: $url" >&2
+        exit 1
+    }
+    # Best-effort checksum verification against the release SHA256SUMS.
+    if command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then
+        if curl -fsSL -o "$work/SHA256SUMS" \
+            "https://github.com/$repo/releases/download/v$fetch_version/SHA256SUMS" 2>/dev/null; then
+            if command -v sha256sum >/dev/null 2>&1; then
+                (cd "$work" && grep -F "git-nest-$fetch_version.tar.gz" SHA256SUMS \
+                    | sha256sum -c -) || { echo "install.sh: SHA256SUMS verification failed" >&2; exit 1; }
+            else
+                (cd "$work" && grep -F "git-nest-$fetch_version.tar.gz" SHA256SUMS \
+                    | shasum -a 256 -c -) || { echo "install.sh: SHA256SUMS verification failed" >&2; exit 1; }
+            fi
+            echo "install.sh: tarball checksum verified"
+        fi
+    fi
+    from="$work/git-nest.tar.gz"
+fi
 
 if [ -d "$from" ]; then
     # Local checkout: copy bin/ as-is.

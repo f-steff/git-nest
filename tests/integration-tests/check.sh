@@ -202,7 +202,7 @@ check_bashisms() {
 }
 
 # Every shell source file, test, and doc must be plain ASCII (see the "Keep
-# all files plain ASCII" rule in docs/maintainer.md): no em/en dashes, curly
+# all files plain ASCII" rule in development/README.md): no em/en dashes, curly
 # quotes, arrows, or other non-ASCII punctuation. This keeps diffs and
 # terminal rendering identical across editors, shells, and platforms, and
 # needs no external tool, so it never skips. ANSI escape sequences (used by
@@ -234,7 +234,7 @@ check_ascii() {
 # The tool version reported by bin/git-nest version (GIT_NEST_VERSION) must
 # match the newest "## x.y.z" entry in version.md. The two are updated
 # together on every release, so a stale value in either file is a release
-# blocker (see docs/maintainer.md "Keep GIT_NEST_VERSION aligned with
+# blocker (see development/README.md "Keep GIT_NEST_VERSION aligned with
 # README.md, version.md, and release tests").
 check_version_alignment() {
 	_version_file="$REPO_ROOT/version.md"

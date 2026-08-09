@@ -1,0 +1,27 @@
+# GitHub Pages site configuration. The site renders the user-facing
+# markdown (README.md + docs/) with the just-the-docs Jekyll theme; see
+# development/github-pages.md for the full setup.
+title: git-nest
+description: Pin your multi-repo workspace as a manifest in your own repository -- versioned like your code, restorable on any machine
+remote_theme: just-the-docs/just-the-docs
+plugins:
+  - jekyll-remote-theme
+
+# Only user-facing documentation ships on the site. Development material,
+# tests, and implementation files stay out of the rendered pages.
+exclude:
+  - .agents
+  - .github
+  - bin
+  - development
+  - docker
+  - schemas
+  - scripts
+  - skills
+  - tests
+  - AGENTS.md
+  - LICENSE
+  - run-all-tests.log
+  - run-all-tests-results.md
+  - todo.md
+  - version.md

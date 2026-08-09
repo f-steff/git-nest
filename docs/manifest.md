@@ -1,3 +1,9 @@
+---
+layout: default
+title: Manifest Format
+nav_order: 4
+---
+
 # git-nest Manifest Format
 
 Manifest schema version: `1`

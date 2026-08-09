@@ -1,3 +1,9 @@
+---
+layout: default
+title: How-To
+nav_order: 6
+---
+
 # git-nest How-To
 
 Practical step-by-step recipes for scenarios that span several commands.

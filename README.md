@@ -1,3 +1,9 @@
+---
+layout: default
+title: Manual
+nav_order: 2
+---
+
 # git-nest   `\\_oOO_//`
 
 git-nest pins your multi-repo workspace as a manifest in your own repository -- versioned like your code, restorable on any machine.
@@ -50,8 +56,8 @@ Because `.gitnest` is a plain-text, human-readable file, every step the tool per
 The runtime requirements above apply, plus a shell that can run the test
 suite (`sh tests/run-all-tests.sh`). The optional Docker cross-shell matrix
 needs a local Docker install -- see
-[`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md) and
-[`docs/maintainer.md`](docs/maintainer.md) for the full development setup.
+[`development/ci_and_dockerized_testing.md`](development/ci_and_dockerized_testing.md) and
+[`development/README.md`](development/README.md) for the full development setup.
 Docker is only needed to verify portability across many shells; the regular
 suite runs without it.
 
@@ -68,22 +74,51 @@ run everywhere. The gap only becomes visible when running the full automated
 test suite, which issues several hundred git-nest commands and therefore
 takes about 40 minutes on Windows versus ~2.5 minutes on Linux. CI accounts
 for this with a fast platform-focused test set; see
-[`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md)
+[`development/ci_and_dockerized_testing.md`](development/ci_and_dockerized_testing.md)
 for the measured numbers.
 
 ## Installation And Invocation
 
-Copy the `bin/` directory to any location already on `PATH` (or add it to `PATH`):
-
-- On Windows, either add the checkout's `bin` directory to `PATH`, or copy it
-  to a folder that is already on `PATH`.
-- On Linux and macOS, add `bin/` to your shell startup file:
+Install the latest release from any POSIX shell (Linux, macOS, BSD, Git
+Bash):
 
 ```sh
-export PATH="$HOME/src/git-nest/bin:$PATH"
+curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
 ```
 
-Or run directly from the checkout:
+Pin a specific version:
+
+```sh
+VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.sh | sh
+```
+
+Windows (cmd.exe or PowerShell) -- the `-ExecutionPolicy Bypass` flag makes
+the one-liner work regardless of the machine's PowerShell execution
+policy:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.ps1 | iex }"
+```
+
+Pinned version on Windows:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/install.ps1 | iex"
+```
+
+The installers download the release tarball, verify it against the
+release's `SHA256SUMS`, and install into `$HOME/.local`
+(POSIX) or `%USERPROFILE%\.local` (Windows). Add that `bin/` directory to
+`PATH`:
+
+- POSIX: `export PATH="$HOME/.local/bin:$PATH"`
+- Windows: `set PATH=%USERPROFILE%\.local\bin;%PATH%`
+
+To install into a different prefix, run the scripts with `--prefix DIR`
+(POSIX) or set `GIT_NEST_PREFIX=DIR` (Windows); see the script headers for
+all options.
+
+Or use git-nest directly from a checkout:
 
 ```sh
 sh bin/git-nest version
@@ -91,9 +126,7 @@ sh bin/git-nest version
 
 Once `bin/` is on `PATH`, the entrypoint is available under all three names
 (`git-nest`, the `.bat` polyglot on Windows, and the `.ps1` PowerShell
-launcher), and Git's subcommand discovery finds it as `git nest`. Proper
-platform installers (Homebrew, Chocolatey, Winget, APT, and similar) are on
-the todo list; see [todo.md](todo.md).
+launcher), and Git's subcommand discovery finds it as `git nest`.
 
 Use either form:
 
@@ -196,7 +229,7 @@ Subprojects are ignored by the outer Git repository so their files do not get ac
 
 `.gitnest` is a plain-text, INI-like format: bracketed section headers, one `key=value` pair per line, blank lines and `#`-prefixed comment lines ignored anywhere. A `[project]` section with `version=1` is required, followed by one `[subproject "<path>"]` section per managed subproject. The `revision` key in a subproject is the reproducibility contract: it pins the exact commit another machine restores.
 
-See [`docs/manifest.md`](docs/manifest.md) for the complete key reference and the validation rules (`validate_manifest_schema`). In brief: `repo` is required per subproject, `target_branch` and `revision` are the usual recorded state, and `clone`/`depth`/`tag` are optional refinements. Keys not listed there are preserved verbatim across manifest rewrites so external tooling can add its own extension data (see [`docs/technical_docs.md`](docs/technical_docs.md) for the exact preservation contract).
+See [`docs/manifest.md`](docs/manifest.md) for the complete key reference and the validation rules (`validate_manifest_schema`). In brief: `repo` is required per subproject, `target_branch` and `revision` are the usual recorded state, and `clone`/`depth`/`tag` are optional refinements. Keys not listed there are preserved verbatim across manifest rewrites so external tooling can add its own extension data (see [`development/technical_docs.md`](development/technical_docs.md) for the exact preservation contract).
 
 ## Typical Workflows
 
@@ -451,7 +484,7 @@ tests (launchers, completions, git invocation), export formats, and
 paths-with-spaces -- everything that can genuinely differ per platform --
 since Windows process startup makes the full suite about 19x slower there
 (~40 min) than on Linux (~2.5 min). See
-[`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md)
+[`development/ci_and_dockerized_testing.md`](development/ci_and_dockerized_testing.md)
 for the workflow reference, measured timings, and how to trigger a run.
 
 The CI status badges are shown on the [GitHub Pages start page]
@@ -591,17 +624,19 @@ TEST_WATCHDOG_SECONDS=300 sh tests/run-all-tests.sh
   above with real commands and output.
 - [`docs/howto.md`](docs/howto.md) -- recipes for multi-step scenarios such
   as moving a subproject between a nest and a nested nest.
-- [`docs/technical_docs.md`](docs/technical_docs.md) -- implementation
-  architecture, the manifest cache, concurrency, and the preservation
-  contract.
+- [`docs/ci-consumer-guide.md`](docs/ci-consumer-guide.md) -- for DevOps
+  engineers integrating git-nest into CI pipelines on any system.
+- [`development/technical_docs.md`](development/technical_docs.md) --
+  implementation architecture, the manifest cache, concurrency, and the
+  preservation contract.
 - [`docs/exit-codes.md`](docs/exit-codes.md) -- the shared exit-code table.
-- [`docs/ci_and_dockerized_testing.md`](docs/ci_and_dockerized_testing.md) --
+- [`development/ci_and_dockerized_testing.md`](development/ci_and_dockerized_testing.md) --
   the GitHub Actions workflows and the Docker cross-shell test runner.
 - [`tests/tests.md`](tests/tests.md) and
   [`tests/unit-tests/unit-tests.md`](tests/unit-tests/unit-tests.md) -- the
   test suites.
-- [`docs/maintainer.md`](docs/maintainer.md) -- for contributors working on
-  git-nest itself.
+- [`development/README.md`](development/README.md) -- for contributors
+  working on git-nest itself.
 - [`todo.md`](todo.md) -- planned work, postponed ideas, and things git-nest
   deliberately will not do.
 

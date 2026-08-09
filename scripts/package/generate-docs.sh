@@ -17,14 +17,14 @@
 #   docs/command-behavior-contract.md  -> git-nest-contract.1
 #   docs/examples.md                   -> git-nest-examples.1
 #   docs/howto.md                      -> git-nest-howto.1
-#   docs/technical_docs.md             -> git-nest-technical.1
 #   docs/manifest.md                   -> git-nest-manifest.5
 #   docs/exit-codes.md                 -> git-nest-exit-codes.5
 #   SECURITY.md                        -> git-nest-security.5
 #
-# Maintainer-only docs (maintainer.md, ci_and_dockerized_testing.md,
-# posix_compatibility_testing.md, posix_skill_improvements.md) are NOT
-# converted; they do not ship in packages.
+# Maintainer-only docs under development/ (README.md,
+# ci_and_dockerized_testing.md, posix_compatibility_testing.md,
+# posix_skill_improvements.md, technical_docs.md) are NOT converted; they
+# do not ship in packages.
 
 set -eu
 
@@ -95,6 +95,7 @@ git-nest:1:README.md
 git-nest-contract:1:docs/command-behavior-contract.md
 git-nest-examples:1:docs/examples.md
 git-nest-howto:1:docs/howto.md
+git-nest-ci-guide:1:docs/ci-consumer-guide.md
 git-nest-manifest:5:docs/manifest.md
 git-nest-exit-codes:5:docs/exit-codes.md
 git-nest-security:5:SECURITY.md

@@ -1,3 +1,9 @@
+---
+layout: default
+title: Exit Codes
+nav_order: 7
+---
+
 # Exit Codes
 
 `git-nest` uses the following exit codes for scripting:

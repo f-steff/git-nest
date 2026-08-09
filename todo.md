@@ -2,27 +2,19 @@
 
 Items in priority order. Each gets its own WIP commit.
 
-1. **Distribution method** -- decide how users install git-nest without
-   cloning the repo. Candidates by platform:
+1. **Distribution method** -- DONE. Users install git-nest from GitHub
+   Releases via the install scripts (`bin/install.sh` for POSIX shells,
+   `bin/install.ps1` for PowerShell), which support `VERSION=latest`
+   (default) and `VERSION=x.y.z`. Native package managers (Homebrew,
+   Scoop, Chocolatey, Winget, APT, RPM, AUR) were considered and
+   rejected; see `development/distribution-overview.md`. The repository
+   is public; GitHub CI produces the release artifacts.
 
-   - Cross-OS: Homebrew (macOS + Linux), Nix, a plain shell installer
-     script hosted on the releases page, GitHub Releases with `bin/`
-     tarballs
-   - Linux: APT (`.deb`), RPM (`.rpm`), Snap, AUR (Arch)
-   - macOS: Homebrew
-   - Windows: Chocolatey, Winget, Scoop
-
-   The installer (or each package) should place `bin/` on PATH and
-   optionally install shell completions. GitHub CI (#2 below) would
-   produce the release artifacts.
-
-2. **GitHub CI** -- see `docs/ci_and_dockerized_testing.md` for the workflow
-   reference (manual runs for now; fast run on push/PR and full matrix on
-   schedule/manual once the project is public, badge snippet).
-   Run the test suite on push/PR and produce release artifacts so users
-   can install git-nest without cloning the repo. Prerequisite: the
-   repository must be public to use the free tier without quota
-   concerns.
+2. **GitHub CI** -- see `development/ci_and_dockerized_testing.md` for the
+   workflow reference (all workflows manual `workflow_dispatch` for now).
+   The future end-state -- `main` locked, PR-only merges gated by the
+   fast CI set, full CI + release on merge -- is described in
+   `development/release-process.md`.
 
 # won't do
 

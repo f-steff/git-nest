@@ -20,14 +20,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
-      - name: Build the docs site (pandoc in Docker)
-        run: |
-          sh scripts/package/generate-docs.sh --out site
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build the docs site (Jekyll, just-the-docs theme)
+        uses: actions/jekyll-build-pages@v1
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
-        with:
-          path: site/html
 
   deploy:
     needs: build
