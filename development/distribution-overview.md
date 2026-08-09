@@ -64,18 +64,25 @@ scripts/package/assemble.sh
 
 ## Release Pipeline
 
-`.github/workflows/release.yml` is a manual (`workflow_dispatch`)
-pipeline:
+`.github/workflows/release.yml` runs automatically on every push to
+`main` (and stays available as a manual `workflow_dispatch` with optional
+notes input):
 
-1. `test` -- run the full test suite on Linux.
-2. `version-check` -- `scripts/package/version-check.sh` rejects the
-   release unless the version is strictly newer than the last release
-   tag.
-3. `assemble` -- run `assemble.sh`, upload the artifacts.
-4. `release` -- create the GitHub Release with the version.md changelog
-   entry as notes, attach the tarball, zip, and SHA256SUMS.
-5. `pages` -- refresh the documentation site via the reusable Pages
+1. `version-check` -- `scripts/package/version-check.sh` sets
+   `is_release=true` only when the version is strictly newer than the
+   last release tag; on non-release merges the remaining jobs are
+   skipped (the workflow does not fail).
+2. `assemble` -- run `assemble.sh`, upload the artifacts.
+3. `release` -- create the `vX.Y.Z` tag and the GitHub Release with the
+   version.md changelog entry as notes, attach the tarball, zip, and
+   SHA256SUMS.
+4. `pages` -- refresh the documentation site via the reusable Pages
    workflow.
+
+The full test suite is not part of the release pipeline: the full Linux
+suite runs on every merge via `ci-linux.yml`, and the PR's full CI
+(Linux + macOS + Windows) already gated the merge itself. See
+`development/release-process.md` for the trigger matrix and merge flow.
 
 The script is installed with `curl | sh` (or `iwr | iex`), so "publish
 the release" is the whole distribution step.

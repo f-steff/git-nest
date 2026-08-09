@@ -1,20 +1,11 @@
 # todo
 
-Items in priority order. Each gets its own WIP commit.
+TBD.
 
-1. **Distribution method** -- DONE. Users install git-nest from GitHub
-   Releases via the install scripts (`bin/git-nest-install.sh` for POSIX shells,
-   `bin/git-nest-install.ps1` for PowerShell), which support `VERSION=latest`
-   (default) and `VERSION=x.y.z`. Native package managers (Homebrew,
-   Scoop, Chocolatey, Winget, APT, RPM, AUR) were considered and
-   rejected; see `development/distribution-overview.md`. The repository
-   is public; GitHub CI produces the release artifacts.
-
-2. **GitHub CI** -- see `development/ci_and_dockerized_testing.md` for the
-   workflow reference (all workflows manual `workflow_dispatch` for now).
-   The future end-state -- `main` locked, PR-only merges gated by the
-   fast CI set, full CI + release on merge -- is described in
-   `development/release-process.md`.
+The former distribution-method and GitHub-CI items are done: distribution
+is the universal release tarball plus the install scripts (see
+`development/distribution-overview.md`), and CI is PR-gated with
+automatic release on merge (see `development/release-process.md`).
 
 # won't do
 

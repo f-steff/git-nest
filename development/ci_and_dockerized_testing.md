@@ -9,9 +9,13 @@ how to run everything locally. For the test suites themselves, see
 
 ## Continuous Integration (GitHub Actions)
 
-Six manual-only workflows live under `.github/workflows/`, two per target: a
-**fast** one and a **full** one. The fast workflows run the same platform-focused
-set on every target; the full workflows run the whole suite.
+Six workflows live under `.github/workflows/`, two per target: a **fast**
+one and a **full** one. The fast workflows run the same platform-focused
+set on every target; the full workflows run the whole suite. The full
+workflows also run on every pull request (they gate merges to `main`);
+on a merge to `main`, the full Linux workflow plus the fast macOS and
+Windows workflows run, and the Pages and Release workflows fire (see
+`release-process.md` for the trigger matrix).
 
 | File | Runner | What it runs | Approx. time |
 |------|--------|--------------|-------------|
@@ -64,8 +68,8 @@ versus well under a second on Linux. Because the full suite issues several
 hundred git-nest commands, each spawning many git processes, the overhead
 accumulates. This is inherent to Windows process creation and the MSYS2
 translation layer; it is not something the test suite can optimize away.
-Prefer the fast workflows on Windows and macOS for routine checks, and keep
-the full workflows for manual pre-release runs.
+Prefer the fast workflows on Windows and macOS for routine checks; the
+full suites run on every pull request and gate merges to `main`.
 
 ### Running a workflow
 

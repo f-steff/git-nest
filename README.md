@@ -546,13 +546,16 @@ For a copied-manifest startup, put `.gitnest` in an empty directory and run `git
 
 ### Continuous Integration
 
-CI runs on GitHub Actions as six manual-only workflows -- a fast,
-platform-focused subset and the full test suite, each on Linux, macOS, and
-Windows. The fast subset covers unit tests, static analysis, the platform
-tests (launchers, completions, git invocation), export formats, and
-paths-with-spaces -- everything that can genuinely differ per platform --
-since Windows process startup makes the full suite about 19x slower there
-(~40 min) than on Linux (~2.5 min). See
+CI runs on GitHub Actions: every pull request runs the **full** test
+suite on Linux, macOS, and Windows (required before merge to `main`);
+a merge to `main` re-runs the full Linux suite plus a fast,
+platform-focused subset on macOS and Windows, deploys the documentation
+site, and automatically creates the release (tag + GitHub Release) when
+the version was bumped. The fast subset covers unit tests, static
+analysis, the platform tests (launchers, completions, git invocation),
+export formats, and paths-with-spaces -- everything that can genuinely
+differ per platform -- since Windows process startup makes the full
+suite about 19x slower there (~40 min) than on Linux (~2.5 min). See
 [`development/ci_and_dockerized_testing.md`](development/ci_and_dockerized_testing.md)
 for the workflow reference, measured timings, and how to trigger a run.
 

@@ -1,62 +1,71 @@
 # Release Process And Main Protection
 
-How releases happen today, and the intended end-state for the repository
-once the project is settled: a protected `main`, PR-only merges gated by
-CI, and publication on merge.
+How releases happen and how `main` is protected: PR-only merges gated by
+the full CI suites, automatic Pages deployment on merge, and automatic
+release (tag + GitHub Release) when the merged version is newer than the
+last release tag.
 
-## Current State (Transitional)
+## CI Trigger Matrix
 
-- All CI workflows are manual (`workflow_dispatch` only): the six test
-  workflows (fast + full x Linux/macOS/Windows), the Pages workflow, and
-  the Release workflow.
-- `main` is unprotected: pushes and direct commits are possible.
-- Releases are created manually by running the Release workflow and
-  reviewing its output.
+| Workflow | On PR | On merge to main | Runs |
+|----------|-------|-------------------|------|
+| `ci-linux.yml` | yes | yes | Full test suite (Linux) |
+| `ci-macos.yml` | yes | no | Full test suite (macOS) |
+| `ci-windows.yml` | yes | no | Full test suite (Windows) |
+| `ci-macos-fast.yml` | no | yes | Fast platform set (macOS) |
+| `ci-windows-fast.yml` | no | yes | Fast platform set (Windows) |
+| `ci-linux-fast.yml` | no | no | Manual only |
+| `pages.yml` | no | yes | Jekyll site build + deploy |
+| `release.yml` | no | yes | Version gate -> assemble -> release -> pages |
 
-## Future End-State
+Every pull request runs the **full** suites on all three platforms
+(Linux, macOS, Windows). A merge to main re-runs the full Linux suite
+plus the fast macOS/Windows sets, deploys the Pages site, and starts the
+release workflow.
 
-The goal is a publish-on-merge model:
+## Release On Merge
 
-1. **`main` is locked.** Branch protection rules on `main`:
-   - Require a pull request before merging; no direct pushes.
-   - Require the fast CI set to pass on the PR before merge: the three
-     `ci-*-fast.yml` workflows (Linux, macOS, Windows). These cover the
-     unit suite, static analysis, and the platform-sensitive tests, so
-     every merge is verified on all three OSes without waiting ~45
-     minutes for the full Windows suite.
-   - Require linear history (or squash merges) so `main` stays clean and
-     bisectable.
-2. **Merges gate the full suite.** The full CI workflows
-   (`ci-*-full.yml` / the full runs) run on every merge to `main` (push
-   trigger), giving full verification across all three platforms
-   including the long Windows run. A red full suite on `main` is
-   immediately actionable.
-3. **Release on merge.** When a release is wanted:
-   - Bump `GIT_NEST_VERSION` in `bin/git-nest-main.sh` + the version.md
-     changelog entry in the PR (the existing `check_version_alignment`
-     and `version-check.sh` gates keep them in lockstep).
-   - Merging to `main` triggers the Release workflow on push (or it stays
-     manual and is run after the merge -- whichever is preferred once
-     automation lands).
-   - The Release pipeline runs: full test suite -> version gate ->
-     assemble -> GitHub Release -> Pages refresh.
+`release.yml` runs on every push to `main`. Its first job runs the
+version gate (`scripts/package/version-check.sh`), which compares
+`GIT_NEST_VERSION` against the newest release tag:
 
-## What This Requires
+- **Version bumped** (`x.y.z` strictly newer than the last `vX.Y.Z`
+  tag): the gate sets `is_release=true`, and the pipeline continues:
+  assemble (tarball + zip + SHA256SUMS) -> `gh release create` (which
+  creates both the `vX.Y.Z` tag and the GitHub Release) -> Pages refresh.
+- **Version not bumped** (a docs or fix merge): the gate sets
+  `is_release=false`; the remaining jobs are skipped, so non-release
+  merges cost only the gate job instead of failing the workflow.
 
-- Branch protection settings on `main` (a one-time repo Settings change).
-- CI workflows that trigger on `pull_request` (fast set) and `push` to
-  `main` (full set + optionally release). Today everything is manual;
-  flipping the triggers is the main automation step.
-- Discipline: every behavior change lands with tests, and the version
-  bump lives in the same PR as the change it ships.
+The PR CI already runs the same gate (`check_version_gate` inside
+`test_0004`), so a merge to main only ever carries a version bump when
+the PR intended one. The PR does not create the tag -- the release
+workflow does, after merge, from the merged `main` commit.
 
-## Sequence To Get There
+## Main Protection
 
-1. Keep everything manual while the project stabilizes (current state).
-2. Enable branch protection on `main` with required PR review and
-   required fast-CI checks.
-3. Wire the fast workflows to `pull_request` and the full workflows to
-   `push` on `main`.
-4. Decide release trigger: automatic on merge (tag push) or manual
-   release workflow run after merge.
-5. Revisit and document the exact trigger choices here as they land.
+`main` is protected in the repository settings (Settings -> Rules ->
+Rulesets -> branch ruleset targeting `main`):
+
+- Require a pull request before merging; direct pushes are blocked.
+- Require status checks: `CI (Linux)`, `CI (macOS)`, `CI (Windows)` --
+  the full suites must pass on the PR before it can merge.
+- Require conversation resolution.
+- Force pushes are blocked. Undoing a bad merge therefore uses a
+  **revert PR** (a normal PR that reverses the previous merge), never a
+  history rewrite.
+
+Merges use squash-merge; the commit message (header + body) is taken
+from the PR description so `main` history stays clean and readable.
+
+## Making A Release
+
+1. In the PR: bump `GIT_NEST_VERSION` in `bin/git-nest-main.sh` and add
+   the `version.md` changelog entry (the version alignment check in
+   `test_0004` enforces they match; the version gate enforces the bump).
+2. Merge the PR to `main` once the full CI suites pass.
+3. The release workflow fires automatically on the merge, creates the
+   `vX.Y.Z` tag and the GitHub Release with the version.md entry as
+   notes, and refreshes the Pages site.
+
+No manual release steps; no manual tags.
