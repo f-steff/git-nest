@@ -3,7 +3,7 @@
 # git-nest: record and restore reproducible nests of independent Git repositories.
 # https://github.com/f-steff/git-nest
 #
-# git-nest conversion -- sourced by bin/git_nest.sh
+# git-nest conversion -- sourced by bin/git-nest-main.sh
 #
 # Nest-boundary conversions: export archive creation, path absorption
 # (bringing external repos into the nest), and subproject inlining

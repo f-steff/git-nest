@@ -41,7 +41,7 @@ assert_file_contains init_again.out "git-nest tidy"
 assert_file_contains .gitattributes "broken"
 "$GIT_NEST" tidy >/dev/null
 assert_file_contains .gitattributes ".gitnest text eol=lf"
-assert_file_contains .gitattributes "bin/git_nest.sh text eol=lf"
+assert_file_contains .gitattributes "bin/git-nest-main.sh text eol=lf"
 
 # tidy does not resurrect a deleted NEST_README.md (it is init-only).
 rm NEST_README.md

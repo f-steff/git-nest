@@ -137,7 +137,7 @@ try {
     }
 
     $version = 'unknown'
-    $versionFile = Join-Path $dest 'git_nest.sh'
+    $versionFile = Join-Path $dest 'git-nest-main.sh'
     if (Test-Path -LiteralPath $versionFile) {
         $m = Select-String -LiteralPath $versionFile -Pattern '^GIT_NEST_VERSION='
         if ($m) { $version = ($m.Line -replace '^GIT_NEST_VERSION=', '').Trim() }

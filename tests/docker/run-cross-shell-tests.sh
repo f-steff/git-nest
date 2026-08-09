@@ -76,7 +76,7 @@ run_in_docker() {
                 continue
             fi
 
-            for f in bin/git_nest.sh bin/lib/git-nest-manifest.sh bin/lib/git-nest-commands.sh bin/lib/git-nest-conversion.sh bin/lib/git-nest-doctor.sh bin/lib/git-nest-hooks.sh; do
+            for f in bin/git-nest-main.sh bin/lib/git-nest-manifest.sh bin/lib/git-nest-commands.sh bin/lib/git-nest-conversion.sh bin/lib/git-nest-doctor.sh bin/lib/git-nest-hooks.sh; do
                 [ -f \"/work/\$f\" ] || continue
                 if \"\$sh\" -n \"/work/\$f\" 2>/dev/null; then printf 'PASS\\t%s\\t%s\\n' \"\$sh\" \"\$f\"; else printf 'FAIL\\t%s\\t%s\\n' \"\$sh\" \"\$f\"; fi
             done

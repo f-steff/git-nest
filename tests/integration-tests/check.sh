@@ -12,7 +12,7 @@
 
 SCRIPT_DIR=$(dirname -- "$0")
 REPO_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/../.." && pwd)
-FILES="bin/git_nest.sh bin/lib/*.sh"
+FILES="bin/git-nest-main.sh bin/lib/*.sh"
 NO_INSTALL=0
 BIN_DIR="${HOME:-~}/bin"
 
@@ -20,7 +20,7 @@ BIN_DIR="${HOME:-~}/bin"
 # Use absolute glob relative to REPO_ROOT so checks work from any cwd.
 FILE_COUNT=0
 LINE_COUNT=0
-for _f in "$REPO_ROOT"/bin/git_nest.sh "$REPO_ROOT"/bin/lib/*.sh; do
+for _f in "$REPO_ROOT"/bin/git-nest-main.sh "$REPO_ROOT"/bin/lib/*.sh; do
 	[ -f "$_f" ] || continue
 	FILE_COUNT=$((FILE_COUNT + 1))
 	_l=$(wc -l <"$_f")
@@ -150,7 +150,7 @@ tool_check() {
 
 check_syntax() {
 	rc=0
-	for f in "$REPO_ROOT"/bin/git_nest.sh "$REPO_ROOT"/bin/lib/*.sh; do
+	for f in "$REPO_ROOT"/bin/git-nest-main.sh "$REPO_ROOT"/bin/lib/*.sh; do
 		[ -f "$f" ] || continue
 		sh -n "$f" 2>/dev/null || {
 			fail_ "${f##*/}"
@@ -162,7 +162,7 @@ check_syntax() {
 }
 
 check_shellcheck() {
-	if tool_check shellcheck shellcheck -s sh "$REPO_ROOT"/bin/git_nest.sh "$REPO_ROOT"/bin/lib/*.sh 2>/dev/null; then
+	if tool_check shellcheck shellcheck -s sh "$REPO_ROOT"/bin/git-nest-main.sh "$REPO_ROOT"/bin/lib/*.sh 2>/dev/null; then
 		pass_ "${FILE_COUNT} files, 0 warnings"
 		return 0
 	fi
@@ -172,7 +172,7 @@ check_shellcheck() {
 check_shfmt() {
 	if tool_check shfmt shfmt --version 2>/dev/null; then
 		issues=0
-		for f in "$REPO_ROOT"/bin/git_nest.sh "$REPO_ROOT"/bin/lib/*.sh; do
+		for f in "$REPO_ROOT"/bin/git-nest-main.sh "$REPO_ROOT"/bin/lib/*.sh; do
 			[ -f "$f" ] || continue
 			if shfmt -d -ln posix "$f" 2>/dev/null | grep . >/dev/null 2>&1; then
 				fail_ "${f##*/} (run: shfmt -w -ln posix ${f##*/})"
@@ -188,7 +188,7 @@ check_shfmt() {
 check_bashisms() {
 	if tool_check checkbashisms checkbashisms --version >/dev/null 2>&1; then
 		issues=0
-		for f in "$REPO_ROOT"/bin/git_nest.sh "$REPO_ROOT"/bin/lib/*.sh; do
+		for f in "$REPO_ROOT"/bin/git-nest-main.sh "$REPO_ROOT"/bin/lib/*.sh; do
 			[ -f "$f" ] || continue
 			if checkbashisms "$f" 2>/dev/null | grep . >/dev/null 2>&1; then
 				fail_ "${f##*/}"
@@ -238,7 +238,7 @@ check_ascii() {
 # README.md, version.md, and release tests").
 check_version_alignment() {
 	_version_file="$REPO_ROOT/version.md"
-	_shell_file="$REPO_ROOT/bin/git_nest.sh"
+	_shell_file="$REPO_ROOT/bin/git-nest-main.sh"
 	_code_version=$(sed -n 's/^GIT_NEST_VERSION=//p' "$_shell_file" | head -n 1)
 	_doc_version=$(sed -n 's/^## \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' "$_version_file" | head -n 1)
 	if [ -z "$_code_version" ] || [ -z "$_doc_version" ]; then

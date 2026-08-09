@@ -32,7 +32,7 @@ The goal is a publish-on-merge model:
    including the long Windows run. A red full suite on `main` is
    immediately actionable.
 3. **Release on merge.** When a release is wanted:
-   - Bump `GIT_NEST_VERSION` in `bin/git_nest.sh` + the version.md
+   - Bump `GIT_NEST_VERSION` in `bin/git-nest-main.sh` + the version.md
      changelog entry in the PR (the existing `check_version_alignment`
      and `version-check.sh` gates keep them in lockstep).
    - Merging to `main` triggers the Release workflow on push (or it stays

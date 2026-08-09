@@ -28,7 +28,7 @@ if ($env:GIT_NEST_PREFIX) {
     $prefix = $env:GIT_NEST_PREFIX
 } elseif ($PSScriptRoot) {
     $parent = Split-Path $PSScriptRoot -Parent
-    $inCheckout = (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'git_nest.sh')) -and `
+    $inCheckout = (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'git-nest-main.sh')) -and `
         ((Test-Path -LiteralPath (Join-Path $parent '.git')) -or `
          (Test-Path -LiteralPath (Join-Path $parent 'AGENTS.md')))
     if (-not $inCheckout) {
@@ -41,7 +41,7 @@ if (-not $prefix) {
 
 $dest = Join-Path $prefix 'bin'
 
-if (-not (Test-Path -LiteralPath (Join-Path $dest 'git_nest.sh'))) {
+if (-not (Test-Path -LiteralPath (Join-Path $dest 'git-nest-main.sh'))) {
     Write-Error "uninstall.ps1: no git-nest installation found at $dest"
     exit 1
 }

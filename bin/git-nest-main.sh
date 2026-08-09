@@ -67,6 +67,6 @@ EXIT_GIT=5
 # this file directly through Git Bash, so they need this guard to dispatch.
 # When this file is sourced, $0 is the sourcing script and this block is
 # skipped.
-if [ "$(basename -- "$0")" = "git_nest.sh" ]; then
+if [ "$(basename -- "$0")" = "git-nest-main.sh" ]; then
 	git_nest_main "$@"
 fi

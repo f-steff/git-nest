@@ -119,18 +119,18 @@ if not exist "%WORK%\payload\git-nest" (
 
 rem Read the version from the payload (single source of truth).
 set "VERSION=unknown"
-for /f "tokens=1,* delims==" %%A in ('findstr /b "GIT_NEST_VERSION=" "%WORK%\payload\git_nest.sh"') do set "VERSION=%%B"
+for /f "tokens=1,* delims==" %%A in ('findstr /b "GIT_NEST_VERSION=" "%WORK%\payload\git-nest-main.sh"') do set "VERSION=%%B"
 
 set "DEST=%PREFIX%\bin"
 if exist "%DEST%" rmdir /s /q "%DEST%"
 mkdir "%DEST%" 2>nul
 
 rem Windows-relevant payload: the .bat/.ps1 launchers forward straight to
-rem git_nest.sh (which self-dispatches), so only those three files plus
+rem git-nest-main.sh (which self-dispatches), so only those three files plus
 rem lib/ and the Windows install/uninstall scripts are needed.
 copy /y "%WORK%\payload\git-nest.bat" "%DEST%\" >nul
 copy /y "%WORK%\payload\git-nest.ps1" "%DEST%\" >nul
-copy /y "%WORK%\payload\git_nest.sh" "%DEST%\" >nul
+copy /y "%WORK%\payload\git-nest-main.sh" "%DEST%\" >nul
 if exist "%WORK%\payload\git-nest-install.bat" copy /y "%WORK%\payload\git-nest-install.bat" "%DEST%\" >nul
 if exist "%WORK%\payload\git-nest-uninstall.bat" copy /y "%WORK%\payload\git-nest-uninstall.bat" "%DEST%\" >nul
 if exist "%WORK%\payload\lib" (

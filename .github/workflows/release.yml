@@ -39,7 +39,7 @@ jobs:
       - name: Extract current version
         id: version
         run: |
-          V=$(sed -n 's/^GIT_NEST_VERSION=//p' bin/git_nest.sh | head -n 1)
+          V=$(sed -n 's/^GIT_NEST_VERSION=//p' bin/git-nest-main.sh | head -n 1)
           echo "value=$V" >> "$GITHUB_OUTPUT"
           echo "Current version: $V"
 

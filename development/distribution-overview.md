@@ -58,7 +58,7 @@ scripts/package/assemble.sh
   `pandoc/core:3.10`; a local `pandoc` binary is an optional fallback, and
   the step is skipped with a warning when neither is available. Output is
   normalized to LF so local and CI builds are byte-identical.
-- The version is read from `GIT_NEST_VERSION` in `bin/git_nest.sh` (single
+- The version is read from `GIT_NEST_VERSION` in `bin/git-nest-main.sh` (single
   source of truth; `check_version_alignment` enforces it matches
   version.md). Release tags are `v<version>`.
 

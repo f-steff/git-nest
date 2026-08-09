@@ -131,7 +131,7 @@ Everything lives under the install prefix (`$HOME/.local` on POSIX,
 <prefix>/
 |-- bin/                        the payload; this directory goes on PATH
 |   |-- git-nest                the shell entrypoint (all platforms)
-|   |-- git_nest.sh             shared implementation
+|   |-- git-nest-main.sh             shared implementation
 |   |-- git-nest.bat            cmd.exe launcher        (Windows only)
 |   |-- git-nest.ps1            PowerShell launcher     (Windows only)
 |   |-- git-nest-install.sh     installer, kept for re-installs
@@ -571,10 +571,10 @@ git-nest ships as plain POSIX shell, split by responsibility rather than as one 
 
 | Path | Role |
 |------|------|
-| `bin/git-nest` | Thin POSIX entrypoint. Locates and sources `git_nest.sh`, then dispatches into it. Keep this file small; put real behavior in the library modules below. |
+| `bin/git-nest` | Thin POSIX entrypoint. Locates and sources `git-nest-main.sh`, then dispatches into it. Keep this file small; put real behavior in the library modules below. |
 | `bin/git-nest.ps1` | PowerShell 7+ launcher. On Windows finds Git Bash then forwards; on Linux/macOS runs via `/bin/sh`. |
 | `bin/git-nest.bat` | Polyglot Windows launcher: runs from `cmd.exe` and from sh/bash contexts alike, then forwards to `bin/git-nest` through Git Bash. |
-| `bin/git_nest.sh` | Main shared implementation entrypoint. Defines shared constants and sources every module in `bin/lib/`; the command dispatch table (`git_nest_main`) lives in `bin/lib/git-nest-commands.sh`. |
+| `bin/git-nest-main.sh` | Main shared implementation entrypoint. Defines shared constants and sources every module in `bin/lib/`; the command dispatch table (`git_nest_main`) lives in `bin/lib/git-nest-commands.sh`. |
 | `bin/lib/git-nest-manifest.sh` | Core manifest reading/writing, the manifest cache, path-safety and boundary guards, `.gitignore`/`.gitattributes` hygiene, locking, and other helpers shared across every command. |
 | `bin/lib/git-nest-commands.sh` | Command implementations not covered by the other modules: `init`, `add`, `remove`, `move`, `status`, `outdated`, `verify`, `diff`, `log`, `list`, `restore`, `snapshot`, `pull`, `freeze`, `foreach*`, `branch-*`, `config`, `update`, help text, and shell completions. |
 | `bin/lib/git-nest-conversion.sh` | Nest-boundary conversions: `export`, `absorb` (all sources, including `--subrepo`/`--subtree`), and `inline`, plus the shared recovery-backup infrastructure the destructive conversions use. |

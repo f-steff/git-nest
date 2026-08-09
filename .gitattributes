@@ -7,7 +7,7 @@
 .gitignore text eol=lf
 *.sh text eol=lf
 bin/git-nest text eol=lf
-bin/git_nest.sh text eol=lf
+bin/git-nest-main.sh text eol=lf
 bin/git-nest.ps1 text eol=lf
 bin/git-nest-install.sh text eol=lf
 bin/git-nest-uninstall.sh text eol=lf

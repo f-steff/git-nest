@@ -3,7 +3,7 @@
 # git-nest: record and restore reproducible nests of independent Git repositories.
 # https://github.com/f-steff/git-nest
 #
-# git-nest doctor -- sourced by bin/git_nest.sh
+# git-nest doctor -- sourced by bin/git-nest-main.sh
 #
 # Environment and workspace diagnostics, repository discovery, and listing.
 #

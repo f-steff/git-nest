@@ -8,7 +8,7 @@
 #   sh scripts/package/version-check.sh [--current X.Y.Z] [--last A.B.C]
 #
 #   --current   The version to release (default: read GIT_NEST_VERSION
-#               from bin/git_nest.sh).
+#               from bin/git-nest-main.sh).
 #   --last      The last released version, without a leading 'v'
 #               (default: the newest git tag, 'v'-stripped, or 0.0.0).
 #
@@ -52,7 +52,7 @@ done
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 
 if [ -z "$current" ]; then
-	current=$(sed -n 's/^GIT_NEST_VERSION=//p' "$repo/bin/git_nest.sh" | head -n 1)
+	current=$(sed -n 's/^GIT_NEST_VERSION=//p' "$repo/bin/git-nest-main.sh" | head -n 1)
 fi
 if [ -z "$last" ]; then
 	last=$(git -C "$repo" describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")

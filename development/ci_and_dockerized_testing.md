@@ -175,7 +175,7 @@ Combined they cover all 10 target shells:
 #### Syntax check (6 source files + 1 pwsh)
 
 Each POSIX shell runs `sh -n` on the 6 implementation files
-(`bin/git_nest.sh` + the 5 modules in `bin/lib/`). This verifies that every
+(`bin/git-nest-main.sh` + the 5 modules in `bin/lib/`). This verifies that every
 script is syntactically valid for that shell's parser.
 
 PowerShell 7+ (`pwsh`) is not a POSIX shell, so instead it runs a

@@ -15,7 +15,7 @@ _UNIT_HELPER_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE:-$0}")" && pwd)
 REPO_ROOT=$(CDPATH='' cd -- "$_UNIT_HELPER_DIR/../.." && pwd)
 UNIT_TESTS_DIR="$_UNIT_HELPER_DIR"
 
-# Global variables normally set by bin/git_nest.sh. Tests that source library
+# Global variables normally set by bin/git-nest-main.sh. Tests that source library
 # modules directly must provide these so the modules can find their dependencies
 # (git-nest-parse.awk, git-nest-tree-render.awk) and read the correct config file.
 SCRIPT_DIR="$REPO_ROOT/bin"
@@ -23,7 +23,7 @@ SCRIPT_DIR="$REPO_ROOT/bin"
 : "${CONFIG_FILE:=.gitnest-rc}"
 export MANIFEST_FILE CONFIG_FILE SCRIPT_DIR
 
-# Exit code constants normally set by git_nest.sh.
+# Exit code constants normally set by git-nest-main.sh.
 # The library modules use these without defining them.
 : "${EXIT_ISSUES:=1}"
 : "${EXIT_USAGE:=2}"
@@ -32,7 +32,7 @@ export MANIFEST_FILE CONFIG_FILE SCRIPT_DIR
 : "${EXIT_GIT:=5}"
 export EXIT_ISSUES EXIT_USAGE EXIT_PRECONDITION EXIT_LOCK EXIT_GIT
 
-# Manifest constants normally set by git_nest.sh.
+# Manifest constants normally set by git-nest-main.sh.
 : "${MANIFEST_SCHEMA_VERSION:=1}"
 : "${JSON_SCHEMA_VERSION:=1}"
 : "${GITATTRIBUTES_GUARD:=.gitnest text eol=lf}"
@@ -44,7 +44,7 @@ export MANIFEST_SCHEMA_VERSION JSON_SCHEMA_VERSION
 export GITATTRIBUTES_GUARD GITATTRIBUTES_BEGIN GITATTRIBUTES_END
 export GITIGNORE_BEGIN GITIGNORE_END
 
-# More globals from git_nest.sh.
+# More globals from git-nest-main.sh.
 : "${BRANCH_MARKS_FILE:=.gitnest-branches}"
 : "${PUSH_CANDIDATES_FILE:=.gitnest-push-candidates}"
 : "${RECOVERY_BACKUP_PREFIX:=.gitnest-recovery}"

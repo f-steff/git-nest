@@ -43,9 +43,9 @@
 # skip that and configure PATH manually:
 #   export PATH="$HOME/.local/bin:$PATH"
 #
-# The payload mirrors the repository's bin/ layout: git-nest, git_nest.sh,
+# The payload mirrors the repository's bin/ layout: git-nest, git-nest-main.sh,
 # git-nest.bat, git-nest.ps1, and lib/ all stay in one directory, because
-# the launchers resolve git_nest.sh and lib/ relative to their own
+# the launchers resolve git-nest-main.sh and lib/ relative to their own
 # location. Do not split or symlink them.
 
 set -eu
@@ -170,7 +170,7 @@ fi
 }
 
 # Version comes from the payload itself (single source of truth).
-version=$(sed -n 's/^GIT_NEST_VERSION=//p' "$work/payload/git_nest.sh" | head -n 1)
+version=$(sed -n 's/^GIT_NEST_VERSION=//p' "$work/payload/git-nest-main.sh" | head -n 1)
 [ -n "$version" ] || version=unknown
 
 dest="$prefix/bin"
@@ -178,10 +178,10 @@ mkdir -p "$dest"
 
 # Clear any previous install so stale files cannot linger, then copy the
 # POSIX-relevant payload. Windows-only launchers (.bat/.ps1) are skipped;
-# git-nest, git_nest.sh, lib/, and the install/uninstall scripts are kept.
+# git-nest, git-nest-main.sh, lib/, and the install/uninstall scripts are kept.
 rm -rf "$dest"
 mkdir -p "$dest"
-cp "$work/payload/git-nest" "$work/payload/git_nest.sh" "$dest/"
+cp "$work/payload/git-nest" "$work/payload/git-nest-main.sh" "$dest/"
 [ -f "$work/payload/git-nest-install.sh" ] && cp "$work/payload/git-nest-install.sh" "$dest/"
 [ -f "$work/payload/git-nest-uninstall.sh" ] && cp "$work/payload/git-nest-uninstall.sh" "$dest/"
 cp -R "$work/payload/lib" "$dest/"

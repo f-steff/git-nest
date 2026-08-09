@@ -5,7 +5,7 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
 ## Maintenance Rules
 
 - Keep `GIT_NEST_VERSION` aligned with `README.md`, `version.md`, and release tests.
-- Keep business logic in `bin/git_nest.sh`; keep `bin/git-nest` and `bin/git-nest.bat` thin.
+- Keep business logic in `bin/git-nest-main.sh`; keep `bin/git-nest` and `bin/git-nest.bat` thin.
 - Preserve the polyglot behavior of `bin/git-nest.bat` so one IDE build-hook command can work across Windows, Linux, and macOS.
 - Write portable `sh` where practical. Prefer `case`, `while`, `sed`, `awk`, `grep`, and `git`.
 - Avoid arrays, `mapfile`, process substitution, associative arrays, and Bash-only conveniences unless clearly justified.
@@ -29,7 +29,7 @@ This guide is for changing `git-nest` itself. For user-facing behavior, treat `d
 For behavior changes:
 
 1. Read `docs/command-behavior-contract.md`.
-2. Inspect the relevant command implementation in `bin/git_nest.sh`.
+2. Inspect the relevant command implementation in `bin/git-nest-main.sh`.
 3. Add or update focused integration tests under `tests/`.
 4. Update `README.md`, `docs/command-behavior-contract.md`, `development/technical_docs.md`, and `skills/git-nest/SKILL.md` when user-facing behavior changes. `skills/git-nest/SKILL.md` is the single source of truth for the usage skill; `.agents/skills/git-nest/SKILL.md` is only a pointer to it, so never edit workflow guidance there.
 5. Every minor and patch release must include a README pass and a version-string audit. Any command name, flag, or example in the docs that does not match the code is a release blocker.

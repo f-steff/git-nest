@@ -6,15 +6,15 @@
 # One universal package holds every file (all launchers, man pages, raw
 # markdown, HTML site, skill, and all installers). The per-platform
 # installers copy only the files relevant to their system:
-#   git-nest-install.sh      -> git-nest, git_nest.sh, lib/,
+#   git-nest-install.sh      -> git-nest, git-nest-main.sh, lib/,
 #                               git-nest-install/uninstall.sh,
 #                               man pages, md + html docs, skill
-#   git-nest-install.bat     -> git-nest.bat, git-nest.ps1, git_nest.sh,
+#   git-nest-install.bat     -> git-nest.bat, git-nest.ps1, git-nest-main.sh,
 #                               lib/, git-nest-install/uninstall.bat,
 #                               md + html docs, skill (the launchers
-#                               forward straight to git_nest.sh, which
+#                               forward straight to git-nest-main.sh, which
 #                               self-dispatches -- git-nest is not needed)
-#   git-nest-install.ps1     -> git-nest, git-nest.ps1, git_nest.sh, lib/,
+#   git-nest-install.ps1     -> git-nest, git-nest.ps1, git-nest-main.sh, lib/,
 #                               git-nest-install/uninstall.ps1,
 #                               man pages, md + html docs, skill
 #                               (cross-platform PowerShell installer)
@@ -24,9 +24,9 @@
 #   git-nest-<v>.zip            universal (Windows-readable)
 #   SHA256SUMS
 #
-# The Windows .bat/.ps1 launchers forward directly to git_nest.sh, which
+# The Windows .bat/.ps1 launchers forward directly to git-nest-main.sh, which
 # self-dispatches when run directly (see the guard at the bottom of
-# bin/git_nest.sh).
+# bin/git-nest-main.sh).
 #
 # Usage:
 #   sh scripts/package/assemble.sh [--out DIR]
@@ -59,7 +59,7 @@ while [ $# -gt 0 ]; do
 done
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-version=$(sed -n 's/^GIT_NEST_VERSION=//p' "$repo/bin/git_nest.sh" | head -n 1)
+version=$(sed -n 's/^GIT_NEST_VERSION=//p' "$repo/bin/git-nest-main.sh" | head -n 1)
 [ -n "$version" ] || { echo "assemble.sh: cannot read GIT_NEST_VERSION" >&2; exit 1; }
 
 echo "assemble.sh: assembling git-nest $version"
@@ -87,7 +87,7 @@ mkdir -p "$stage/bin" "$stage/share/man/man1" "$stage/share/man/man5" \
 
 # Full bin/: every launcher + installers.
 cp "$repo/bin/git-nest" "$repo/bin/git-nest.bat" "$repo/bin/git-nest.ps1" \
-    "$repo/bin/git_nest.sh" "$repo/bin/git-nest-install.sh" \
+    "$repo/bin/git-nest-main.sh" "$repo/bin/git-nest-install.sh" \
     "$repo/bin/git-nest-install.bat" "$repo/bin/git-nest-install.ps1" \
     "$repo/bin/git-nest-uninstall.sh" "$repo/bin/git-nest-uninstall.bat" \
     "$repo/bin/git-nest-uninstall.ps1" "$stage/bin/"

@@ -11,7 +11,7 @@ bin/
   git-nest                  main executable shell entrypoint
   git-nest.bat              polyglot launcher (cmd.exe and sh/bash)
   git-nest.ps1              PowerShell 7+ launcher
-  git_nest.sh               thin shared entrypoint: sources bin/lib/;
+  git-nest-main.sh               thin shared entrypoint: sources bin/lib/;
                             the command dispatch table (git_nest_main) lives
                             in lib/git-nest-commands.sh
   lib/                      library modules (git-nest-manifest.sh,

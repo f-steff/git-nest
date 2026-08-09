@@ -32,7 +32,7 @@ set "REMOVE_PATH=user"
 rem Self-locate: when this script sits in an installed <prefix>\bin, the
 rem default prefix is its own parent. When run from the source checkout
 rem (which has AGENTS.md / .git), fall back to the installer default.
-if exist "%SCRIPT_DIR%git_nest.sh" if not exist "%SCRIPT_DIR%..\AGENTS.md" if not exist "%SCRIPT_DIR%..\.git" (
+if exist "%SCRIPT_DIR%git-nest-main.sh" if not exist "%SCRIPT_DIR%..\AGENTS.md" if not exist "%SCRIPT_DIR%..\.git" (
     rem %%~fI resolves the .. so the prefix is a clean absolute path.
     for %%I in ("%SCRIPT_DIR%..") do set "PREFIX=%%~fI"
 )
@@ -77,7 +77,7 @@ exit /b 2
 
 set "DEST=%PREFIX%\bin"
 
-if not exist "%DEST%\git_nest.sh" (
+if not exist "%DEST%\git-nest-main.sh" (
     echo git-nest-uninstall.bat: no git-nest installation found at %DEST%
     exit /b 1
 )

@@ -54,7 +54,7 @@ available shells. This script ships in the external skill and is present here
 only after installing it (see "Installing the Skill" above):
 
 ```sh
-sh .agents/skills/posix-shell/source/scripts/test_runner.sh bin/git_nest.sh
+sh .agents/skills/posix-shell/source/scripts/test_runner.sh bin/git-nest-main.sh
 sh .agents/skills/posix-shell/source/scripts/test_runner.sh tests/unit-tests/
 ```
 
@@ -86,7 +86,7 @@ set:
 
 | File | dash | bash | ash | zsh | mksh | yash |
 |------|------|------|-----|-----|------|------|
-| `bin/git_nest.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
+| `bin/git-nest-main.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
 | `bin/lib/git-nest-manifest.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
 | `bin/lib/git-nest-commands.sh` | PASS | PASS | PASS | PASS | PASS | PASS |
 | `bin/lib/git-nest-conversion.sh` | PASS | PASS | PASS | PASS | PASS | PASS |

@@ -3,7 +3,7 @@
 # git-nest: record and restore reproducible nests of independent Git repositories.
 # https://github.com/f-steff/git-nest
 #
-# git-nest commands -- sourced by bin/git_nest.sh
+# git-nest commands -- sourced by bin/git-nest-main.sh
 #
 # All command implementations not covered by the manifest, hooks, export,
 # or doctor library modules.

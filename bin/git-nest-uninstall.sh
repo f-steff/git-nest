@@ -21,7 +21,7 @@ set -eu
 
 prefix=
 self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)
-if [ -n "$self_dir" ] && [ -f "$self_dir/git_nest.sh" ] \
+if [ -n "$self_dir" ] && [ -f "$self_dir/git-nest-main.sh" ] \
     && [ ! -e "$self_dir/../.git" ] && [ ! -f "$self_dir/../AGENTS.md" ]; then
     # Installed layout: this script sits in <prefix>/bin.
     prefix=$(CDPATH= cd -- "$self_dir/.." && pwd)
@@ -50,7 +50,7 @@ done
 
 dest="$prefix/bin"
 
-[ -f "$dest/git_nest.sh" ] || {
+[ -f "$dest/git-nest-main.sh" ] || {
     echo "git-nest-uninstall.sh: no git-nest installation found at $dest"
     exit 1
 }

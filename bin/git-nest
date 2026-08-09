@@ -9,6 +9,6 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-. "$SCRIPT_DIR/git_nest.sh"
+. "$SCRIPT_DIR/git-nest-main.sh"
 
 git_nest_main "$@"
