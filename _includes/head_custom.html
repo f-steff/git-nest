@@ -45,6 +45,17 @@
     gap: 0.375rem;
     padding: 1rem 2rem;
     border-bottom: 1px solid rgba(128, 128, 128, 0.35);
+    /* The sidebar is a flex column with align-items: flex-end, so a
+       shrink-wrapped status would right-align at its content width.
+       Match the .site-header width so both divs share the same center:
+       full width below the fixed sidebar breakpoint, 16.5rem (the
+       theme's sidebar content width) above it. */
+    width: 100%;
+  }
+  @media (min-width: 66.5rem) {
+    .side-bar-custom .site-status {
+      width: 16.5rem;
+    }
   }
   .side-bar-custom .site-status img {
     height: 1.125rem;
