@@ -29,5 +29,4 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    os.chdir(SITE)
     http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
