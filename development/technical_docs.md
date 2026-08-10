@@ -3,18 +3,19 @@
 The shell implementation is split into one thin entrypoint and five library
 modules that are sourced together:
 
-```mermaid
-graph LR
-    entry["bin/git-nest"] --> sh["bin/git-nest-main.sh"]
-    sh --> manifest["bin/lib/git-nest-manifest.sh"]
-    sh --> commands["bin/lib/git-nest-commands.sh"]
-    sh --> hooks["bin/lib/git-nest-hooks.sh"]
-    sh --> conversion["bin/lib/git-nest-conversion.sh"]
-    sh --> doctor["bin/lib/git-nest-doctor.sh"]
-    manifest -->|helpers| commands
-    manifest -->|helpers| conversion
-    manifest -->|helpers| hooks
-    manifest -->|helpers| doctor
+```text
++---------------+         +-------------------+
+| bin/git-nest  | ------> | bin/git-nest-main |
+| (entrypoint)  |         | .sh               |
++---------------+         +-------------------+
+                              |
+      +-----------+-----------+-----------+----------+-----------+
+      v           v           v           v          v
++------------+ +------------+ +---------+ +----------+ +---------+
+| manifest   | | commands   | | hooks   | | conversion| | doctor  |
++------------+ +------------+ +---------+ +----------+ +---------+
+      |             |   |   |          |          |          |
+      +--helpers--->+---+--->+         +--helpers-->+          |
 ```
 
 `bin/git-nest` stays thin: it sources `git-nest-main.sh`, which sources the five

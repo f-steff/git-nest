@@ -64,6 +64,22 @@ The rendered site lands in `_site/` (remove `_site/` and `_site-src/`
 afterwards; both are gitignored). `jekyll/jekyll:pages` is the same gem
 set GitHub Pages uses.
 
+### Previewing locally in a browser
+
+The site is built with `baseurl: /git-nest`, so plain `python -m
+http.server` will not resolve the links. Serve the built site with the
+included preview server, which strips the `/git-nest` prefix:
+
+```sh
+python3 tools/serve-site.py 4000
+# open http://localhost:4000/git-nest/
+```
+
+This is the branch-only way to validate a Pages change before merging:
+the `github-pages` deployment environment only allows deployments from
+`main` (custom branch policy), so a workflow_dispatch from another branch
+builds but cannot deploy.
+
 ## Adding A Page
 
 1. Add the markdown file under the site source set: README.md, SECURITY.md,

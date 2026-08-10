@@ -47,15 +47,18 @@ The overall shape this walkthrough builds up to, by section 10:
 
 **Scenario:** `acme-app` is a fresh Git repository. It needs two shared libraries, `widgets` and `reporting`, tracked as independent repositories rather than copied in.
 
-```mermaid
-graph TD
-    subgraph "acme-app (outer repo)"
-        R[".gitnest manifest"]
-        A["libs/widgets"]
-        B["libs/reporting"]
-    end
-    R -->|records URL + revision| A
-    R -->|records URL + revision| B
+```text
+acme-app (outer repo):
++--------------------+
+| .gitnest manifest  |
++--------------------+
+   |                |
+   | URL + rev      | URL + rev
+   v                v
++-------------+   +-------------+
+| libs/       |   | libs/       |
+| widgets     |   | reporting   |
++-------------+   +-------------+
 ```
 
 **Commands and output:**
@@ -107,20 +110,16 @@ $ git commit -m "Add libs/widgets and libs/reporting"
 
 **Scenario:** a teammate clones `acme-app` on a second machine. The subproject directories do not exist yet -- only `.gitnest` records what belongs there.
 
-```mermaid
-sequenceDiagram
-    participant Dev as Teammate
-    participant Git as git clone
-    participant Nest as git-nest restore
-    participant Widgets as libs/widgets remote
-    participant Reporting as libs/reporting remote
-
-    Dev->>Git: git clone acme-app
-    Git-->>Dev: outer repo + .gitnest (subprojects missing)
-    Dev->>Nest: git-nest restore
-    Nest->>Widgets: clone, checkout c2fe6bab4e3c
-    Nest->>Reporting: clone, checkout 80789b87b061
-    Nest-->>Dev: workspace matches .gitnest exactly
+```text
+Dev                         git clone                  git-nest restore
+  |                             |                            |
+  |---- git clone acme-app ---->|                            |
+  |<--- outer repo + .gitnest --|                            |
+  |                             |-- git-nest restore ------->|
+  |                                                          |-- clone + checkout c2fe6ba --> libs/widgets
+  |                                                          |-- clone + checkout 80789b8 --> libs/reporting
+  |                                                          |
+  |<------- workspace matches .gitnest exactly --------------|
 ```
 
 **Commands and output:**
@@ -268,13 +267,18 @@ Because nothing marks a subtree, the remote URL is mandatory -- there is nothing
 
 **Scenario:** `services/billing` was cloned by hand and never registered. Rather than absorbing it one path at a time, first see what is out there, then bring it all in.
 
-```mermaid
-flowchart LR
-    A["survey scans the tree"] --> B{"What did it find?"}
-    B -->|"managed already"| C["skip"]
-    B -->|"submodule / nested repo"| D["candidate for absorb-all"]
-    B -->|"git-subrepo / nest root / detached"| E["reported, never auto-absorbed"]
-    D --> F["absorb-all absorbs it, deepest path first"]
+```text
+survey scans the tree
+   |
+   +--> git-subrepo / nest root / detached
+   |  +--> reported, never auto-absorbed
+   |      
+   +--> submodule / nested repo
+   |  +--> candidate for absorb-all
+   |     +--> absorb-all absorbs it, deepest path first
+   |
+   +--> managed already
+      +--> Skip
 ```
 
 ```console
@@ -348,17 +352,17 @@ Add `--all` to also see `survey`'s own unmanaged findings alongside the managed 
 $ git-nest tree --all
 .                                 [N] https://example.invalid/acme-app.git    [Nest Root]
 +-- external/
-|   +-- other/                    [R] https://example.invalid/other.git      [Unmanaged Repo]
+|   +-- other/                    [R] https://example.invalid/other.git       [Unmanaged Repo]
 +-- libs/
-|   +-- reporting/                [M] https://example.invalid/reporting.git  [Managed]
-|   +-- widgets/                  [M] https://example.invalid/widgets.git    [Managed]
+|   +-- reporting/                [M] https://example.invalid/reporting.git   [Managed]
+|   +-- widgets/                  [M] https://example.invalid/widgets.git     [Managed]
 +-- services/
-|   +-- billing/                  [C] https://example.invalid/billing.git    [Composite]
+|   +-- billing/                  [C] https://example.invalid/billing.git     [Composite]
 +-- vendor/
-    +-- analytics-sdk/            [M] https://example.invalid/analytics.git  [Managed]
+    +-- analytics-sdk/            [M] https://example.invalid/analytics.git   [Managed]
     +-- legacy-tool/              [M] https://example.invalid/legacy-tool.git [Managed]
-    +-- theme/                    [M] https://example.invalid/theme.git      [Managed]
-    +-- ui-kit/                   [M] https://example.invalid/ui-kit.git     [Managed]
+    +-- theme/                    [M] https://example.invalid/theme.git       [Managed]
+    +-- ui-kit/                   [M] https://example.invalid/ui-kit.git      [Managed]
 ```
 
 Unmanaged findings discovered by `survey` use their own codes: `[R]` for a nested repo, `[S]` for a submodule, `[G]` for a git-subrepo, `[D]` for a detached former subproject, and `[U]` for an unmanaged nested nest root. Each carries the appropriate type label like `[Unmanaged Repo]`, `[Unmanaged Submodule]`, or `[Unmanaged Subrepo]`. `No URI` can appear on these (or on the `[N]` nest root) when no remote is discoverable -- for example, a detached former subproject whose checkout still exists but whose remote is gone.
@@ -386,17 +390,23 @@ $ git-nest tree --plain
 
 **Scenario:** `services/billing` turns out to need its own database-schema repository. Rather than flattening it into the outer nest, `services/billing` becomes a nest of its own.
 
-```mermaid
-graph TD
-    subgraph Outer["acme-app (outer nest)"]
-        OW["libs/widgets"]
-        OR["libs/reporting"]
-        OB["services/billing (nested nest root)"]
-    end
-    subgraph Inner["services/billing (its own nest)"]
-        IB["libs/billing-db"]
-    end
-    OB -.->|"has its own .gitnest"| Inner
+```text
++----------------------------------+
+| acme-app (outer nest)            |
+|                                  |
+|  libs/widgets                    |
+|  libs/reporting                  |
+|  services/billing                |
+|  (nested nest root)              |
++----------------------------------+
+        |
+        |  has its own .gitnest
+        v
++----------------------------------+
+| services/billing (its own nest)  |
+|                                  |
+|  libs/billing-db                 |
++----------------------------------+
 ```
 
 ```console
@@ -434,17 +444,32 @@ A related, rarer case is refused with no override at all: if `services/billing` 
 
 **Scenario:** several subprojects have moved upstream since they were last touched. `pull` fast-forwards what it safely can and reports the rest without guessing.
 
-```mermaid
-flowchart TD
-    A["For each subproject"] --> B{"Working tree dirty?"}
-    B -->|yes| S1["Skip: commit or stash first"]
-    B -->|no| C{"Detached HEAD?"}
-    C -->|yes| S2["Skip: checkout a branch"]
-    C -->|no| D{"Upstream tracking set?"}
-    D -->|no| S3["Skip: set-upstream-to"]
-    D -->|yes| E{"Fast-forward possible?"}
-    E -->|yes| F["Pull and snapshot"]
-    E -->|no, diverged| S4["Report: merge or rebase manually"]
+```text
+For each subproject
+        |
+        v
++--------------------------+
+|   Working tree dirty?    |
++--------------------------+
+   | yes                 | no
+   v                     v
+Skip: commit or      +--------------------------+
+stash first          |   Detached HEAD?         |
+                     +--------------------------+
+                        | yes                 | no
+                        v                     v
+                     Skip: checkout      +-------------------------+
+                     a branch            | Upstream tracking  set? |
+                                         +-------------------------+
+                                            | no               | yes
+                                            v                  v
+                                         Skip: set-      +--------------------------+
+                                         upstream-to     |  Fast-forward possible?  |
+                                                         +--------------------------+
+                                                            | yes              | no, diverged
+                                                            v                  v
+                                                         Pull and          Report: merge or
+                                                         snapshot          rebase manually
 ```
 
 ```console

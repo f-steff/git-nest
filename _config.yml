@@ -3,9 +3,26 @@
 # development/github-pages.md for the full setup.
 title: git-nest
 description: Pin your multi-repo workspace as a manifest in your own repository -- versioned like your code, restorable on any machine
+# The latest release version, shown on the home page. check_version_alignment
+# keeps this in lockstep with bin/git-nest-main.sh and version.md.
+version: 0.8.18
 remote_theme: just-the-docs/just-the-docs
 plugins:
   - jekyll-remote-theme
+  # Rewrites markdown links like [x](docs/manifest.md) to .html in the
+  # rendered site; the committed .md files keep their .md links for the
+  # GitHub.com file view.
+  - jekyll-relative-links
+
+# Project site: everything is served under /git-nest/ on GitHub Pages, so
+# all generated links and assets must carry the baseurl prefix.
+baseurl: /git-nest
+
+# The logo shown in the sidebar header (same width as the sidebar). The
+# theme applies relative_url to this value at CSS-generation time, so it
+# must NOT carry the baseurl prefix. The dark-mode inversion for the
+# background-image logo lives in _includes/head_custom.html.
+logo: /assets/logo.svg
 
 # Only user-facing documentation ships on the site. Development material,
 # tests, and implementation files stay out of the rendered pages.

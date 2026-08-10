@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   test:
-    name: Full test suite
+    name: CI (Windows)
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
