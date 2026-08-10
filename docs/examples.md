@@ -111,14 +111,15 @@ $ git commit -m "Add libs/widgets and libs/reporting"
 **Scenario:** a teammate clones `acme-app` on a second machine. The subproject directories do not exist yet -- only `.gitnest` records what belongs there.
 
 ```text
-Dev                    git clone                  git-nest restore
-  |                        |                            |
-  |-- git clone acme-app -->|                            |
-  |<-- outer repo + .gitnest --|                        |
-  |                        |-- git-nest restore ------->|
-  |                        |                            |-- clone + checkout c2fe6ba --> libs/widgets
-  |                        |                            |-- clone + checkout 80789b8 --> libs/reporting
-  |<-- workspace matches .gitnest exactly --------------|
+Dev                         git clone                  git-nest restore
+  |                             |                            |
+  |---- git clone acme-app ---->|                            |
+  |<--- outer repo + .gitnest --|                            |
+  |                             |-- git-nest restore ------->|
+  |                                                          |-- clone + checkout c2fe6ba --> libs/widgets
+  |                                                          |-- clone + checkout 80789b8 --> libs/reporting
+  |                                                          |
+  |<------- workspace matches .gitnest exactly --------------|
 ```
 
 **Commands and output:**
@@ -268,26 +269,16 @@ Because nothing marks a subtree, the remote URL is mandatory -- there is nothing
 
 ```text
 survey scans the tree
-        |
-        v
-   What did it find?
-      |            |                            |
-      |            |                            +--> git-subrepo / nest root / detached
-      |            |                                     |
-      |            |                                     v
-      |            |                            reported, never auto-absorbed
-      |            +--> submodule / nested repo
-      |                     |
-      |                     v
-      |              candidate for absorb-all
-      |                     |
-      |                     v
-      |              absorb-all absorbs it,
-      |              deepest path first
-      +--> managed already
-               |
-               v
-             skip
+   |
+   +--> git-subrepo / nest root / detached
+   |  +--> reported, never auto-absorbed
+   |      
+   +--> submodule / nested repo
+   |  +--> candidate for absorb-all
+   |     +--> absorb-all absorbs it, deepest path first
+   |
+   +--> managed already
+      +--> Skip
 ```
 
 ```console
@@ -361,17 +352,17 @@ Add `--all` to also see `survey`'s own unmanaged findings alongside the managed 
 $ git-nest tree --all
 .                                 [N] https://example.invalid/acme-app.git    [Nest Root]
 +-- external/
-|   +-- other/                    [R] https://example.invalid/other.git      [Unmanaged Repo]
+|   +-- other/                    [R] https://example.invalid/other.git       [Unmanaged Repo]
 +-- libs/
-|   +-- reporting/                [M] https://example.invalid/reporting.git  [Managed]
-|   +-- widgets/                  [M] https://example.invalid/widgets.git    [Managed]
+|   +-- reporting/                [M] https://example.invalid/reporting.git   [Managed]
+|   +-- widgets/                  [M] https://example.invalid/widgets.git     [Managed]
 +-- services/
-|   +-- billing/                  [C] https://example.invalid/billing.git    [Composite]
+|   +-- billing/                  [C] https://example.invalid/billing.git     [Composite]
 +-- vendor/
-    +-- analytics-sdk/            [M] https://example.invalid/analytics.git  [Managed]
+    +-- analytics-sdk/            [M] https://example.invalid/analytics.git   [Managed]
     +-- legacy-tool/              [M] https://example.invalid/legacy-tool.git [Managed]
-    +-- theme/                    [M] https://example.invalid/theme.git      [Managed]
-    +-- ui-kit/                   [M] https://example.invalid/ui-kit.git     [Managed]
+    +-- theme/                    [M] https://example.invalid/theme.git       [Managed]
+    +-- ui-kit/                   [M] https://example.invalid/ui-kit.git      [Managed]
 ```
 
 Unmanaged findings discovered by `survey` use their own codes: `[R]` for a nested repo, `[S]` for a submodule, `[G]` for a git-subrepo, `[D]` for a detached former subproject, and `[U]` for an unmanaged nested nest root. Each carries the appropriate type label like `[Unmanaged Repo]`, `[Unmanaged Submodule]`, or `[Unmanaged Subrepo]`. `No URI` can appear on these (or on the `[N]` nest root) when no remote is discoverable -- for example, a detached former subproject whose checkout still exists but whose remote is gone.
@@ -457,26 +448,24 @@ A related, rarer case is refused with no override at all: if `services/billing` 
 For each subproject
         |
         v
-+----------------------+
-| Working tree dirty?  |
-+----------------------+
++--------------------------+
+|   Working tree dirty?    |
++--------------------------+
    | yes                 | no
    v                     v
-Skip: commit or      +----------------------+
-stash first          | Detached HEAD?       |
-                     +----------------------+
+Skip: commit or      +--------------------------+
+stash first          |   Detached HEAD?         |
+                     +--------------------------+
                         | yes                 | no
                         v                     v
-                     Skip: checkout      +----------------------+
-                     a branch            | Upstream tracking   |
-                                         | set?                |
-                                         +----------------------+
+                     Skip: checkout      +-------------------------+
+                     a branch            | Upstream tracking  set? |
+                                         +-------------------------+
                                             | no               | yes
                                             v                  v
-                                         Skip: set-      +----------------------+
-                                         upstream-to     | Fast-forward         |
-                                                         | possible?            |
-                                                         +----------------------+
+                                         Skip: set-      +--------------------------+
+                                         upstream-to     |  Fast-forward possible?  |
+                                                         +--------------------------+
                                                             | yes              | no, diverged
                                                             v                  v
                                                          Pull and          Report: merge or

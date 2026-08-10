@@ -1,3 +1,25 @@
+## 0.8.18 - 2026-08-10
+
+### Documentation site fixes
+  * Fixed the GitHub Pages site: added the missing `baseurl: /git-nest` so
+    CSS, assets, and page links resolve (the site rendered unstyled
+    before), and enabled `.md` to `.html` link rewriting.
+  * Sidebar: badge logo at the top with the site title below, a centered
+    status section (latest release version + the three full CI badges),
+    and a link back to the GitHub repository; the status section shares
+    the header's width and horizontal center at every viewport.
+  * Home page: quickstart links to the Manual's install section for more
+    options; the full-width inline logo was removed (the logo now lives
+    in the sidebar).
+  * Replaced all mermaid diagram blocks with ASCII diagrams (5 in
+    docs/examples.md, 1 in development/technical_docs.md) so the docs
+    render without a mermaid runtime.
+  * `_config.yml` gains a `version:` key shown as "Latest release" on the
+    site; the version alignment check now keeps it in lockstep with
+    `bin/git-nest-main.sh` and version.md.
+  * Added `tools/serve-site.py`, a local preview server for the built
+    site (documented in development/github-pages.md).
+
 ## 0.8.17 - 2026-08-10
 
 ### Distribution, installation, and project publishing
