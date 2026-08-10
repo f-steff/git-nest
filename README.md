@@ -2,6 +2,8 @@
 
 git-nest pins your multi-repo workspace as a manifest in your own repository -- versioned like your code, restorable on any machine.
 
+Documentation: <https://f-steff.github.io/git-nest/>
+
 git-nest is a thoughtful tool that solves a real problem: coordinating multiple independent Git repositories without submodules, monorepo pain, or heavy dependencies.
 
 The nest is a home for related repositories. Each subproject remains a normal Git repository with its own history, branches, remotes, and workflow. The outer repository records how those repositories belong together in the `.gitnest` manifest.
