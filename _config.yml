@@ -3,6 +3,9 @@
 # development/github-pages.md for the full setup.
 title: git-nest
 description: Pin your multi-repo workspace as a manifest in your own repository -- versioned like your code, restorable on any machine
+# The latest release version, shown on the home page. check_version_alignment
+# keeps this in lockstep with bin/git-nest-main.sh and version.md.
+version: 0.8.17
 remote_theme: just-the-docs/just-the-docs
 plugins:
   - jekyll-remote-theme

@@ -239,17 +239,19 @@ check_ascii() {
 check_version_alignment() {
 	_version_file="$REPO_ROOT/version.md"
 	_shell_file="$REPO_ROOT/bin/git-nest-main.sh"
+	_config_file="$REPO_ROOT/_config.yml"
 	_code_version=$(sed -n 's/^GIT_NEST_VERSION=//p' "$_shell_file" | head -n 1)
 	_doc_version=$(sed -n 's/^## \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' "$_version_file" | head -n 1)
-	if [ -z "$_code_version" ] || [ -z "$_doc_version" ]; then
-		fail_ "could not extract version (code='$_code_version' doc='$_doc_version')"
+	_site_version=$(sed -n 's/^version: *//p' "$_config_file" | head -n 1)
+	if [ -z "$_code_version" ] || [ -z "$_doc_version" ] || [ -z "$_site_version" ]; then
+		fail_ "could not extract version (code='$_code_version' doc='$_doc_version' site='$_site_version')"
 		return 1
 	fi
-	if [ "$_code_version" = "$_doc_version" ]; then
-		pass_ "GIT_NEST_VERSION $_code_version matches the newest version.md entry"
+	if [ "$_code_version" = "$_doc_version" ] && [ "$_code_version" = "$_site_version" ]; then
+		pass_ "GIT_NEST_VERSION $_code_version matches version.md and the Pages site version"
 		return 0
 	fi
-	fail_ "GIT_NEST_VERSION=$_code_version does not match the newest version.md entry $_doc_version; update both atomically"
+	fail_ "GIT_NEST_VERSION=$_code_version does not match version.md=$_doc_version / _config.yml=$_site_version; update all three atomically"
 	return 1
 }
 
