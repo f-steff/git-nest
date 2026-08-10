@@ -1,14 +1,6 @@
 git-nest pins your multi-repo workspace as a manifest in your own
 repository -- versioned like your code, restorable on any machine.
 
-## Status
-
-Latest release: **v{{ site.version }}**
-
-![CI (Linux)](https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg)
-![CI (macOS)](https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg)
-![CI (Windows)](https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg)
-
 ## Quickstart
 
 Install git-nest (latest release):

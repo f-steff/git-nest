@@ -1,0 +1,40 @@
+{%- comment -%}
+  Override of the theme's components/sidebar.html: identical structure,
+  plus a status section (latest release version + CI badges) between the
+  site header and the navigation, and a marker class so the custom CSS in
+  head_custom.html can adjust the layout. The GitHub link lives in
+  nav_footer_custom.html.
+{%- endcomment -%}
+
+<header class="side-bar side-bar-custom">
+  <div class="site-header">
+    <a href="{{ '/' | relative_url }}" class="site-title lh-tight">{% include title.html %}</a>
+    <button id="menu-button" class="site-button btn-reset" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg>
+    </button>
+  </div>
+
+  <div class="site-status">
+    <span class="site-status-version">Latest release: v{{ site.version }}</span>
+    <img src="https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg" alt="CI (Linux)">
+    <img src="https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg" alt="CI (macOS)">
+    <img src="https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg" alt="CI (Windows)">
+  </div>
+
+  {% include_cached components/site_nav.html %}
+
+  {%- comment -%}
+    note: nav_footer_custom and/or this "site footer" appear in components/footer.html for the mobile view.
+  {%- endcomment -%}
+
+  <div class="d-md-block d-none site-footer">
+  {% capture nav_footer_custom %}
+    {%- include nav_footer_custom.html -%}
+  {% endcapture %}
+  {% if nav_footer_custom != "" %}
+    {{ nav_footer_custom }}
+  {% else %}
+    This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+  {% endif %}
+  </div>
+</header>
