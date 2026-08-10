@@ -1,1 +1,10 @@
 <link rel="icon" type="image/svg+xml" href="{{ '/assets/logo.svg' | relative_url }}">
+<style>
+  /* The sidebar logo is a background-image on .site-logo (see the logo
+     setting in _config.yml), so it cannot react to prefers-color-scheme
+     itself. The logo is a dark badge with light text; invert it in dark
+     mode to keep the contrasting-badge look. */
+  @media (prefers-color-scheme: dark) {
+    .site-logo { filter: invert(1); }
+  }
+</style>
