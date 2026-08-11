@@ -1,3 +1,16 @@
+## 0.8.23 - 2026-08-11
+
+### Tag CI dispatch for Pages badges
+  * The release workflow now explicitly dispatches the three full CI
+    suites on the newly created tag via `gh workflow run`, because
+    `gh release create`'s tag push with `GITHUB_TOKEN` does not trigger
+    additional workflow runs. This makes the Pages site version-pinned
+    badges (`?branch=v{{ site.version }}`) go green automatically after
+    every release.
+  * The shfmt auto-installer now lowercases `uname -s` output so the
+    download URL matches the actual GitHub release asset filename
+    (the filename is lowercase but `uname -s` is capitalised).
+
 ## 0.8.22 - 2026-08-11
 
 ### CI infrastructure fixes
