@@ -105,6 +105,21 @@ jobs:
             "dist/git-nest-$VERSION.zip" \
             "dist/SHA256SUMS"
 
+  tag-ci:
+    name: Trigger tag CI for Pages badges
+    runs-on: ubuntu-latest
+    needs: [version-check, release]
+    if: needs.version-check.outputs.is_release == 'true'
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.version-check.outputs.version }}
+    steps:
+      - name: Dispatch full CI suites on the release tag
+        run: |
+          gh workflow run ci-linux.yml --ref "v$VERSION"
+          gh workflow run ci-macos.yml --ref "v$VERSION"
+          gh workflow run ci-windows.yml --ref "v$VERSION"
+
   pages:
     name: Update Pages
     uses: ./.github/workflows/pages.yml

@@ -20,7 +20,7 @@ jobs:
 
       - name: Run full test suite
         shell: bash
-        run: sh tests/run-all-tests.sh
+        run: sh tests/run-all-tests.sh --stop-on-fail
 
       - name: Upload test results and log
         if: always()
