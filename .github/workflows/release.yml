@@ -116,9 +116,9 @@ jobs:
     steps:
       - name: Dispatch full CI suites on the release tag
         run: |
-          gh workflow run ci-linux.yml --ref "v$VERSION"
-          gh workflow run ci-macos.yml --ref "v$VERSION"
-          gh workflow run ci-windows.yml --ref "v$VERSION"
+          gh workflow run ci-linux.yml --ref "v$VERSION" --repo "${{ github.repository }}"
+          gh workflow run ci-macos.yml --ref "v$VERSION" --repo "${{ github.repository }}"
+          gh workflow run ci-windows.yml --ref "v$VERSION" --repo "${{ github.repository }}"
 
   pages:
     name: Update Pages
