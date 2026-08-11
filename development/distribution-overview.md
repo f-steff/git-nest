@@ -64,25 +64,24 @@ scripts/package/assemble.sh
 
 ## Release Pipeline
 
-`.github/workflows/release.yml` is a manual `workflow_dispatch` action
-(optional `notes` input); it does NOT run on merge to `main`:
+`.github/workflows/release.yml` runs automatically on every push to
+`main` (and stays available as a manual `workflow_dispatch` with optional
+notes input):
 
-1. `version-check` -- `scripts/package/version-check.sh` verifies that
-   `GIT_NEST_VERSION` is strictly newer than the last release tag. On a
-   manual dispatch without a version bump the workflow fails with a clear
-   message instead of releasing (or silently skipping).
+1. `version-check` -- `scripts/package/version-check.sh` sets
+   `is_release=true` only when the version is strictly newer than the
+   last release tag; on non-release merges the remaining jobs are
+   skipped (the workflow does not fail).
 2. `assemble` -- run `assemble.sh`, upload the artifacts.
 3. `release` -- create the `vX.Y.Z` tag and the GitHub Release with the
    version.md changelog entry as notes, attach the tarball, zip, and
    SHA256SUMS.
-4. `tag-ci` -- dispatch the three full CI suites on the `vX.Y.Z` tag so
-   the version-pinned Pages badges get a status.
-5. `pages` -- refresh the documentation site via the reusable Pages
+4. `pages` -- refresh the documentation site via the reusable Pages
    workflow.
 
-The full test suite is not part of the release pipeline: the PR's full CI
-(Linux + macOS + Windows) already gated the merge itself, and the release
-tag's CI re-validates the exact released tree. See
+The full test suite is not part of the release pipeline: the full Linux
+suite runs on every merge via `ci-linux.yml`, and the PR's full CI
+(Linux + macOS + Windows) already gated the merge itself. See
 `development/release-process.md` for the trigger matrix and merge flow.
 
 The script is installed with `curl | sh` (or `iwr | iex`), so "publish

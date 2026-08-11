@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       notes:
@@ -33,18 +35,18 @@ jobs:
           echo "value=$V" >> "$GITHUB_OUTPUT"
           echo "Current version: $V"
 
-      # Releases are manual: dispatching this workflow is an explicit
-      # release request, so a version that is not strictly newer than the
-      # last release tag fails the workflow with a clear message instead
-      # of silently skipping. PR CI runs the same gate via test_0004.
+      # The version gate: a push to main whose version is not strictly
+      # newer than the last release tag is not a release (e.g. a docs
+      # merge). The gate sets is_release=false and the remaining jobs are
+      # skipped instead of failing the workflow. PR CI runs the same gate
+      # via test_0004, so merges carrying a version bump already passed.
       - name: Verify version is newer than the last release tag
         id: gate
         run: |
           if sh scripts/package/version-check.sh; then
             echo "value=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::No release: GIT_NEST_VERSION is not newer than the last release tag. Bump bin/git-nest-main.sh, version.md, and docs/site/_config.yml first."
-            exit 1
+            echo "value=false" >> "$GITHUB_OUTPUT"
           fi
 
   assemble:
