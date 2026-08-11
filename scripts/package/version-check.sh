@@ -19,6 +19,7 @@ set -eu
 
 current=
 last=
+allow_equal=0
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -37,6 +38,10 @@ while [ $# -gt 0 ]; do
 		}
 		last=$2
 		shift 2
+		;;
+	--allow-equal)
+		allow_equal=1
+		shift
 		;;
 	-h | --help)
 		sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
@@ -72,6 +77,10 @@ if [ "$(printf '%s\n%s\n' "$last" "$current" | sort -V | tail -n1)" != "$current
 	exit 1
 fi
 if [ "$last" = "$current" ]; then
+	if [ "$allow_equal" -eq 1 ]; then
+		echo "version-check.sh: version $current matches the last release (--allow-equal)"
+		exit 0
+	fi
 	echo "version-check.sh: version $current equals the last release; bump the version first" >&2
 	exit 1
 fi

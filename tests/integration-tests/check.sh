@@ -79,12 +79,13 @@ install_tool() {
 	shfmt)
 		info_ "Downloading shfmt to $BIN_DIR/ ..."
 		os=$(uname -s 2>/dev/null || echo "Linux")
+		_os_lower=$(echo "$os" | tr '[:upper:]' '[:lower:]')
 		case "$os" in
 		*linux* | *Linux*) sfx="" ;;
 		*darwin* | *Darwin*) sfx="" ;;
 		*) sfx=".exe" ;;
 		esac
-		curl -sL "https://github.com/mvdan/sh/releases/download/v3.8.0/shfmt_v3.8.0_${os}_amd64${sfx}" -o "$BIN_DIR/shfmt${sfx}" 2>/dev/null ||
+		curl -sL "https://github.com/mvdan/sh/releases/download/v3.8.0/shfmt_v3.8.0_${_os_lower}_amd64${sfx}" -o "$BIN_DIR/shfmt${sfx}" ||
 			curl -sL "https://github.com/mvdan/sh/releases/download/v3.8.0/shfmt_v3.8.0_windows_amd64.exe" -o "$BIN_DIR/shfmt.exe"
 		chmod +x "$BIN_DIR/shfmt" "$BIN_DIR/shfmt.exe" 2>/dev/null
 		;;
@@ -308,7 +309,10 @@ check_version_gate() {
 		return 1
 	}
 	# No tags exist locally, so the script falls back to 0.0.0 and passes.
-	if sh "$_script" >/dev/null 2>&1; then
+	# --allow-equal accepts the current version when it matches the last
+	# tag, so tag CI (re-validating a past release) does not fail the
+	# gate (the release workflow still uses strict mode without this flag).
+	if sh "$_script" --allow-equal >/dev/null 2>&1; then
 		pass_ "GIT_NEST_VERSION passes the release version gate"
 		return 0
 	fi

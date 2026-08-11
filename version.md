@@ -1,3 +1,19 @@
+## 0.8.22 - 2026-08-11
+
+### CI infrastructure fixes
+  * Fixed the shfmt auto-installer: `uname -s` returns "Linux" / "Darwin"
+    (capitalised) but the GitHub release asset filenames are lowercase;
+    the first download URL was wrong, which caused the fallback Windows
+    binary to be downloaded on Linux runners (intermittently failing when
+    the CDN happened to serve the capitalised URL correctly).
+  * Version gate: added `--allow-equal` so tag CI dispatches (re-validating
+    a past release for the version-pinned Pages badges) pass the gate
+    when the version equals the last release tag. The release workflow
+    still uses strict mode (no flag), so non-bump merges remain rejected.
+  * CI workflows trigger on release tags (`v*`) so the Pages site badge
+    URLs (`?branch=v{{ site.version }}`) reflect the release version's
+    actual test status rather than the development-branch state.
+
 ## 0.8.21 - 2026-08-11
 
 ### Protocol and URL substitution for subproject remotes
