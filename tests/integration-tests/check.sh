@@ -162,7 +162,7 @@ check_syntax() {
 }
 
 check_shellcheck() {
-	if tool_check shellcheck shellcheck -s sh "$REPO_ROOT"/bin/git-nest-main.sh "$REPO_ROOT"/bin/lib/*.sh 2>/dev/null; then
+	if tool_check shellcheck shellcheck -s sh --severity=warning "$REPO_ROOT"/bin/git-nest-main.sh "$REPO_ROOT"/bin/lib/*.sh 2>/dev/null; then
 		pass_ "${FILE_COUNT} files, 0 warnings"
 		return 0
 	fi

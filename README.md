@@ -220,6 +220,35 @@ From PowerShell 7+ (`pwsh`), the `.ps1` launcher is also on `PATH`:
 git-nest.ps1 version
 ```
 
+### Connecting To Your Remotes
+
+The `.gitnest` manifest records one canonical repository URL per
+subproject (`repo=https://...`). Developers who use a different
+transport (e.g., SSH when the manifest records HTTPS) can map it globally
+with git's own mechanism, and every git-nest operation will use the
+preferred protocol transparently:
+
+```sh
+# Prefer SSH for HTTPS remotes on this host:
+git config --global url.git@github.com:.insteadOf https://github.com/
+```
+
+git-nest also supports a local protocol override per nest via
+`.gitnest-rc`:
+
+```sh
+git-nest config set clone protocol ssh    # repo-wide: SSH for all subprojects
+git-nest config set libs/foo substitute-url git@example.invalid:org/foo.git   # per-subproject exact URL override
+```
+
+Then `git-nest restore` re-points the subproject origins and verifies the
+workspace against the effective URL (`verify --strict` checks the
+canonical manifest URL instead). For non-standard hosts whose SSH URL
+shape cannot be derived from the HTTPS form (Azure DevOps,
+custom-port servers, Gerrit), use `substitute-url` to pin the exact URL.
+All the per-developer settings live in `.gitnest-rc`, which is not
+committed, so the shared manifest stays protocol-neutral.
+
 ### Shell Completion
 
 ```sh
