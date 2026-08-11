@@ -12,10 +12,10 @@ how to run everything locally. For the test suites themselves, see
 Six workflows live under `.github/workflows/`, two per target: a **fast**
 one and a **full** one. The fast workflows run the same platform-focused
 set on every target; the full workflows run the whole suite. The full
-workflows also run on every pull request (they gate merges to `main`);
-on a merge to `main`, the full Linux workflow plus the fast macOS and
-Windows workflows run, and the Pages and Release workflows fire (see
-`release-process.md` for the trigger matrix).
+workflows run on every pull request (they gate merges to `main`) and on
+release tags (`v*`); on a merge to `main`, only the fast macOS and
+Windows workflows run. The Pages and Release workflows are manual
+(`workflow_dispatch`; see `release-process.md` for the trigger matrix).
 
 | File | Runner | What it runs | Approx. time |
 |------|--------|--------------|-------------|

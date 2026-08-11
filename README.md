@@ -587,10 +587,11 @@ For a copied-manifest startup, put `.gitnest` in an empty directory and run `git
 
 CI runs on GitHub Actions: every pull request runs the **full** test
 suite on Linux, macOS, and Windows (required before merge to `main`);
-a merge to `main` re-runs the full Linux suite plus a fast,
-platform-focused subset on macOS and Windows, deploys the documentation
-site, and automatically creates the release (tag + GitHub Release) when
-the version was bumped. The fast subset covers unit tests, static
+a merge to `main` re-runs a fast, platform-focused subset on macOS and
+Windows. Releases are manual: a maintainer dispatches the Release
+workflow to create the tag and GitHub Release and refresh the
+documentation site, so merging to `main` never releases by itself. The
+fast subset covers unit tests, static
 analysis, the platform tests (launchers, completions, git invocation),
 export formats, and paths-with-spaces -- everything that can genuinely
 differ per platform -- since Windows process startup makes the full

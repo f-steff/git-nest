@@ -10,6 +10,16 @@
     About text.
   * Synced AGENTS.md and development/github-pages.md with the new layout.
 
+### Manual releases
+  * Releases are now manual: the Release workflow (`release.yml`) is
+    `workflow_dispatch` only and no longer runs on push to `main`.
+    Merging to `main` never creates a tag or a GitHub Release; a
+    maintainer dispatches the workflow when a release is wanted.
+  * The Pages workflow also dropped its push-to-main trigger; it runs
+    manually or as part of the release workflow.
+  * Dispatching the Release workflow without a version bump fails with a
+    clear message instead of silently skipping.
+
 ## 0.8.23 - 2026-08-11
 
 ### Tag CI dispatch for Pages badges
