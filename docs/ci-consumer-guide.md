@@ -47,6 +47,11 @@ VERSION=0.8.17 sh <(curl -fsSL .../git-nest-install.sh) --prefix "$RUNNER_TOOL_C
 
 ### Windows runners (PowerShell 5.1+ or pwsh)
 
+Git for Windows must be present on the runner (git-nest runs on Git
+Bash; without it every `git-nest` command exits with "Git is not
+installed or not on PATH."). GitHub-hosted Windows runners ship it; for
+self-hosted runners install it as part of the agent provisioning.
+
 Pinned version:
 
 ```bat
@@ -57,6 +62,13 @@ Latest release:
 
 ```bat
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:GIT_NEST_ADD_PATH='0'; & { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
+```
+
+Or directly from PowerShell (no cmd.exe wrapper):
+
+```powershell
+$env:GIT_NEST_ADD_PATH='0'
+iex (iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1)
 ```
 
 The `-ExecutionPolicy Bypass` flag makes the one-liner work regardless of

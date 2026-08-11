@@ -9,10 +9,18 @@ Install git-nest (latest release):
 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
 ```
 
-Windows (cmd.exe):
+Windows (cmd.exe) -- requires **Git for Windows** (git-nest runs on Git
+Bash; every command fails with "Git is not installed or not on PATH."
+when it is missing):
 
 ```bat
 powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
+```
+
+Or directly from PowerShell 5.1+ (or pwsh):
+
+```powershell
+iex (iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1)
 ```
 
 More install options, pinned versions, and uninstall instructions are in

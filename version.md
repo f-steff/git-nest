@@ -1,3 +1,14 @@
+## 0.8.20 - 2026-08-11
+
+### Windows installation documentation
+  * The QuickStart, the Manual, and the CI consumer guide now state
+    explicitly that Windows requires Git for Windows (git-nest runs on
+    Git Bash). Without it the installers complete but every `git-nest`
+    command exits with "Git is not installed or not on PATH." (exit 3).
+  * Added a direct PowerShell install option (`iex (iwr -useb ...)`)
+    alongside the cmd.exe wrapper one-liner on the QuickStart, in the
+    Manual, and in the CI consumer guide.
+
 ## 0.8.19 - 2026-08-10
 
 ### Installer and uninstaller fixes

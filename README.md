@@ -88,12 +88,20 @@ Pin a specific version:
 VERSION=0.8.17 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
 ```
 
-Windows (cmd.exe or PowerShell) -- the `-ExecutionPolicy Bypass` flag makes
+Windows (cmd.exe or PowerShell) -- **requires Git for Windows** (the tool
+runs on Git Bash; without it every `git-nest` command exits with "Git is
+not installed or not on PATH."). The `-ExecutionPolicy Bypass` flag makes
 the one-liner work regardless of the machine's PowerShell execution
 policy:
 
 ```bat
 powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex }"
+```
+
+Or directly from PowerShell 5.1+ (or pwsh):
+
+```powershell
+iex (iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1)
 ```
 
 Pinned version on Windows:
