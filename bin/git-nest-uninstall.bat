@@ -85,7 +85,14 @@ if not exist "%DEST%\git-nest-main.sh" (
 echo Removing git-nest from %PREFIX%
 
 rem Remove staged content (man pages, docs, skill) if present.
-if exist "%PREFIX%\share" rmdir /s /q "%PREFIX%\share"
+rem Remove staged content (man pages, docs, skill) if present. Only the
+rem git-nest-owned paths are removed: the prefix may be a shared location
+rem (e.g. %%USERPROFILE%%\.local) that other tools use.
+if exist "%PREFIX%\share\doc\git-nest" rmdir /s /q "%PREFIX%\share\doc\git-nest"
+if exist "%PREFIX%\share\git-nest" rmdir /s /q "%PREFIX%\share\git-nest"
+if exist "%PREFIX%\share\man\man1\git-nest*.1" del /q "%PREFIX%\share\man\man1\git-nest*.1"
+if exist "%PREFIX%\share\man\man5\git-nest*.5" del /q "%PREFIX%\share\man\man5\git-nest*.5"
+rd "%PREFIX%\share\man\man1" "%PREFIX%\share\man\man5" "%PREFIX%\share\man" "%PREFIX%\share\doc" "%PREFIX%\share" 2>nul
 
 rem Unregister from Windows Apps & Features (Settings -> Apps) if the
 rem installer registered the app there.

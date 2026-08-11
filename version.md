@@ -1,3 +1,27 @@
+## 0.8.19 - 2026-08-10
+
+### Installer and uninstaller fixes
+  * Fixed the download installer's checksum verification: the tarball was
+    downloaded as `git-nest.tar.gz` but verified against SHA256SUMS lines
+    naming `git-nest-<version>.tar.gz`, so the documented `curl | sh`
+    install always aborted. The tarball is now downloaded under the
+    versioned name.
+  * Fixed a dangerous uninstaller bug: all three uninstallers removed the
+    entire `$prefix/share` directory, which could delete other tools'
+    data when the prefix is a shared location such as `~/.local` (the
+    default). They now remove only the git-nest-owned paths
+    (`share/doc/git-nest`, `share/git-nest`, and the `git-nest*` man
+    pages) and leave everything else intact.
+  * Pinned-version examples in the README and the CI consumer guide use
+    0.8.17 (the earliest published release) instead of the never-released
+    0.8.16.
+  * Quickstart on the documentation site: single deep link to the
+    Manual's installation options; the second, redundant manual link was
+    replaced with a brief tool introduction.
+  * The Manual page on the site no longer contains the "Documentation:"
+    link that pointed back at the site itself (the link remains in the
+    README for the GitHub repository page).
+
 ## 0.8.18 - 2026-08-10
 
 ### Documentation site fixes

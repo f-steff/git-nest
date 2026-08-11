@@ -57,8 +57,13 @@ dest="$prefix/bin"
 
 echo "Removing git-nest from $prefix"
 
-# Remove staged content (man pages, docs, skill) if present.
-rm -rf "$prefix/share"
+# Remove staged content (man pages, docs, skill) if present. Only the
+# git-nest-owned paths are removed: the prefix may be a shared location
+# (e.g. ~/.local) that other tools use.
+rm -rf "$prefix/share/doc/git-nest" "$prefix/share/git-nest"
+rm -f "$prefix/share/man/man1/git-nest"*.1 "$prefix/share/man/man5/git-nest"*.5
+rmdir "$prefix/share/man/man1" "$prefix/share/man/man5" \
+    "$prefix/share/man" "$prefix/share/doc" "$prefix/share" 2>/dev/null || true
 
 # Remove the PATH export we may have added to the shell startup file.
 case "${SHELL:-}" in
