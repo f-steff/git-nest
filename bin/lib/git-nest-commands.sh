@@ -196,6 +196,7 @@ usage() {
 	help_command "config <get|set|list|unset> ..."
 	help_text "Read or update manifest-backed and local settings."
 	help_detail "clone-mode (per-path, manifest): full, partial."
+	help_detail "clone-mode controls future restore clones, not the clone command."
 	help_detail "substitute-url (per-path, .gitnest-rc): local URL override for a subproject."
 	help_detail "protocol (repo-wide, .gitnest-rc, no path): ssh, https, http, or manifest."
 	help_detail "Explicit config list shows settings from both the manifest and .gitnest-rc."
@@ -2386,7 +2387,7 @@ verify_current() {
 			expected_repo=$(effective_repo_url "$path" "" || true)
 			[ -n "$expected_repo" ] || expected_repo=$repo
 			if ! url_protocol_equivalent "$actual_repo" "$expected_repo"; then
-				printf 'Error: %s: origin remote differs from effective repository\n' "$path" >>"$vc_errors"
+				printf 'Error: %s: origin remote differs from manifest repository\n' "$path" >>"$vc_errors"
 				printf '  expected: %s\n  actual:   %s\n' "$expected_repo" "$actual_repo" >>"$vc_errors"
 			fi
 		fi
@@ -3234,21 +3235,16 @@ cmd_config() {
 	ensure_manifest
 	validate_manifest_schema
 
-	# Reject empty path as a bare key (no path implies rc clone section).
+	# No path means the [clone] section of .gitnest-rc (global preference):
+	# "config <get|set|unset> clone <key> [value]".
 	rc_no_path=0
-	case "$action" in
-	get | set | unset)
-		if [ $# -ge 1 ] && [ -z "$(normalize_path_try "$1" 2>/dev/null || true)" ]; then
-			# $1 looks like a bare key or a flat value.
-			case "$1" in
-			clone) rc_no_path=1 ;; # clone is a section, key follows
-			*) ;;                  # might be a key without path prefix, fall through
-			esac
-		fi
-		;;
-	esac
+	if [ $# -ge 1 ]; then
+		case "$action:$1" in
+		get:clone | set:clone | unset:clone) rc_no_path=1 ;;
+		esac
+	fi
 
-	if [ "$rc_no_path" -eq 1 ] || { [ "$action" != list ] && [ $# -ge 1 ] && [ "$1" = "clone" ]; }; then
+	if [ "$rc_no_path" -eq 1 ]; then
 		# No-path mode: rc [clone] section.
 		rc_no_path=1
 		case "$action" in

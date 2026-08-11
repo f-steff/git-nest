@@ -1247,24 +1247,33 @@ rc_set() {
 	mv "$_tmp" "$CONFIG_FILE"
 }
 
-# Remove key from a section in CONFIG_FILE. If the section becomes empty
-# after removal, the section header and any surrounding blank lines are
-# also removed.
+# Remove key from a section in CONFIG_FILE. Other keys in the section are
+# preserved. If the section becomes empty after removal, the section header
+# is also removed.
 rc_unset() {
 	_section=$1
 	_key=$2
 	[ -f "$CONFIG_FILE" ] || return 0
 	_tmp=$(mktemp "${TMPDIR:-/tmp}/gn-rc-unset.XXXXXX")
 	awk -v section="$_section" -v key="$_key" '
-        $0 == "[" section "]" { in_section=1; hdr=$0; hdr_printed=0; had=0; next }
+        $0 == "[" section "]" { in_section=1; hdr=$0; had=0; next }
         /^\[/ {
-            if (in_section && !had) { hdr="" }
-            if (hdr && had) { print hdr; hdr_printed=1 }
-            hdr=""; in_section=0
+            if (in_section) {
+                if (had) print hdr
+                in_section=0
+                hdr=""
+                had=0
+            }
         }
         in_section && index($0, key "=") == 1 { next }
         in_section && $0 !~ /^[[:space:]]*$/ { had=1 }
-        { if (!in_section) print }
+        {
+            if (in_section) {
+                if (had || $0 !~ /^[[:space:]]*$/) print
+            } else {
+                print
+            }
+        }
         END { if (in_section && had) print hdr }
     ' "$CONFIG_FILE" >"$_tmp"
 	mv "$_tmp" "$CONFIG_FILE"
