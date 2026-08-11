@@ -118,3 +118,9 @@ Successful `restore` records materialization state under the outer repository's 
 ## Tests
 
 The integration suite creates local bare remotes under `TEST_ROOT`, defaults outside the repository, streams output, writes `run-all-tests-results.md`, captures the full run to `run-all-tests.log` by default, and leaves numbered workspaces for inspection. Current tests cover init/tidy, nested init confirmation, add/remove/move, clone/restore modes, stale restore reconciliation, tag drift, snapshot path semantics, branch marks, hooks, status/verify/outdated/diff/log, update modes, export/absorb (plus legacy extract rejection), completion generation, Git-style invocation, BusyBox compatibility, manifest schema validation, path safety, dry-run behavior, and version output.
+
+## Restore And Protocol
+
+`restore` supports protocol preference flags `--prefer-ssh`, `--prefer-https`, `--prefer-http`, and `--prefer-default` (canonical manifest URL). They are mutually exclusive and override the repository-wide `[clone] protocol` setting in `.gitnest-rc` for a single run. `restore` re-points each subproject's origin remote to the effective URL when it differs from the current origin; `--dry-run` previews each re-point.
+
+`verify` compares the checkout origin against the effective URL by default, using host+path identity so different transports (`https`/`ssh`/`git@host:`) to the same repository pass. `verify --strict` compares against the exact manifest `repo=` URL and fails when any rc override (`substitute-url` or `[clone] protocol` != manifest) is active for the path -- the canonical signal that the workspace matches the committed manifest verbatim.

@@ -1214,6 +1214,339 @@ effective_clone_mode() {
 	esac
 }
 
+# ---------------------------------------------------------------------------
+# .gitnest-rc writers -- the existing config_get reads [section] key = value;
+# these helpers write back so the config command can manage rc keys.
+# ---------------------------------------------------------------------------
+
+# Write key=value into a section of CONFIG_FILE. If the file does not
+# exist it is created. If the key already exists in the section it is
+# replaced; if the section exists but the key does not, the key is
+# appended; if the section is absent it is appended at the end of the
+# file.
+rc_set() {
+	_section=$1
+	_key=$2
+	_value=$3
+	[ -f "$CONFIG_FILE" ] || : >"$CONFIG_FILE"
+	_tmp=$(mktemp "${TMPDIR:-/tmp}/gn-rc-set.XXXXXX")
+	awk -v section="$_section" -v key="$_key" -v val="$_value" '
+        $0 == "[" section "]" { in_section=1; seen=1; print; next }
+        /^\[/ { in_section=0 }
+        in_section && index($0, key "=") == 1 { found=1; print key "=" val; next }
+        { print }
+        END {
+            if (!found && !seen) {
+                print "[" section "]"
+                print key "=" val
+            } else if (in_section && !found) {
+                print key "=" val
+            }
+        }
+    ' "$CONFIG_FILE" >"$_tmp"
+	mv "$_tmp" "$CONFIG_FILE"
+}
+
+# Remove key from a section in CONFIG_FILE. Other keys in the section are
+# preserved. If the section becomes empty after removal, the section header
+# is also removed.
+rc_unset() {
+	_section=$1
+	_key=$2
+	[ -f "$CONFIG_FILE" ] || return 0
+	_tmp=$(mktemp "${TMPDIR:-/tmp}/gn-rc-unset.XXXXXX")
+	awk -v section="$_section" -v key="$_key" '
+        $0 == "[" section "]" { in_section=1; hdr=$0; had=0; next }
+        /^\[/ {
+            if (in_section) {
+                if (had) print hdr
+                in_section=0
+                hdr=""
+                had=0
+            }
+        }
+        in_section && index($0, key "=") == 1 { next }
+        in_section && $0 !~ /^[[:space:]]*$/ { had=1 }
+        {
+            if (in_section) {
+                if (had || $0 !~ /^[[:space:]]*$/) print
+            } else {
+                print
+            }
+        }
+        END { if (in_section && had) print hdr }
+    ' "$CONFIG_FILE" >"$_tmp"
+	mv "$_tmp" "$CONFIG_FILE"
+}
+
+# Convenience: substitute-url for a given path lives under
+# [remote "<path>"] substitute-url.
+rc_url_set() {
+	rc_set "remote \"$1\"" substitute-url "$2"
+}
+rc_url_unset() {
+	rc_unset "remote \"$1\"" substitute-url
+}
+rc_url_get() {
+	config_get "remote \"$1\"" substitute-url
+}
+rc_url_list() {
+	[ -f "$CONFIG_FILE" ] || return 0
+	awk '
+        /^\[remote "/ { gsub(/^\[remote "|"]$/, ""); path=$0; next }
+        /^substitute-url=/ && path {
+            print path "\t" substr($0, 16)
+            path=""
+        }
+    ' "$CONFIG_FILE"
+}
+
+# ---------------------------------------------------------------------------
+# Protocol preference -- per-developer transport choice stored under
+# [clone] protocol in .gitnest-rc.
+# ---------------------------------------------------------------------------
+
+configured_protocol() {
+	mode=$(config_get clone protocol || true)
+	[ -n "$mode" ] || mode=manifest
+	case "$mode" in
+	manifest | ssh | https | http) printf '%s\n' "$mode" ;;
+	*) die "$CONFIG_FILE [clone] protocol must be manifest, ssh, https, or http, got '$mode'" ;;
+	esac
+}
+
+# The preference that apply_protocol_preference should use: an explicit
+# override (flag), or the rc setting, or manifest default.
+resolve_protocol_preference() {
+	_override=$1
+	[ -n "$_override" ] && {
+		printf '%s\n' "$_override"
+		return
+	}
+	configured_protocol
+}
+
+# ---------------------------------------------------------------------------
+# Effective URL resolution -- per subproject the URL that git-nest should
+# use for network operations and that verify should compare origin
+# against. Precedence: rc substitute-url > manifest repo with protocol
+# rewrite (or explicit preference) > manifest repo as recorded.
+# ---------------------------------------------------------------------------
+
+# Return the effective URL for a subproject path, applying any rc
+# substitute-url override and the chosen protocol preference.
+effective_repo_url() {
+	_path=$1
+	_prefer=$2
+	_manifest_url=$(subproject_repo "$_path" || true)
+	[ -n "$_manifest_url" ] || return 1
+
+	# rc per-subproject substitute-url wins verbatim.
+	_sub=$(rc_url_get "$_path" || true)
+	if [ -n "$_sub" ]; then
+		printf '%s\n' "$_sub"
+		return 0
+	fi
+
+	# Protocol preference rewriting.
+	_pref=$(resolve_protocol_preference "$_prefer")
+	case "$_pref" in
+	manifest | "") printf '%s\n' "$_manifest_url" ;;
+	ssh)
+		_rewritten=$(derive_ssh_url "$_manifest_url" || true)
+		if [ -n "$_rewritten" ]; then
+			printf '%s\n' "$_rewritten"
+		else
+			warn "cannot derive SSH URL for $_manifest_url (non-standard shape); using recorded URL"
+			printf '%s\n' "$_manifest_url"
+		fi
+		;;
+	https)
+		case "$_manifest_url" in
+		https://*) printf '%s\n' "$_manifest_url" ;;
+		http://*) printf 'https://%s\n' "${_manifest_url#http://}" ;;
+		ssh://* | git@*)
+			_rewritten=$(derive_https_url "$_manifest_url" || true)
+			if [ -n "$_rewritten" ]; then
+				printf '%s\n' "$_rewritten"
+			else
+				warn "cannot derive HTTPS URL for $_manifest_url (non-standard shape); using recorded URL"
+				printf '%s\n' "$_manifest_url"
+			fi
+			;;
+		*) printf '%s\n' "$_manifest_url" ;;
+		esac
+		;;
+	http)
+		case "$_manifest_url" in
+		http://*) printf '%s\n' "$_manifest_url" ;;
+		https://*) printf 'http://%s\n' "${_manifest_url#https://}" ;;
+		*) printf '%s\n' "$_manifest_url" ;;
+		esac
+		;;
+	esac
+}
+
+# ---------------------------------------------------------------------------
+# URL shape helpers -- standard GitHub-style hosts only; exotic shapes
+# (Azure _git paths, ports, custom users) are returned empty.
+# ---------------------------------------------------------------------------
+
+# Derive git@HOST:path/repo.git from https://HOST/path/repo.git.
+derive_ssh_url() {
+	_url=$1
+	case "$_url" in
+	https://*.git)
+		_host_path=${_url#https://}
+		_host=${_host_path%%/*}
+		_path=${_host_path#"$_host"}
+		# Only derive for standard host/org/repo shapes (exclude Azure _git etc.).
+		case "${_host_path}" in
+		*[:@]* | *'~'* | *' '_* | *'##'* | *';;'*) return 1 ;; # unusual chars -- bail
+		esac
+		printf 'git@%s:%s\n' "$_host" "${_path#/}"
+		;;
+	*) return 1 ;;
+	esac
+}
+
+# Derive https://HOST/path/repo.git from git@HOST:path/repo.git or
+# ssh://HOST/path/repo.git.
+derive_https_url() {
+	_url=$1
+	case "$_url" in
+	git@*:*)
+		_host=${_url#git@}
+		_path=${_host#*:}
+		_host=${_host%%:*}
+		printf 'https://%s/%s\n' "$_host" "$_path"
+		;;
+	ssh://*)
+		_url=${_url#ssh://}
+		_user_host=${_url%%/*}
+		_path=${_url#"$_user_host"}
+		_host=${_user_host##*@}
+		printf 'https://%s%s\n' "$_host" "$_path"
+		;;
+	*) return 1 ;;
+	esac
+}
+
+# ---------------------------------------------------------------------------
+# URL normalisation -- reduce two URLs to a host+path identity so verify
+# (default mode) can accept protocol-equivalent checkouts.
+# ---------------------------------------------------------------------------
+
+# Strip scheme, user, port, and scp-syntax to a bare <host>/<path>.
+url_normalize_identity() {
+	_url=$1
+	case "$_url" in
+	https://* | http://*)
+		_host_path=${_url#*://}
+		printf '%s\n' "${_host_path#*/}"
+		;;
+	ssh://*)
+		_host_path=${_url#ssh://}
+		_user=${_host_path%%@*}
+		_rest=${_host_path#"$_user@"}
+		_host=${_rest%%/*}
+		_path=${_rest#"$_host"}
+		printf '%s\n' "${_host}${_path}"
+		;;
+	git@*:*)
+		_host=${_url#git@}
+		_path=${_host#*:}
+		_host=${_host%%:*}
+		printf '%s\n' "${_host}${_path}"
+		;;
+	*) printf '%s\n' "$_url" ;; # file://, git:// -- pass through unchanged
+	esac
+}
+
+# Are two URLs pointing at the same repository (same host + path,
+# protocol/credentials/port ignored)?
+url_protocol_equivalent() {
+	_a=$1
+	_b=$2
+	[ "$(url_normalize_identity "$_a")" = "$(url_normalize_identity "$_b")" ]
+}
+
+# ---------------------------------------------------------------------------
+# Transport rewrite -- set GIT_CONFIG_* env so every git subprocess
+# inherits url.<base>.insteadOf rewriting. Only standard-shaped hosts
+# get a rule; non-standard shapes are skipped with a warning.
+# ---------------------------------------------------------------------------
+
+apply_protocol_preference() {
+	_prefer=$1
+	_pref=$(resolve_protocol_preference "$_prefer")
+	case "$_pref" in
+	manifest | "") return 0 ;; # nothing to do
+	esac
+
+	# Collect unique standard https hosts from the manifest into a temp
+	# file so the second pass reads it in the current shell (no pipe).
+	_hosts_file=$(mktemp "${TMPDIR:-/tmp}/gn-hosts.XXXXXX")
+	manifest_subprojects >"$_hosts_file.in"
+	while IFS= read -r _ap_path; do
+		[ -n "$_ap_path" ] || continue
+		_ap_url=$(subproject_repo "$_ap_path" || true)
+		[ -n "$_ap_url" ] || continue
+		case "$_ap_url" in https://* | http://*) ;; *) continue ;; esac
+		_host_path=${_ap_url#*://}
+		_host=${_host_path%%/*}
+		_repo_path=${_host_path#"$_host"}
+		_repo_path=${_repo_path#/}
+		case "$_repo_path" in
+		*[!A-Za-z0-9._/-]*)
+			warn "skipping protocol rewrite for non-standard URL: $_ap_url"
+			continue
+			;;
+		*_git/* | *_git$)
+			warn "skipping protocol rewrite for non-standard URL: $_ap_url"
+			continue
+			;;
+		esac
+		printf '%s\n' "$_host"
+	done <"$_hosts_file.in" | sort -u >"$_hosts_file"
+	rm -f "$_hosts_file.in"
+
+	_cnt=0
+	while IFS= read -r _host; do
+		[ -n "$_host" ] || continue
+		case "$_pref" in
+		ssh)
+			eval "export GIT_CONFIG_KEY_$_cnt=url.git@$_host:.insteadOf"
+			eval "export GIT_CONFIG_VALUE_$_cnt=https://$_host/"
+			_cnt=$((_cnt + 1))
+			;;
+		https)
+			eval "export GIT_CONFIG_KEY_$_cnt=url.https://$_host/.insteadOf"
+			eval "export GIT_CONFIG_VALUE_$_cnt=ssh://git@$_host/"
+			_cnt=$((_cnt + 1))
+			eval "export GIT_CONFIG_KEY_$_cnt=url.https://$_host/.insteadOf"
+			eval "export GIT_CONFIG_VALUE_$_cnt=git@$_host:"
+			_cnt=$((_cnt + 1))
+			;;
+		http)
+			eval "export GIT_CONFIG_KEY_$_cnt=url.http://$_host/.insteadOf"
+			eval "export GIT_CONFIG_VALUE_$_cnt=https://$_host/"
+			_cnt=$((_cnt + 1))
+			;;
+		esac
+	done <"$_hosts_file"
+	rm -f "$_hosts_file"
+
+	[ "$_cnt" -gt 0 ] || return 0
+	export GIT_CONFIG_COUNT=$_cnt
+}
+
+# Report whether the subproject has an active substitute-url in .gitnest-rc.
+rc_url_is_overridden() {
+	_path=$1
+	rc_url_get "$_path" >/dev/null 2>&1
+}
+
 # Return the current branch name, or HEAD when detached.
 current_branch() {
 	git symbolic-ref --quiet --short HEAD 2>/dev/null || printf 'HEAD\n'

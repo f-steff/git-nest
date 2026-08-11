@@ -1,3 +1,28 @@
+## 0.8.21 - 2026-08-11
+
+### Protocol and URL substitution for subproject remotes
+  * Added a local per-developer protocol preference: `git-nest config set
+    clone protocol ssh|https|http|manifest` stores the transport
+    preference in `.gitnest-rc` (repo-wide, not committed).
+  * `restore --prefer-ssh|--prefer-https|--prefer-http|--prefer-default`
+    overrides the protocol for a single run and re-points each subproject's
+    origin to the effective URL; `restore --dry-run` previews the change.
+  * Per-subproject exact URL override: `git-nest config set <path>
+    substitute-url <url>` for hosts whose SSH shape cannot be derived
+    from the HTTPS URL (Azure DevOps, custom ports, Gerrit).
+  * Transport is rewritten via environment-level git `insteadOf` per
+    unique host -- zero persistent git-config writes, no call-site changes
+    (git 2.31+ required for `GIT_CONFIG_COUNT` support).
+  * `config list` now shows repo, clone-mode, substitute-url, protocol
+    (from both the manifest and `.gitnest-rc`); the new rc-writing
+    helpers support `config set`/`get`/`unset` for rc keys.
+  * `verify` compares origin against the effective URL by default (host+path
+    identity, protocol-tolerant); `verify --strict` checks the exact
+    canonical manifest URL and rejects active rc overrides.
+  * Documented the `url.<base>.insteadOf` pattern, `substitute-url`, and
+    protocol preference in a new "Connecting To Your Remotes" section in
+    the Manual.
+
 ## 0.8.20 - 2026-08-11
 
 ### Windows installation documentation

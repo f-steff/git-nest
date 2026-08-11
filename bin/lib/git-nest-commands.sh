@@ -117,7 +117,7 @@ usage() {
 	help_usage_group "Inspection"
 	help_usage "status" "[--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
 	help_usage "outdated" "[--recursive] [--porcelain | --json | --json-pretty]"
-	help_usage "verify" "[--recursive] [--json | --json-pretty]"
+	help_usage "verify" "[--recursive] [--strict] [--json | --json-pretty]"
 	help_usage "diff" "[--since <ref>] [--stat] [--json | --json-pretty]"
 	help_usage "log" "[--max-count <n>] [--since <date>] [--until <date>] [--subproject <path>] [--oneline] [--recursive]"
 	help_usage "list" "[--porcelain | --json | --json-pretty] [--redact]"
@@ -194,11 +194,12 @@ usage() {
 	help_text "Change a subproject repository URL in the manifest only."
 	help_detail "<path> is a managed subproject path relative to the current nest root."
 	help_command "config <get|set|list|unset> ..."
-	help_text "Read or update allowlisted manifest settings."
-	help_detail "Subproject paths are relative to the current nest root."
-	help_detail "Only clone-mode is currently configurable; values are full, partial, or shallow."
+	help_text "Read or update manifest-backed and local settings."
+	help_detail "clone-mode (per-path, manifest): full, partial."
 	help_detail "clone-mode controls future restore clones, not the clone command."
-	help_detail "config list shows explicitly set config values only."
+	help_detail "substitute-url (per-path, .gitnest-rc): local URL override for a subproject."
+	help_detail "protocol (repo-wide, .gitnest-rc, no path): ssh, https, http, or manifest."
+	help_detail "Explicit config list shows settings from both the manifest and .gitnest-rc."
 	help_command "update <subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
 	help_text "Move one clean subproject to a selected revision."
 	help_detail "<subproject> is a managed path in the current nest; . is not valid here."
@@ -216,6 +217,8 @@ usage() {
 	help_detail "--prune removes stale local-state paths after review when suggested."
 	help_detail "--force proceeds when a tag moved away from the recorded revision."
 	help_detail "--depth overrides per-project clone depth for shallow subprojects."
+	help_detail "--prefer-ssh, --prefer-https, --prefer-http override the remote transport for this run."
+	help_detail "--prefer-default restores the canonical manifest URL for all subprojects."
 	help_detail "--dry-run prints planned clone/fetch/checkout/prune actions without writing."
 	help_command "pull [--recursive] [--sure] [--no-fetch] [--dry-run] [--json|--json-pretty]"
 	help_text "Fast-forward clean subprojects to their upstream branch heads and snapshot."
@@ -260,9 +263,10 @@ usage() {
 	help_detail "--recursive includes nested projects."
 	help_detail "--porcelain prints stable fixed-column records for scripts."
 	help_detail "--json and --json-pretty print machine-readable output."
-	help_command "verify [--recursive] [--json | --json-pretty]"
+	help_command "verify [--recursive] [--strict] [--json | --json-pretty]"
 	help_text "Validate manifest, remotes, refs, clone mode, and checked-out revisions."
 	help_detail "--recursive includes nested projects."
+	help_detail "--strict requires the canonical manifest URL and rejects active overrides."
 	help_detail "--json and --json-pretty print machine-readable output."
 	help_command "diff [--since <ref>] [--stat] [--json | --json-pretty]"
 	help_text "Show subproject commits between manifest revisions and current checkouts."
@@ -622,9 +626,10 @@ command_help() {
 		help_opposite "update performs a selected subproject move after inspection."
 		;;
 	verify)
-		help_command "verify [--recursive] [--json | --json-pretty]"
+		help_command "verify [--recursive] [--strict] [--json | --json-pretty]"
 		help_text "Validate manifest entries, remotes, refs, clone mode, and checkout drift."
 		help_detail "--recursive includes nested nests."
+		help_detail "--strict requires the canonical manifest URL and rejects active overrides."
 		help_heading "Examples:"
 		help_example "git-nest verify"
 		help_example "git-nest verify --recursive"
@@ -2361,9 +2366,30 @@ verify_current() {
 		fi
 
 		actual_repo=$(git -C "$path" remote get-url origin 2>/dev/null || true)
-		if [ "$actual_repo" != "$repo" ]; then
-			printf 'Error: %s: origin remote differs from manifest\n' "$path" >>"$vc_errors"
-			printf '  expected: %s\n  actual:   %s\n' "$repo" "$actual_repo" >>"$vc_errors"
+		expected_repo=$repo
+		if [ "${VERIFY_STRICT:-0}" -eq 1 ]; then
+			# Strict mode: compare origin exactly against the manifest
+			# repo= and flag any active rc overrides.
+			if [ "$actual_repo" != "$repo" ]; then
+				printf 'Error: %s: origin remote differs from canonical manifest URL\n' "$path" >>"$vc_errors"
+				printf '  canonical: %s\n  actual:    %s\n' "$repo" "$actual_repo" >>"$vc_errors"
+			fi
+			if rc_url_is_overridden "$path"; then
+				printf 'Error: %s: substitute-url override is active (not allowed in --strict mode)\n' "$path" >>"$vc_errors"
+			fi
+			if [ "$(configured_protocol)" != manifest ]; then
+				printf 'Error: %s: [clone] protocol preference is active (not allowed in --strict mode)\n' "nest root" >>"$vc_errors"
+			fi
+		else
+			# Default: compare against the effective URL (rc substitute-url
+			# or protocol rewriting), normalised to host+path identity so
+			# protocol differences (https/ssh/scp) are accepted.
+			expected_repo=$(effective_repo_url "$path" "" || true)
+			[ -n "$expected_repo" ] || expected_repo=$repo
+			if ! url_protocol_equivalent "$actual_repo" "$expected_repo"; then
+				printf 'Error: %s: origin remote differs from manifest repository\n' "$path" >>"$vc_errors"
+				printf '  expected: %s\n  actual:   %s\n' "$expected_repo" "$actual_repo" >>"$vc_errors"
+			fi
 		fi
 
 		if [ "$mode" = partial ]; then
@@ -2466,6 +2492,11 @@ cmd_verify() {
 	recursive=$PARSED_RECURSIVE
 	json=$PARSED_JSON
 	json_pretty=$PARSED_JSON_PRETTY
+	verify_strict=0
+	for _vs in "$@"; do
+		case "$_vs" in --strict) verify_strict=1 ;; esac
+	done
+	export VERIFY_STRICT=$verify_strict
 	[ "$PARSED_PORCELAIN" -eq 0 ] || usage_error "verify does not support --porcelain"
 	if [ "$json" -eq 1 ]; then
 		# Use uniquely named variables so verify_current cannot clobber them, and
@@ -3164,7 +3195,39 @@ ensure_manifest_subproject_path() {
 	fi
 }
 
-# Manage manifest-backed subproject settings.
+# Validate a config value for a key (e.g. clone-mode must be full or partial)
+# before cmd_config writes anything.
+validate_config_value() {
+	key=$1
+	value=$2
+	case "$key:$value" in
+	clone-mode:full | clone-mode:partial) ;;
+	protocol:manifest | protocol:ssh | protocol:https | protocol:http) ;;
+	substitute-url:*) ;; # substitute-url accepts any non-empty value
+	*) usage_error "$key must be full or partial" ;;
+	esac
+}
+
+# Uses an emsp_-prefixed path (rather than bare path) because cmd_config's
+# get/set/list/unset branches call this without a subshell while holding
+# their own bare path across the call.
+ensure_manifest_subproject_path() {
+	emsp_path=$1
+	if ! manifest_subprojects | grep -F -x "$emsp_path" >/dev/null 2>&1; then
+		precondition_error "unknown subproject: $emsp_path"
+	fi
+}
+
+# Manage settings -- manifest-backed per-subproject keys (clone-mode) and
+# repository-wide or per-subproject local overrides (protocol,
+# substitute-url) stored in .gitnest-rc.
+#
+# No path means the [clone] section of .gitnest-rc (global preference):
+#   git-nest config set clone protocol ssh
+#   git-nest config get clone protocol
+#
+# Path + key "clone-mode" -> manifest per-subproject (unchanged).
+# Path + key "substitute-url" -> .gitnest-rc per-subproject override.
 cmd_config() {
 	[ $# -ge 1 ] || usage_error "usage: git-nest config <get|set|list|unset> ..."
 	action=$1
@@ -3172,64 +3235,149 @@ cmd_config() {
 	ensure_manifest
 	validate_manifest_schema
 
+	# No path means the [clone] section of .gitnest-rc (global preference):
+	# "config <get|set|unset> clone <key> [value]".
+	rc_no_path=0
+	if [ $# -ge 1 ]; then
+		case "$action:$1" in
+		get:clone | set:clone | unset:clone) rc_no_path=1 ;;
+		esac
+	fi
+
+	if [ "$rc_no_path" -eq 1 ]; then
+		# No-path mode: rc [clone] section.
+		rc_no_path=1
+		case "$action" in
+		get)
+			[ $# -ge 2 ] || usage_error "usage: git-nest config get clone <key>"
+			_key=$2
+			[ "$_key" = "protocol" ] || [ "$_key" = "mode" ] || usage_error "unknown rc key: $_key"
+			value=$(config_get clone "$_key" || true)
+			[ -n "$value" ] || return 1
+			printf '%s\n' "$value"
+			;;
+		set)
+			[ $# -ge 3 ] || usage_error "usage: git-nest config set clone <key> <value>"
+			_key=$2
+			_value=$3
+			[ "$_key" = "protocol" ] || [ "$_key" = "mode" ] || usage_error "unknown rc key: $_key"
+			validate_config_value "$_key" "$_value"
+			rc_set clone "$_key" "$_value"
+			warn "set $_key to $_value; existing checkouts are not converted"
+			;;
+		unset)
+			[ $# -ge 2 ] || usage_error "usage: git-nest config unset clone <key>"
+			_key=$2
+			[ "$_key" = "protocol" ] || [ "$_key" = "mode" ] || usage_error "unknown rc key: $_key"
+			rc_unset clone "$_key"
+			;;
+		*) usage_error "unknown config action for [clone]: $action" ;;
+		esac
+		return 0
+	fi
+
+	# Path-based actions.
 	case "$action" in
 	get)
-		[ $# -eq 2 ] || usage_error "usage: git-nest config get <path> clone-mode"
+		[ $# -eq 2 ] || usage_error "usage: git-nest config get <path> clone-mode|substitute-url"
 		reject_backslash_path "$1"
 		path=$(normalize_path "$1")
 		key=$2
-		manifest_key=$(config_manifest_key "$key") || usage_error "unknown config key: $key"
-		assert_path_not_inside_nested_project "$path"
-		ensure_manifest_subproject_path "$path"
-		value=$(subproject_key "$path" "$manifest_key" || true)
-		[ -n "$value" ] || return 1
-		printf '%s\n' "$value"
+		case "$key" in
+		clone-mode)
+			assert_path_not_inside_nested_project "$path"
+			ensure_manifest_subproject_path "$path"
+			value=$(subproject_key "$path" clone || true)
+			[ -n "$value" ] || return 1
+			printf '%s\n' "$value"
+			;;
+		substitute-url)
+			assert_path_not_inside_nested_project "$path"
+			ensure_manifest_subproject_path "$path"
+			value=$(rc_url_get "$path" || true)
+			[ -n "$value" ] || return 1
+			printf '%s\n' "$value"
+			;;
+		*) usage_error "unknown config key: $key" ;;
+		esac
 		;;
 	set)
-		[ $# -eq 3 ] || usage_error "usage: git-nest config set <path> clone-mode <value>"
+		[ $# -eq 3 ] || usage_error "usage: git-nest config set <path> clone-mode|substitute-url <value>"
 		reject_backslash_path "$1"
 		path=$(normalize_path "$1")
 		key=$2
 		value=$3
-		manifest_key=$(config_manifest_key "$key") || usage_error "unknown config key: $key"
 		validate_config_value "$key" "$value"
-		assert_path_not_inside_nested_project "$path"
-		ensure_manifest_subproject_path "$path"
-		acquire_manifest_lock
-		manifest_set_subproject_key "$path" "$manifest_key" "$value"
-		warn "set $key for $path to $value; existing checkouts are not converted"
+		case "$key" in
+		clone-mode)
+			assert_path_not_inside_nested_project "$path"
+			ensure_manifest_subproject_path "$path"
+			acquire_manifest_lock
+			manifest_set_subproject_key "$path" clone "$value"
+			warn "set clone-mode for $path to $value; existing checkouts are not converted"
+			;;
+		substitute-url)
+			assert_path_not_inside_nested_project "$path"
+			ensure_manifest_subproject_path "$path"
+			rc_url_set "$path" "$value"
+			warn "set substitute-url for $path to $value; restore to materialize"
+			;;
+		*) usage_error "unknown config key: $key" ;;
+		esac
 		;;
 	list)
 		[ $# -le 1 ] || usage_error "usage: git-nest config list [<path>]"
+		# Print rc repo-wide settings first.
+		rc_mode=$(config_get clone mode || true)
+		[ -n "$rc_mode" ] && printf 'clone\tmode=%s\n' "$rc_mode"
+		rc_proto=$(config_get clone protocol || true)
+		[ -n "$rc_proto" ] && printf 'clone\tprotocol=%s\n' "$rc_proto"
+
 		if [ $# -eq 1 ]; then
 			reject_backslash_path "$1"
 			path=$(normalize_path "$1")
 			assert_path_not_inside_nested_project "$path"
 			ensure_manifest_subproject_path "$path"
-			value=$(subproject_key "$path" clone || true)
-			if [ -n "$value" ]; then
-				printf '%s\tclone-mode=%s\n' "$path" "$value"
-			fi
+			mvalue=$(subproject_key "$path" clone || true)
+			[ -n "$mvalue" ] && printf '%s\tclone-mode=%s\n' "$path" "$mvalue"
+			svalue=$(rc_url_get "$path" || true)
+			[ -n "$svalue" ] && printf '%s\tsubstitute-url=%s\n' "$path" "$svalue"
+			repo=$(subproject_repo "$path" || true)
+			[ -n "$repo" ] && printf '%s\trepo=%s\n' "$path" "$repo"
 		else
-			manifest_subprojects | while IFS= read -r path; do
-				[ -n "$path" ] || continue
-				value=$(subproject_key "$path" clone || true)
-				if [ -n "$value" ]; then
-					printf '%s\tclone-mode=%s\n' "$path" "$value"
-				fi
-			done
+			_cfg_list_tmp=$(mktemp "${TMPDIR:-/tmp}/gn-cfg-list.XXXXXX")
+			manifest_subprojects >"$_cfg_list_tmp"
+			while IFS= read -r cfg_path; do
+				[ -n "$cfg_path" ] || continue
+				mvalue=$(subproject_key "$cfg_path" clone || true)
+				[ -n "$mvalue" ] && printf '%s\tclone-mode=%s\n' "$cfg_path" "$mvalue"
+				svalue=$(rc_url_get "$cfg_path" || true)
+				[ -n "$svalue" ] && printf '%s\tsubstitute-url=%s\n' "$cfg_path" "$svalue"
+				repo=$(subproject_repo "$cfg_path" || true)
+				[ -n "$repo" ] && printf '%s\trepo=%s\n' "$cfg_path" "$repo"
+			done <"$_cfg_list_tmp"
+			rm -f "$_cfg_list_tmp"
 		fi
 		;;
 	unset)
-		[ $# -eq 2 ] || usage_error "usage: git-nest config unset <path> clone-mode"
+		[ $# -eq 2 ] || usage_error "usage: git-nest config unset <path> clone-mode|substitute-url"
 		reject_backslash_path "$1"
 		path=$(normalize_path "$1")
 		key=$2
-		manifest_key=$(config_manifest_key "$key") || usage_error "unknown config key: $key"
-		assert_path_not_inside_nested_project "$path"
-		ensure_manifest_subproject_path "$path"
-		acquire_manifest_lock
-		manifest_remove_subproject_key "$path" "$manifest_key"
+		case "$key" in
+		clone-mode)
+			assert_path_not_inside_nested_project "$path"
+			ensure_manifest_subproject_path "$path"
+			acquire_manifest_lock
+			manifest_remove_subproject_key "$path" clone
+			;;
+		substitute-url)
+			assert_path_not_inside_nested_project "$path"
+			ensure_manifest_subproject_path "$path"
+			rc_url_unset "$path"
+			;;
+		*) usage_error "unknown config key: $key" ;;
+		esac
 		;;
 	*) usage_error "unknown config action: $action" ;;
 	esac
@@ -3782,8 +3930,12 @@ restore_current() {
 	while IFS= read -r path; do
 		[ -n "$path" ] || continue
 		if (
-			repo=$(subproject_repo "$path")
-			[ -n "$repo" ] || die "missing repo for $path"
+			# The effective URL -- rc substitute-url or the manifest repo
+			# with protocol rewriting -- is what git-nest materializes.
+			diry_repo=$(subproject_repo "$path")
+			[ -n "$diry_repo" ] || die "missing repo for $path"
+			repo=$(effective_repo_url "$path" "$PREFER_PROTOCOL" || true)
+			[ -n "$repo" ] || die "no effective URL for $path"
 			created=0
 			clone_mode=$(effective_clone_mode "$path")
 			tag=$(subproject_key "$path" tag || true)
@@ -3795,6 +3947,10 @@ restore_current() {
 					printf '[dry-run] would clone %s into %s using clone=%s\n' "$repo" "$path" "$clone_mode"
 				else
 					printf '[dry-run] would fetch %s before restore\n' "$path"
+					# Check whether origin would be re-pointed.
+					_old_origin=$(git -C "$path" remote get-url origin 2>/dev/null || true)
+					[ -n "$_old_origin" ] && [ "$_old_origin" != "$repo" ] &&
+						printf '[dry-run] would set origin of %s to %s\n' "$path" "$repo"
 				fi
 				if [ -n "$tag" ]; then
 					remote_tag=unknown
@@ -3826,6 +3982,16 @@ restore_current() {
 				install_hooks_in_repo_if_project_managed "$path"
 			fi
 			fetch_quiet "$path"
+
+			# Point origin at the effective URL, so plain git commands
+			# inside the subproject (push, pull) also use the preferred
+			# transport. New clones already have the right origin.
+			_oorigin=$(git -C "$path" remote get-url origin 2>/dev/null || true)
+			if [ -n "$_oorigin" ] && [ "$_oorigin" != "$repo" ]; then
+				git -C "$path" remote set-url origin "$repo" ||
+					warn "failed to set origin of $path to $repo"
+			fi
+
 			if [ -n "$tag" ]; then
 				if [ -n "$revision" ]; then
 					tag_tmp=$(tmp_for "$MANIFEST_FILE.sync_tag")
@@ -3914,6 +4080,7 @@ cmd_restore() {
 	force=0
 	dry_run=0
 	restore_depth=
+	prefer_protocol=
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--recursive)
@@ -3934,6 +4101,26 @@ cmd_restore() {
 			validate_positive_integer "$restore_depth" "--depth"
 			shift 2
 			;;
+		--prefer-ssh)
+			[ -z "$prefer_protocol" ] || usage_error "only one --prefer-* flag allowed"
+			prefer_protocol=ssh
+			shift
+			;;
+		--prefer-https)
+			[ -z "$prefer_protocol" ] || usage_error "only one --prefer-* flag allowed"
+			prefer_protocol=https
+			shift
+			;;
+		--prefer-http)
+			[ -z "$prefer_protocol" ] || usage_error "only one --prefer-* flag allowed"
+			prefer_protocol=http
+			shift
+			;;
+		--prefer-default)
+			[ -z "$prefer_protocol" ] || usage_error "only one --prefer-* flag allowed"
+			prefer_protocol=manifest
+			shift
+			;;
 		--dry-run)
 			dry_run=1
 			GIT_NEST_DRY_RUN=1
@@ -3942,6 +4129,12 @@ cmd_restore() {
 		*) usage_error "unknown restore option: $1" ;;
 		esac
 	done
+
+	# Apply the protocol preference to every git subprocess.
+	PREFER_PROTOCOL=$prefer_protocol
+	export PREFER_PROTOCOL
+	apply_protocol_preference "$prefer_protocol"
+
 	if [ "$recursive" -eq 1 ]; then
 		visited=$(mktemp)
 		: >"$visited"

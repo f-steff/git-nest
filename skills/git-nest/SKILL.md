@@ -121,6 +121,8 @@ git nest verify
 
 Use `restore` to fetch and restore subprojects recorded in `.gitnest` for the current nest. Use `status` to understand nest root and subproject state. Use `verify` to catch missing subprojects, wrong remotes, unresolved refs, or checkout drift.
 
+If developers on the same nest use different transport protocols (SSH vs HTTPS), prefer `git-nest config set clone protocol ssh|https|http|manifest` (stored in `.gitnest-rc`, local) and run `git-nest restore` to apply the preference; `verify --strict` checks the canonical manifest URL. For non-standard hosts use `config set <path> substitute-url <url>`.
+
 Use `doctor --offline` as a local sanity check before longer investigations or test runs. Use plain `doctor` when remote reachability is part of the question.
 
 Use `outdated` when the user wants to know whether subproject remotes have newer target-branch commits without updating `.gitnest`, fetching local refs, or changing checkouts.
