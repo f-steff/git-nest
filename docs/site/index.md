@@ -1,5 +1,4 @@
-git-nest pins your multi-repo workspace as a manifest in your own
-repository -- versioned like your code, restorable on any machine.
+git-nest is a lightweight shell tool that manages many independent Git repositories as one cohesive project. Built for modular codebases split across separate repos, it removes the need for submodules, subtrees, and subrepos - using only plain Git.
 
 ## Quickstart
 
@@ -24,7 +23,7 @@ iex (iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-n
 ```
 
 More install options, pinned versions, and uninstall instructions are in
-the [Manual](README.md#installation-and-invocation).
+the [Manual](../../README.md#installation-and-invocation).
 
 Then, inside any multi-repo workspace:
 

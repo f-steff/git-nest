@@ -240,7 +240,7 @@ check_ascii() {
 check_version_alignment() {
 	_version_file="$REPO_ROOT/version.md"
 	_shell_file="$REPO_ROOT/bin/git-nest-main.sh"
-	_config_file="$REPO_ROOT/_config.yml"
+	_config_file="$REPO_ROOT/docs/site/_config.yml"
 	_code_version=$(sed -n 's/^GIT_NEST_VERSION=//p' "$_shell_file" | head -n 1)
 	_doc_version=$(sed -n 's/^## \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' "$_version_file" | head -n 1)
 	_site_version=$(sed -n 's/^version: *//p' "$_config_file" | head -n 1)

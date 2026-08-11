@@ -1,3 +1,15 @@
+## 0.8.24 - 2026-08-11
+
+### Repository cleanup
+  * Relocated Jekyll site source (index.md, _config.yml, assets/,
+    _includes/) from the repo root into `docs/site/`.
+  * Merged `tools/serve-site.py` into `scripts/tools/` and deleted the
+    `tools/` directory.
+  * Added `scripts/README.md` describing the package and tool scripts.
+  * Updated the quick-start intro in index.md to match the repository
+    About text.
+  * Synced AGENTS.md and development/github-pages.md with the new layout.
+
 ## 0.8.23 - 2026-08-11
 
 ### Tag CI dispatch for Pages badges

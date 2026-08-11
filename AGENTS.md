@@ -27,12 +27,14 @@ tests/
   integration-tests/        end-to-end suite (real Git repositories),
                             helper.sh, check.sh
 docs/                       user-facing documentation (shipped in packages)
+docs/site/                  Jekyll site source (_config.yml, index.md,
+                            assets/, _includes/); rendered from README.md +
+                            docs/; see development/github-pages.md
 development/                repository development/maintenance docs (CI,
                             dockerized testing, POSIX notes, technical
                             implementation) -- not shipped
-index.md, _config.yml,      GitHub Pages site (Jekyll, just-the-docs theme):
-assets/logo.svg,            rendered from README.md + docs/; see
-_includes/head_custom.html  development/github-pages.md
+scripts/                    release packaging, site staging, version gate,
+                            and local dev tooling (serve-site.py)
 skills/git-nest/SKILL.md    portable AI usage skill shipped to consumers;
                             single source of truth for that skill
 .agents/skills/<name>/SKILL.md  skill tree for development agents

@@ -8,27 +8,28 @@ and a dark mode that follows the visitor's OS preference.
 
 ## How It Works
 
-- `_config.yml` (repo root) declares the `just-the-docs` remote theme,
-  the site title/description, and the `exclude` list. Only user-facing
-  content ships: `development/`, `tests/`, `bin/`, `scripts/`, and the
-  root scratch files are excluded from the rendered site.
+- The Jekyll site source lives in `docs/site/` (`_config.yml`, `index.md`,
+  `assets/`, `_includes/`). Only user-facing content ships:
+  `development/`, `tests/`, `bin/`, `scripts/`, and the root scratch files
+  are excluded from the rendered site.
 - The committed markdown files carry NO YAML front matter -- they are
   pure markdown, so GitHub.com renders them cleanly (front matter would
   show up as a visible table in the file view). Jekyll needs front matter
   to convert a file into a page, so `scripts/package/site-prep.sh`
-  copies the user-facing markdown (index.md, README.md, SECURITY.md,
-  docs/*.md) into `_site-src/` and prepends `layout:`, `title:`, and
-  `nav_order:` there. The site is built from `_site-src`; the committed
-  files stay untouched. Adding a page = add the markdown file + one
-  `prepend_fm` line in site-prep.sh.
-- `index.md` is the landing page (`layout: home`): it inlines the logo
-  SVG, shows the six CI status badges, and links the manual.
-- `assets/logo.svg` is the logo: the ASCII mark `\_oOO_//` as monospace
-  text centered in a rounded rectangle, roughly one character of border
-  on every side. The background and text colors invert via a
+  copies the user-facing markdown (docs/site/index.md, README.md,
+  SECURITY.md, docs/*.md) and the site assets from `docs/site/` into
+  `_site-src/` and prepends `layout:`, `title:`, and `nav_order:` there.
+  The site is built from `_site-src`; the committed files stay untouched.
+  Adding a page = add the markdown file + one `prepend_fm` line in
+  site-prep.sh.
+- `docs/site/index.md` is the landing page (`layout: home`): it inlines
+  the logo SVG, shows the three CI status badges, and links the manual.
+- `docs/site/assets/logo.svg` is the logo: the ASCII mark `\_oOO_//` as
+  monospace text centered in a rounded rectangle, roughly one character of
+  border on every side. The background and text colors invert via a
   `prefers-color-scheme` media query inside the SVG, so light and dark
   mode both get a contrasting badge. The same file is used as the site
-  favicon via `_includes/head_custom.html`.
+  favicon via `docs/site/_includes/head_custom.html`.
 - `.github/workflows/pages.yml` deploys the site:
   1. `actions/configure-pages` prepares the Pages environment.
   2. `sh scripts/package/site-prep.sh` stages the site source with the
@@ -71,7 +72,7 @@ http.server` will not resolve the links. Serve the built site with the
 included preview server, which strips the `/git-nest` prefix:
 
 ```sh
-python3 tools/serve-site.py 4000
+python3 scripts/tools/serve-site.py 4000
 # open http://localhost:4000/git-nest/
 ```
 
@@ -83,10 +84,10 @@ builds but cannot deploy.
 ## Adding A Page
 
 1. Add the markdown file under the site source set: README.md, SECURITY.md,
-   index.md, or docs/ for user-facing content.
+   docs/site/index.md, or docs/ for user-facing content.
 2. Register it in `scripts/package/site-prep.sh` with one `prepend_fm`
-   line carrying its title and nav order (1 = Home via index.md, then the
-   manual, then the docs).
+   line carrying its title and nav order (1 = Home via docs/site/index.md,
+   then the manual, then the docs).
 3. Keep the content ASCII-only (the static analysis suite enforces this).
 4. Rebuild locally with the commands above and check the new page.
 

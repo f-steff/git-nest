@@ -23,10 +23,13 @@ stage="$repo/_site-src"
 rm -rf "$stage"
 mkdir -p "$stage/docs" "$stage/assets" "$stage/_includes"
 
-cp "$repo/_config.yml" "$stage/"
-cp -R "$repo/_includes/." "$stage/_includes/"
-cp -R "$repo/assets/." "$stage/assets/"
-cp "$repo/index.md" "$repo/README.md" "$repo/SECURITY.md" "$stage/"
+site_src="$repo/docs/site"
+cp "$site_src/_config.yml" "$stage/"
+cp -R "$site_src/_includes/." "$stage/_includes/"
+cp -R "$site_src/assets/." "$stage/assets/"
+cp "$site_src/index.md" "$stage/"
+cp "$repo/README.md" "$stage/"
+cp "$repo/SECURITY.md" "$stage/"
 cp "$repo"/docs/*.md "$stage/docs/"
 
 # The README's "Documentation:" line links back to the GitHub Pages site
