@@ -120,7 +120,9 @@ if [ "$fetch" -eq 1 ]; then
     fi
     url="https://github.com/$repo/releases/download/v$fetch_version/git-nest-$fetch_version.tar.gz"
     echo "Downloading $url"
-    curl -fsSL -o "$work/git-nest.tar.gz" "$url" || {
+    # The file is downloaded under the versioned name so the SHA256SUMS
+    # verification below can run sha256sum -c without renaming.
+    curl -fsSL -o "$work/git-nest-$fetch_version.tar.gz" "$url" || {
         echo "git-nest-install.sh: download failed: $url" >&2
         exit 1
     }
@@ -138,7 +140,7 @@ if [ "$fetch" -eq 1 ]; then
             echo "git-nest-install.sh: tarball checksum verified"
         fi
     fi
-    from="$work/git-nest.tar.gz"
+    from="$work/git-nest-$fetch_version.tar.gz"
 fi
 
 if [ -d "$from" ]; then

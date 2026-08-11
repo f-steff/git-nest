@@ -29,6 +29,12 @@ cp -R "$repo/assets/." "$stage/assets/"
 cp "$repo/index.md" "$repo/README.md" "$repo/SECURITY.md" "$stage/"
 cp "$repo"/docs/*.md "$stage/docs/"
 
+# The README's "Documentation:" line links back to the GitHub Pages site
+# home. It is meant for the GitHub repository page; on the site's own
+# Manual page it would link to the site itself, so it is stripped from
+# the staged copy only (the committed README keeps it).
+sed -i '/^Documentation: <https:\/\/f-steff\.github\.io\/git-nest\/>$/d' "$stage/README.md"
+
 # name:section:title:nav_order -- layout is always "default" except the
 # home page (index.md), which uses "home".
 prepend_fm() {
