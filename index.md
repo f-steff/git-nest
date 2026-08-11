@@ -26,4 +26,6 @@ git-nest add ./libs/foo
 git-nest restore
 ```
 
-The full manual is on the [Manual](README.md) page.
+git-nest records exactly which repository belongs at which path and
+revision in the `.gitnest` manifest, and `git-nest restore` rebuilds that
+exact workspace on any machine -- no submodules, no monorepo.

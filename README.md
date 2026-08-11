@@ -85,7 +85,7 @@ curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-
 Pin a specific version:
 
 ```sh
-VERSION=0.8.16 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
+VERSION=0.8.17 curl -fsSL https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.sh | sh
 ```
 
 Windows (cmd.exe or PowerShell) -- the `-ExecutionPolicy Bypass` flag makes
@@ -99,7 +99,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "& { iwr -useb https://ra
 Pinned version on Windows:
 
 ```bat
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.16'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:VERSION='0.8.17'; iwr -useb https://raw.githubusercontent.com/f-steff/git-nest/main/bin/git-nest-install.ps1 | iex"
 ```
 
 The installers download the release archive, verify it against the

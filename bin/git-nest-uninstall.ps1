@@ -48,10 +48,22 @@ if (-not (Test-Path -LiteralPath (Join-Path $dest 'git-nest-main.sh'))) {
 
 Write-Output "Removing git-nest from $prefix"
 
-# Remove staged content (man pages, docs, skill) if present.
+# Remove staged content (man pages, docs, skill) if present. Only the
+# git-nest-owned paths are removed: the prefix may be a shared location
+# (e.g. ~/.local) that other tools use.
 $share = Join-Path $prefix 'share'
-if (Test-Path -LiteralPath $share) {
-    Remove-Item -LiteralPath $share -Recurse -Force
+Remove-Item -LiteralPath (Join-Path $share 'doc\git-nest') -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Join-Path $share 'git-nest') -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -LiteralPath (Join-Path $share 'man\man1') -Filter 'git-nest*.1' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem -LiteralPath (Join-Path $share 'man\man5') -Filter 'git-nest*.5' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+# Drop now-empty share directories (shared with other tools: only
+# git-nest's own subdirectories were touched).
+foreach ($d in @('man\man1', 'man\man5', 'man', 'doc', '')) {
+    $p = if ($d) { Join-Path $share $d } else { $share }
+    if (Test-Path -LiteralPath $p) {
+        $left = Get-ChildItem -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        if (-not $left) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 # Unregister from Windows Apps & Features (Settings -> Apps) if the
