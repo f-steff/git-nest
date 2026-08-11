@@ -18,6 +18,11 @@ last release tag.
 | `pages.yml` | no | yes | Jekyll site build + deploy |
 | `release.yml` | no | yes | Version gate -> assemble -> release -> pages |
 
+The three full CI workflows also run on push to release tags (`v*`) so
+the GitHub Pages site can display version-pinned CI badges
+(`?branch=v{{ site.version }}`) that reflect the release version's test
+status rather than the live development-branch state.
+
 Every pull request runs the **full** suites on all three platforms
 (Linux, macOS, Windows). A merge to main re-runs the full Linux suite
 plus the fast macOS/Windows sets, deploys the Pages site, and starts the

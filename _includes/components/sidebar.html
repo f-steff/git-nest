@@ -16,9 +16,9 @@
 
   <div class="site-status">
     <span class="site-status-version">Latest release: v{{ site.version }}</span>
-    <img src="https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg" alt="CI (Linux)">
-    <img src="https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg" alt="CI (macOS)">
-    <img src="https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg" alt="CI (Windows)">
+    <img src="https://github.com/f-steff/git-nest/actions/workflows/ci-linux.yml/badge.svg?branch=v{{ site.version }}" alt="CI (Linux)">
+    <img src="https://github.com/f-steff/git-nest/actions/workflows/ci-macos.yml/badge.svg?branch=v{{ site.version }}" alt="CI (macOS)">
+    <img src="https://github.com/f-steff/git-nest/actions/workflows/ci-windows.yml/badge.svg?branch=v{{ site.version }}" alt="CI (Windows)">
   </div>
 
   {% include_cached components/site_nav.html %}

@@ -3,6 +3,8 @@ name: CI (macOS)
 on:
   workflow_dispatch:
   pull_request:
+  push:
+    tags: ['v*']
 
 permissions:
   contents: read
