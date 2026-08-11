@@ -2,14 +2,14 @@
 # Local preview server for the built Jekyll site.
 # The site is built with baseurl /git-nest, so every link points at
 # /git-nest/... -- this server strips that prefix and serves _site/.
-#   python3 tools/serve-site.py [port]
+#   python3 scripts/tools/serve-site.py [port]
 # Then open http://localhost:4000/git-nest/
 import http.server
 import os
 import sys
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 4000
-SITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "_site")
+SITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "_site")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
