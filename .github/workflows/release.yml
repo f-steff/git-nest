@@ -110,6 +110,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [version-check, release]
     if: needs.version-check.outputs.is_release == 'true'
+    # gh workflow run needs actions: write to dispatch workflow runs;
+    # the workflow-level permission block does not grant it.
+    permissions:
+      actions: write
     env:
       GH_TOKEN: ${{ github.token }}
       VERSION: ${{ needs.version-check.outputs.version }}
