@@ -21,13 +21,16 @@ repo=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 stage="$repo/_site-src"
 
 rm -rf "$stage"
-mkdir -p "$stage/docs" "$stage/assets" "$stage/_includes"
+mkdir -p "$stage/docs" "$stage/assets" "$stage/_includes" "$stage/docs/site"
 
 site_src="$repo/docs/site"
 cp "$site_src/_config.yml" "$stage/"
 cp -R "$site_src/_includes/." "$stage/_includes/"
 cp -R "$site_src/assets/." "$stage/assets/"
-cp "$site_src/index.md" "$stage/"
+# index.md is staged at docs/site/ -- the same position it has in the
+# committed tree -- so its relative links resolve identically in both.
+# permalink: / keeps it the site home page despite the subdirectory.
+cp "$site_src/index.md" "$stage/docs/site/"
 cp "$repo/README.md" "$stage/"
 cp "$repo/SECURITY.md" "$stage/"
 cp "$repo"/docs/*.md "$stage/docs/"
@@ -59,7 +62,10 @@ prepend_fm() {
     mv "$tmp" "$file"
 }
 
-prepend_fm index.md home Home 1
+prepend_fm docs/site/index.md home Home 1
+# The home page lives at docs/site/ in the source tree, so Jekyll would
+# render it at /git-nest/docs/site/; pin it to the site root.
+sed -i '/^layout: home$/a permalink: /' "$stage/docs/site/index.md"
 prepend_fm README.md default Manual 2
 prepend_fm docs/command-behavior-contract.md default "Behavior Contract" 3
 prepend_fm docs/manifest.md default "Manifest Format" 4

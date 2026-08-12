@@ -24,6 +24,10 @@ and a dark mode that follows the visitor's OS preference.
   site-prep.sh.
 - `docs/site/index.md` is the landing page (`layout: home`): it inlines
   the logo SVG, shows the three CI status badges, and links the manual.
+  It is staged at `_site-src/docs/site/index.md` -- the same relative
+  position it has in the committed tree, so its relative links resolve
+  identically in both -- and site-prep.sh adds `permalink: /` so Jekyll
+  still renders it at the site root.
 - `docs/site/assets/logo.svg` is the logo: the ASCII mark `\_oOO_//` as
   monospace text centered in a rounded rectangle, roughly one character of
   border on every side. The background and text colors invert via a
