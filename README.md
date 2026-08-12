@@ -12,7 +12,19 @@ Conceptually, the nest is to Git what a package manifest is to a language ecosys
 
 ## Current Capabilities
 
-Since conception as a script dealing with submodules, `git-nest` has focused on making multi-repository workspaces explicit and reproducible without turning them into a monorepo.
+### Compared to submodules and subtrees
+
+Submodules force detached HEAD, silent overwrites, and CI checkout
+rituals. Subtrees and subrepos interleave remote history into your own.
+git-nest keeps each subproject a normal Git repository and records the
+whole workspace in a plain-text `.gitnest` manifest - restorable with
+one command, inspectable with `status` / `verify` / `outdated`, and
+convertible from existing submodules and subtrees with
+`git-nest absorb`. Subprojects can follow a branch head or be locked to
+a specific revision - see
+[Pinning And Unpinning Subprojects](docs/howto.md#pinning-and-unpinning-subprojects).
+See the [home page](https://f-steff.github.io/git-nest/) for the full
+comparison.
 
 It can:
 
