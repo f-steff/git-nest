@@ -122,17 +122,31 @@ tui_wrap() {
 			break
 		fi
 		wr_chunk=$(printf '%s' "$wr_rest" | cut -c1-"$wr_width")
-		# Position of the last space inside the chunk (0 = none).
+		wr_next=$(printf '%s' "$wr_rest" | cut -c$((wr_width + 1))-)
+		# If the chunk ends exactly at a word boundary (next char is a
+		# space or the text ends), keep the whole chunk.
+		case "$wr_next" in
+		' '* | '')
+			wr_head=$(printf '%s' "$wr_chunk" | sed 's/ *$//')
+			printf '%s\n' "$wr_head"
+			wr_rest=${wr_rest#"$wr_head"}
+			case "$wr_rest" in
+			' '*) wr_rest=${wr_rest# } ;;
+			esac
+			continue
+			;;
+		esac
+		# The chunk cuts a word in half: back up to the last space inside
+		# it (position of the last space, 0 = none).
 		wr_sp=$(printf '%s' "$wr_chunk" | awk '{ p = match($0, / [^ ]*$/); print p ? p : 0 }')
 		if [ "$wr_sp" -gt 1 ]; then
 			wr_keep=$((wr_sp - 1))
+			wr_head=$(printf '%s' "$wr_chunk" | cut -c1-"$wr_keep")
 		else
-			wr_keep=$wr_width
+			wr_head=$wr_chunk
 		fi
-		wr_head=$(printf '%s' "$wr_chunk" | cut -c1-"$wr_keep")
 		printf '%s\n' "$wr_head"
 		wr_rest=${wr_rest#"$wr_head"}
-		# Drop one leading space left by the break.
 		case "$wr_rest" in
 		' '*) wr_rest=${wr_rest# } ;;
 		esac
