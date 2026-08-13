@@ -1,8 +1,6 @@
 #!/bin/sh
-# Unit test: TUI pure functions (key normalization, box, wrap, clip,
-# help trimming, layout, menu step, input step)
-# Coverage: tui_key_normalize, tui_box, tui_clip, tui_wrap, tui_trim_help,
-#           tui_layout, tui_menu_step, tui_input_step
+# Unit test: TUI pure functions (key normalization, box, wrap, clip, help trimming, layout, menu step, input step)
+# Coverage: tui_key_normalize, tui_box, tui_clip, tui_wrap, tui_trim_help, tui_layout, tui_menu_step, tui_input_step, tui_rule
 
 set -eu
 . "$(dirname "$0")/helper.sh"
