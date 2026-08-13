@@ -134,3 +134,27 @@ Use `--only <path>` for a single subproject and `--force` to freeze dirty
 subprojects. Freezing pins the recorded revision for reproducibility but
 keeps the `target_branch`; run `git-nest snapshot` instead when you want
 to record branch-following state without pinning.
+
+## Running One Command After A Batch Operation
+
+`foreach`, `foreach-modified`, `foreach-clean`, `restore`, `snapshot`,
+`pull`, and `gc` accept `--finally <cmd>`, `--finally-no-error <cmd>`, and
+`--finally-on-error <cmd>` to run a shell command in the nest root once,
+after the operation completes. `--finally` always runs; `--finally-no-error`
+runs only on full success; `--finally-on-error` runs only when any part
+failed. A typical batch recipe commits work inside every dirty subproject
+and snapshots the result only when all of it succeeded:
+
+```sh
+git-nest foreach-modified \
+  --finally-no-error 'git-nest snapshot && git add .gitnest && git commit -m "batch snapshot"' \
+  --finally-on-error 'git checkout .gitnest' \
+  -- sh -c 'git add -A && git commit -m "WIP"'
+```
+
+The manifest lock is released before the callback runs, so a callback may
+itself invoke `git-nest` (for example `pull --finally 'git-nest snapshot'`,
+or a nested-nest operation). See
+[examples.md](examples.md#15-iterate-across-subprojects-with-foreach) for
+the full walkthrough with real command output.
+

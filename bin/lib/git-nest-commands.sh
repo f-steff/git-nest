@@ -108,11 +108,10 @@ usage() {
 	help_usage "update" "<subproject> [--remote | --target-head | --revision <sha-or-ref> | --tag <tag>] [--branch <branch>] [--no-fetch]"
 
 	help_usage_group "Workspace state"
-	help_usage "restore" "[--recursive] [--prune] [--force] [--dry-run] [--depth <n>]"
-	help_usage "pull" "[--recursive] [--sure] [--no-fetch] [--dry-run] [--json | --json-pretty]"
-	help_usage "snapshot" "[<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
-	help_usage "freeze" "[--force] [--only <path>[,<path>...]] [--dry-run]"
-	help_usage "gc" "[--aggressive] [--dry-run] [--json | --json-pretty]"
+	help_usage "restore" "[--recursive] [--prune] [--force] [--dry-run] [--depth <n>] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
+	help_usage "pull" "[--recursive] [--sure] [--no-fetch] [--dry-run] [--json | --json-pretty] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
+	help_usage "snapshot" "[<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
+	help_usage "gc" "[--aggressive] [--dry-run] [--json | --json-pretty] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
 
 	help_usage_group "Inspection"
 	help_usage "status" "[--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
@@ -136,9 +135,9 @@ usage() {
 	help_usage "hooks-uninstall"
 
 	help_usage_group "Iteration"
-	help_usage "foreach" "[--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
-	help_usage "foreach-modified" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
-	help_usage "foreach-clean" "[--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+	help_usage "foreach" "[--include-root-first|--include-root-last] [--only-nested|--no-nested] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [--] <command> [args...]"
+	help_usage "foreach-modified" "[--continue-on-error] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+	help_usage "foreach-clean" "[--continue-on-error] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 
 	help_usage_group "Export and nest membership"
 	help_usage "export" "--output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]"
@@ -210,7 +209,7 @@ usage() {
 	help_detail "--no-fetch resolves only local refs."
 
 	help_command_group "Workspace state"
-	help_command "restore [--recursive] [--prune] [--force] [--dry-run] [--depth <n>]"
+	help_command "restore [--recursive] [--prune] [--force] [--dry-run] [--depth <n>] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
 	help_text "Clone/fetch subprojects and restore the manifest state on disk."
 	help_detail "Operates on the whole current nest; it does not accept a path."
 	help_detail "--recursive includes nested projects."
@@ -220,14 +219,20 @@ usage() {
 	help_detail "--prefer-ssh, --prefer-https, --prefer-http override the remote transport for this run."
 	help_detail "--prefer-default restores the canonical manifest URL for all subprojects."
 	help_detail "--dry-run prints planned clone/fetch/checkout/prune actions without writing."
-	help_command "pull [--recursive] [--sure] [--no-fetch] [--dry-run] [--json|--json-pretty]"
+	help_detail "--finally runs a shell command in the nest root afterwards (always)."
+	help_detail "--finally-no-error runs it only when the restore succeeded."
+	help_detail "--finally-on-error runs it only when the restore reported issues."
+	help_command "pull [--recursive] [--sure] [--no-fetch] [--dry-run] [--json|--json-pretty] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
 	help_text "Fast-forward clean subprojects to their upstream branch heads and snapshot."
 	help_detail "Default pull only subprojects; --sure also pulls the nest root."
 	help_detail "--recursive includes nested nests."
 	help_detail "--no-fetch uses local refs only."
 	help_detail "--dry-run prints planned pull actions without writing."
 	help_detail "--json and --json-pretty print machine-readable dry-run output."
-	help_command "snapshot [<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
+	help_detail "--finally runs a shell command in the nest root afterwards (always)."
+	help_detail "--finally-no-error runs it only when every subproject pulled cleanly."
+	help_detail "--finally-on-error runs it only when any subproject failed or diverged."
+	help_command "snapshot [<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
 	help_text "Record clean, reproducible checked-out subproject commits in .gitnest."
 	help_detail "No path snapshots all subprojects in the current nest."
 	help_detail "At the nest root, . also means all subprojects."
@@ -239,17 +244,23 @@ usage() {
 	help_detail "--check reports stale state without writing."
 	help_detail "--strict returns nonzero for dirty or unreproducible subprojects."
 	help_detail "--no-fetch uses local refs only."
+	help_detail "--finally runs a shell command in the nest root afterwards (always)."
+	help_detail "--finally-no-error runs it only when the snapshot succeeded."
+	help_detail "--finally-on-error runs it only when the snapshot reported issues."
 	help_command "freeze [--force] [--only <path>[,<path>...]] [--dry-run]"
 	help_text "Pin tracked subprojects to their current checkout commits."
 	help_detail "Without --only, freezes every tracked subproject in the current nest."
 	help_detail "--only limits freezing to a comma-separated path list."
 	help_detail "--force freezes dirty subprojects with warnings."
 	help_detail "--dry-run prints what would change without writing."
-	help_command "gc [--aggressive] [--dry-run] [--json | --json-pretty]"
+	help_command "gc [--aggressive] [--dry-run] [--json | --json-pretty] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
 	help_text "Run git gc in the nest root and every checked-out subproject."
 	help_detail "--aggressive passes --aggressive to git gc."
 	help_detail "--dry-run prints planned gc actions without running."
 	help_detail "--json and --json-pretty print machine-readable output."
+	help_detail "--finally runs a shell command in the nest root afterwards (always)."
+	help_detail "--finally-no-error runs it only when every gc succeeded."
+	help_detail "--finally-on-error runs it only when any gc failed."
 
 	help_command_group "Inspection"
 	help_command "status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
@@ -530,7 +541,7 @@ command_help() {
 		help_opposite "restore returns subprojects to the manifest state instead of advancing one."
 		;;
 	restore)
-		help_command "restore [--recursive] [--prune] [--force] [--dry-run] [--depth <n>]"
+		help_command "restore [--recursive] [--prune] [--force] [--dry-run] [--depth <n>] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
 		help_text "Clone, fetch, and check out the manifest state on disk."
 		help_detail "Operates on the whole current nest; it does not accept a path."
 		help_detail "--recursive includes nested nests."
@@ -538,14 +549,18 @@ command_help() {
 		help_detail "--force proceeds when a tag moved away from the recorded revision."
 		help_detail "--depth overrides per-project clone depth for shallow subprojects."
 		help_detail "--dry-run shows planned clone/fetch/checkout/prune actions."
+		help_detail "--finally runs a shell command in the nest root afterwards (always)."
+		help_detail "--finally-no-error runs it only when the restore succeeded."
+		help_detail "--finally-on-error runs it only when the restore reported issues."
 		help_heading "Examples:"
 		help_example "git-nest restore"
 		help_example "git-nest restore --dry-run"
 		help_example "git-nest restore --recursive"
+		help_example "git-nest restore --finally 'make build'"
 		help_opposite "snapshot records the current reproducible checkout state into .gitnest."
 		;;
 	pull)
-		help_command "pull [--recursive] [--sure] [--no-fetch] [--dry-run] [--json|--json-pretty]"
+		help_command "pull [--recursive] [--sure] [--no-fetch] [--dry-run] [--json|--json-pretty] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
 		help_text "Fast-forward clean subprojects to their upstream branch heads and snapshot."
 		help_detail "Without options, only clean subprojects that have upstream tracking are pulled."
 		help_detail "Dirty subprojects, detached HEAD, and missing upstream branches are skipped."
@@ -554,16 +569,20 @@ command_help() {
 		help_detail "--no-fetch uses local refs only without contacting remotes."
 		help_detail "--dry-run shows planned actions without changing checkouts."
 		help_detail "--json and --json-pretty print machine-readable dry-run output."
+		help_detail "--finally runs a shell command in the nest root afterwards (always)."
+		help_detail "--finally-no-error runs it only when every subproject pulled cleanly."
+		help_detail "--finally-on-error runs it only when any subproject failed or diverged."
 		help_heading "Examples:"
 		help_example "git-nest pull"
 		help_example "git-nest pull --recursive"
 		help_example "git-nest pull --sure"
 		help_example "git-nest pull --dry-run"
 		help_example "git-nest pull --no-fetch"
+		help_example "git-nest pull --finally 'git-nest snapshot'"
 		help_opposite "update moves one subproject to a selected remote/tag/revision."
 		;;
 	snapshot)
-		help_command "snapshot [<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch]"
+		help_command "snapshot [<path>] [--recursive] [--quiet] [--dry-run] [--check] [--strict] [--no-fetch] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
 		help_text "Record clean, reproducible checked-out subproject commits in .gitnest."
 		help_detail "No path snapshots all subprojects in the current nest."
 		help_detail "At the nest root, . also means all subprojects."
@@ -571,11 +590,15 @@ command_help() {
 		help_detail "An explicit path may name a managed subproject or a path inside one."
 		help_detail "--check reports stale state without writing."
 		help_detail "--strict returns nonzero for dirty or unreproducible subprojects."
+		help_detail "--finally runs a shell command in the nest root afterwards (always)."
+		help_detail "--finally-no-error runs it only when the snapshot succeeded."
+		help_detail "--finally-on-error runs it only when the snapshot reported issues."
 		help_heading "Examples:"
 		help_example "git-nest snapshot"
 		help_example "git-nest snapshot ."
 		help_example "git-nest snapshot libs/foo --dry-run"
 		help_example "git-nest snapshot --check --strict"
+		help_example "git-nest snapshot --finally 'git add .gitnest && git commit -m snapshot'"
 		help_opposite "restore materializes the recorded manifest state on disk."
 		;;
 	freeze)
@@ -591,16 +614,20 @@ command_help() {
 		help_opposite "update moves one subproject to a selected remote/tag/revision."
 		;;
 	gc)
-		help_command "gc [--aggressive] [--dry-run] [--json | --json-pretty]"
+		help_command "gc [--aggressive] [--dry-run] [--json | --json-pretty] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>]"
 		help_text "Run git gc in the nest root and every checked-out subproject."
 		help_detail "Without --aggressive, runs plain git gc."
 		help_detail "--aggressive passes --aggressive to git gc."
 		help_detail "--dry-run prints planned gc actions without running."
 		help_detail "--json and --json-pretty print machine-readable output."
+		help_detail "--finally runs a shell command in the nest root afterwards (always)."
+		help_detail "--finally-no-error runs it only when every gc succeeded."
+		help_detail "--finally-on-error runs it only when any gc failed."
 		help_heading "Examples:"
 		help_example "git-nest gc"
 		help_example "git-nest gc --aggressive"
 		help_example "git-nest gc --dry-run"
+		help_example "git-nest gc --finally 'echo gc done'"
 		;;
 	status)
 		help_command "status [--recursive] [--porcelain | --json | --json-pretty] [--exit-code]"
@@ -756,7 +783,7 @@ command_help() {
 		help_opposite "hooks-install installs the managed local hooks."
 		;;
 	foreach)
-		help_command "foreach [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
+		help_command "foreach [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [--] <command> [args...]"
 		help_text "Run a command in every checked-out subproject in the current nest."
 		help_detail "The command runs inside each subproject checkout."
 		help_detail "--include-root-first runs the command on the nest root before subprojects."
@@ -765,33 +792,50 @@ command_help() {
 		help_detail "--no-nested excludes nested nests, running only in plain subproject checkouts."
 		help_detail "The -- separator is optional. Omit it for ordinary commands: git-nest foreach git status."
 		help_detail "Use -- when the command starts with a word that could be confused with an option."
+		help_detail "--finally runs a shell command in the nest root after the loop (always)."
+		help_detail "--finally-no-error runs it only when every subproject command succeeded."
+		help_detail "--finally-on-error runs it only when any subproject command failed."
+		help_detail "The callback may invoke git-nest itself, e.g. --finally-no-error 'git-nest snapshot'."
 		help_heading "Examples:"
 		help_example "git-nest foreach git status --short"
 		help_example "git-nest foreach -- sh -c 'git rev-parse --show-toplevel'"
 		help_example "git-nest foreach --include-root-last -- git add -A && git commit -m 'batch commit'"
 		help_example "git-nest foreach --only-nested -- git status"
+		help_example "git-nest foreach --finally 'echo done' git status"
+		help_example "git-nest foreach --finally-no-error 'git-nest snapshot' -- sh -c 'git add -A && git commit -m WIP'"
+		help_example "git-nest foreach --finally-on-error 'git checkout .gitnest' -- sh -c 'git fetch origin'"
 		;;
 	foreach-modified)
-		help_command "foreach-modified [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+		help_command "foreach-modified [--continue-on-error] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 		help_text "Run a command in dirty checked-out subprojects, or list them."
 		help_detail "Without a command, it reports the matching subprojects."
 		help_detail "Machine-readable output cannot be combined with a command."
+		help_detail "--continue-on-error keeps iterating after a failing subproject command."
+		help_detail "--finally runs a shell command in the nest root after the loop (always)."
+		help_detail "--finally-no-error runs it only when every subproject command succeeded."
+		help_detail "--finally-on-error runs it only when any subproject command failed."
 		help_heading "Examples:"
 		help_example "git-nest foreach-modified"
 		help_example "git-nest foreach-modified --porcelain"
 		help_example "git-nest foreach-modified git status --short"
 		help_example "git-nest foreach-modified --continue-on-error -- git status --short"
+		help_example "git-nest foreach-modified --finally-no-error 'git-nest snapshot' -- git commit -am WIP"
 		help_opposite "foreach-clean selects clean checked-out subprojects."
 		;;
 	foreach-clean)
-		help_command "foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
+		help_command "foreach-clean [--continue-on-error] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 		help_text "Run a command in clean checked-out subprojects, or list them."
 		help_detail "Without a command, it reports the matching subprojects."
 		help_detail "Machine-readable output cannot be combined with a command."
+		help_detail "--continue-on-error keeps iterating after a failing subproject command."
+		help_detail "--finally runs a shell command in the nest root after the loop (always)."
+		help_detail "--finally-no-error runs it only when every subproject command succeeded."
+		help_detail "--finally-on-error runs it only when any subproject command failed."
 		help_heading "Examples:"
 		help_example "git-nest foreach-clean"
 		help_example "git-nest foreach-clean --json-pretty"
 		help_example "git-nest foreach-clean -- git fetch --all --prune"
+		help_example "git-nest foreach-clean --finally-on-error 'echo fetch failed' -- git fetch --all"
 		help_opposite "foreach-modified selects dirty checked-out subprojects."
 		;;
 	export)
@@ -2945,6 +2989,9 @@ cmd_snapshot() {
 	strict=0
 	check_only=0
 	selected=
+	finally_cmd=
+	finally_no_error_cmd=
+	finally_on_error_cmd=
 	clear_base_overrides
 	while [ $# -gt 0 ]; do
 		case "$1" in
@@ -2979,6 +3026,21 @@ cmd_snapshot() {
 			add_base_override "$2"
 			shift 2
 			;;
+		--finally)
+			[ $# -ge 2 ] || usage_error "--finally requires a shell command"
+			finally_cmd=$2
+			shift 2
+			;;
+		--finally-no-error)
+			[ $# -ge 2 ] || usage_error "--finally-no-error requires a shell command"
+			finally_no_error_cmd=$2
+			shift 2
+			;;
+		--finally-on-error)
+			[ $# -ge 2 ] || usage_error "--finally-on-error requires a shell command"
+			finally_on_error_cmd=$2
+			shift 2
+			;;
 		--*) usage_error "unknown snapshot option: $1" ;;
 		*)
 			[ -z "$selected" ] || usage_error "snapshot accepts at most one path"
@@ -2991,18 +3053,20 @@ cmd_snapshot() {
 	if [ "$recursive" -eq 1 ]; then
 		visited=$(mktemp)
 		: >"$visited"
-		snapshot_recursive "." "$visited" "$quiet" "$dry_run" "$strict" "$check_only"
-		rc=$?
+		rc=0
+		snapshot_recursive "." "$visited" "$quiet" "$dry_run" "$strict" "$check_only" || rc=$?
 		rm -f "$visited"
+		run_finally_callbacks "$rc" "$finally_cmd" "$finally_no_error_cmd" "$finally_on_error_cmd"
 		return "$rc"
 	fi
 	# Capture the snapshot result and return it explicitly. Without this, the
 	# trailing notice command would become the function's exit status and mask a
 	# nonzero result, which breaks callers that inspect it (for example the root
 	# pre-push hook's `if ! cmd_snapshot --check --strict --quiet`).
-	snapshot_current "$quiet" "$dry_run" "$selected" "$strict" "$check_only"
-	snapshot_rc=$?
+	snapshot_rc=0
+	snapshot_current "$quiet" "$dry_run" "$selected" "$strict" "$check_only" || snapshot_rc=$?
 	[ "$quiet" -eq 1 ] || notice_nested_snapshot_candidates
+	run_finally_callbacks "$snapshot_rc" "$finally_cmd" "$finally_no_error_cmd" "$finally_on_error_cmd"
 	return "$snapshot_rc"
 }
 
@@ -3383,6 +3447,31 @@ cmd_config() {
 	esac
 }
 
+# Run the post-operation callbacks (--finally, --finally-no-error,
+# --finally-on-error) in the nest root, conditioned on the operation's
+# effective exit status. The manifest lock is released first so a
+# callback may itself invoke git-nest (e.g. snapshot after pull, or a
+# nested-nest operation) without deadlocking on the lock the parent
+# holds. Callback failures do not change the command's own exit status.
+run_finally_callbacks() {
+	fc_rc=$1
+	fc_finally=$2
+	fc_noerr=$3
+	fc_onerr=$4
+	[ -n "$fc_finally$fc_noerr$fc_onerr" ] || return 0
+	cleanup_manifest_lock
+	fc_root=$(repo_root)
+	fc_root=$(CDPATH='' cd -- "$fc_root" && pwd)
+	if [ -n "$fc_finally" ]; then
+		(cd "$fc_root" && GIT_NEST_ROOT=$fc_root sh -c "$fc_finally") || true
+	fi
+	if [ "$fc_rc" -eq 0 ] && [ -n "$fc_noerr" ]; then
+		(cd "$fc_root" && GIT_NEST_ROOT=$fc_root sh -c "$fc_noerr") || true
+	elif [ "$fc_rc" -ne 0 ] && [ -n "$fc_onerr" ]; then
+		(cd "$fc_root" && GIT_NEST_ROOT=$fc_root sh -c "$fc_onerr") || true
+	fi
+}
+
 # Shared foreach engine for all subprojects or only manifest-pending subprojects.
 run_foreach() {
 	mode=$1
@@ -3391,6 +3480,9 @@ run_foreach() {
 	include_root_last=0
 	only_nested=0
 	no_nested=0
+	finally_cmd=
+	finally_no_error_cmd=
+	finally_on_error_cmd=
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--include-root-first)
@@ -3409,6 +3501,21 @@ run_foreach() {
 			no_nested=1
 			shift
 			;;
+		--finally)
+			[ $# -ge 2 ] || usage_error "--finally requires a shell command"
+			finally_cmd=$2
+			shift 2
+			;;
+		--finally-no-error)
+			[ $# -ge 2 ] || usage_error "--finally-no-error requires a shell command"
+			finally_no_error_cmd=$2
+			shift 2
+			;;
+		--finally-on-error)
+			[ $# -ge 2 ] || usage_error "--finally-on-error requires a shell command"
+			finally_on_error_cmd=$2
+			shift 2
+			;;
 		--)
 			shift
 			break
@@ -3418,7 +3525,7 @@ run_foreach() {
 		esac
 	done
 	[ "$only_nested" -eq 0 ] || [ "$no_nested" -eq 0 ] || usage_error "$mode cannot combine --only-nested with --no-nested"
-	[ $# -gt 0 ] || die "usage: git-nest $mode [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--] <command> [args...]"
+	[ $# -gt 0 ] || die "usage: git-nest $mode [--include-root-first|--include-root-last] [--only-nested|--no-nested] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [--] <command> [args...]"
 
 	root=$(repo_root)
 	root=$(CDPATH='' cd -- "$root" && pwd)
@@ -3487,6 +3594,7 @@ run_foreach() {
 		run_foreach_in_root "$@" || rc=$?
 	fi
 
+	run_finally_callbacks "$rc" "$finally_cmd" "$finally_no_error_cmd" "$finally_on_error_cmd"
 	rm -f "$subprojects_tmp"
 	return "$rc"
 }
@@ -3587,6 +3695,9 @@ run_foreach_filtered() {
 	porcelain=0
 	json=0
 	json_pretty=0
+	finally_cmd=
+	finally_no_error_cmd=
+	finally_on_error_cmd=
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--continue-on-error)
@@ -3614,6 +3725,21 @@ run_foreach_filtered() {
 			json_pretty=1
 			shift
 			;;
+		--finally)
+			[ $# -ge 2 ] || usage_error "--finally requires a shell command"
+			finally_cmd=$2
+			shift 2
+			;;
+		--finally-no-error)
+			[ $# -ge 2 ] || usage_error "--finally-no-error requires a shell command"
+			finally_no_error_cmd=$2
+			shift 2
+			;;
+		--finally-on-error)
+			[ $# -ge 2 ] || usage_error "--finally-on-error requires a shell command"
+			finally_on_error_cmd=$2
+			shift 2
+			;;
 		--)
 			shift
 			break
@@ -3629,6 +3755,10 @@ run_foreach_filtered() {
 		usage_error "$mode machine-readable output cannot be combined with a command"
 	fi
 	[ "$only_nested" -eq 0 ] || [ "$no_nested" -eq 0 ] || usage_error "$mode cannot combine --only-nested with --no-nested"
+	if { [ -n "$finally_cmd" ] || [ -n "$finally_no_error_cmd" ] || [ -n "$finally_on_error_cmd" ]; } &&
+		{ [ "$porcelain" -eq 1 ] || [ "$json" -eq 1 ]; }; then
+		usage_error "$mode --finally* cannot be combined with machine-readable output"
+	fi
 
 	rows=$(tmp_for "$MANIFEST_FILE.$mode")
 	errors=$(tmp_for "$MANIFEST_FILE.$mode.errors")
@@ -3636,6 +3766,7 @@ run_foreach_filtered() {
 	: >"$errors"
 	: >"$warnings"
 	foreach_filtered_rows "$mode" "$rows" "$only_nested" "$no_nested"
+	rc=0
 
 	if [ "$porcelain" -eq 1 ]; then
 		cat "$rows"
@@ -3648,9 +3779,9 @@ run_foreach_filtered() {
 		return 0
 	fi
 
-	[ $# -gt 0 ] || die "usage: git-nest $mode [--continue-on-error] [-- <command> [args...]]"
-	run_foreach_filtered_command "$rows" "$continue_on_error" "$@"
-	rc=$?
+	[ $# -gt 0 ] || die "usage: git-nest $mode [--continue-on-error] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [-- <command> [args...]]"
+	run_foreach_filtered_command "$rows" "$continue_on_error" "$@" || rc=$?
+	run_finally_callbacks "$rc" "$finally_cmd" "$finally_no_error_cmd" "$finally_on_error_cmd"
 	rm -f "$rows" "$errors" "$warnings"
 	return "$rc"
 }
@@ -4081,6 +4212,10 @@ cmd_restore() {
 	dry_run=0
 	restore_depth=
 	prefer_protocol=
+	finally_cmd=
+	finally_no_error_cmd=
+	finally_on_error_cmd=
+	rc=0
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--recursive)
@@ -4126,6 +4261,21 @@ cmd_restore() {
 			GIT_NEST_DRY_RUN=1
 			shift
 			;;
+		--finally)
+			[ $# -ge 2 ] || usage_error "--finally requires a shell command"
+			finally_cmd=$2
+			shift 2
+			;;
+		--finally-no-error)
+			[ $# -ge 2 ] || usage_error "--finally-no-error requires a shell command"
+			finally_no_error_cmd=$2
+			shift 2
+			;;
+		--finally-on-error)
+			[ $# -ge 2 ] || usage_error "--finally-on-error requires a shell command"
+			finally_on_error_cmd=$2
+			shift 2
+			;;
 		*) usage_error "unknown restore option: $1" ;;
 		esac
 	done
@@ -4138,13 +4288,15 @@ cmd_restore() {
 	if [ "$recursive" -eq 1 ]; then
 		visited=$(mktemp)
 		: >"$visited"
-		restore_recursive "." "$visited" "$prune" "$force" "$dry_run"
-		rc=$?
+		restore_recursive "." "$visited" "$prune" "$force" "$dry_run" || rc=$?
 		rm -f "$visited"
+		run_finally_callbacks "$rc" "$finally_cmd" "$finally_no_error_cmd" "$finally_on_error_cmd"
 		return "$rc"
 	fi
-	restore_current "$prune" "$force" "$dry_run"
+	restore_current "$prune" "$force" "$dry_run" || rc=$?
 	notice_nested_projects
+	run_finally_callbacks "$rc" "$finally_cmd" "$finally_no_error_cmd" "$finally_on_error_cmd"
+	return "$rc"
 }
 
 # Pull upstream changes into clean subprojects, then snapshot the result.
@@ -4357,6 +4509,9 @@ pull_current() {
 		fi
 	fi
 	rm -f "$pull_dirty_list" "$pull_detached_list" "$pull_noupstream_list" "$pull_diverged_list" "$pull_failed_list" "$pull_rows"
+	# Effective status: any failed or diverged subproject makes the pull
+	# report an issue (drives --finally-on-error).
+	[ "$failed" -eq 0 ] && [ "$diverged" -eq 0 ]
 }
 
 # Recursively pull the current project and nested project roots.
@@ -4374,12 +4529,12 @@ pull_recursive() {
 	fi
 	printf '%s\n' "$pull_root_abs" >>"$pull_visited"
 	[ "$pull_json" -eq 1 ] || printf 'Pulling project: %s\n' "$pull_label"
-	pull_current "$pull_sure" "$pull_no_fetch" "$pull_dry_run" "$pull_json" "$pull_pretty" || return 1
+	pull_rc=0
+	pull_current "$pull_sure" "$pull_no_fetch" "$pull_dry_run" "$pull_json" "$pull_pretty" || pull_rc=1
 	cleanup_manifest_lock
 
 	pull_sub_tmp=$(tmp_for "$MANIFEST_FILE.pull_recursive")
 	manifest_subprojects >"$pull_sub_tmp"
-	pull_rc=0
 	while IFS= read -r pull_path; do
 		[ -n "$pull_path" ] || continue
 		if [ -d "$pull_path/.git" ] && [ -f "$pull_path/$MANIFEST_FILE" ]; then
@@ -4403,6 +4558,9 @@ cmd_pull() {
 	dry_run=0
 	json=0
 	json_pretty=0
+	finally_cmd=
+	finally_no_error_cmd=
+	finally_on_error_cmd=
 
 	while [ $# -gt 0 ]; do
 		case "$1" in
@@ -4432,21 +4590,44 @@ cmd_pull() {
 			json_pretty=1
 			shift
 			;;
+		--finally)
+			[ $# -ge 2 ] || usage_error "--finally requires a shell command"
+			finally_cmd=$2
+			shift 2
+			;;
+		--finally-no-error)
+			[ $# -ge 2 ] || usage_error "--finally-no-error requires a shell command"
+			finally_no_error_cmd=$2
+			shift 2
+			;;
+		--finally-on-error)
+			[ $# -ge 2 ] || usage_error "--finally-on-error requires a shell command"
+			finally_on_error_cmd=$2
+			shift 2
+			;;
 		*) usage_error "unknown pull option: $1" ;;
 		esac
 	done
+	if { [ -n "$finally_cmd" ] || [ -n "$finally_no_error_cmd" ] || [ -n "$finally_on_error_cmd" ]; } &&
+		[ "$json" -eq 1 ]; then
+		usage_error "pull --finally* cannot be combined with machine-readable output"
+	fi
 
 	if [ "$recursive" -eq 1 ]; then
 		pull_visited=$(mktemp)
 		: >"$pull_visited"
-		pull_recursive "." "$pull_visited" "$sure" "$no_fetch" "$dry_run" "$json" "$json_pretty"
-		pull_rc=$?
+		pull_rc=0
+		pull_recursive "." "$pull_visited" "$sure" "$no_fetch" "$dry_run" "$json" "$json_pretty" || pull_rc=$?
 		rm -f "$pull_visited"
+		run_finally_callbacks "$pull_rc" "$finally_cmd" "$finally_no_error_cmd" "$finally_on_error_cmd"
 		return "$pull_rc"
 	fi
 
-	pull_current "$sure" "$no_fetch" "$dry_run" "$json" "$json_pretty"
+	pull_rc=0
+	pull_current "$sure" "$no_fetch" "$dry_run" "$json" "$json_pretty" || pull_rc=$?
 	[ "$json" -eq 1 ] || notice_nested_projects
+	run_finally_callbacks "$pull_rc" "$finally_cmd" "$finally_no_error_cmd" "$finally_on_error_cmd"
+	return "$pull_rc"
 }
 
 # Run git gc in the nest root and every checked-out subproject.
@@ -4455,6 +4636,9 @@ cmd_gc() {
 	dry_run=0
 	json=0
 	json_pretty=0
+	finally_cmd=
+	finally_no_error_cmd=
+	finally_on_error_cmd=
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--aggressive)
@@ -4474,9 +4658,28 @@ cmd_gc() {
 			json_pretty=1
 			shift
 			;;
+		--finally)
+			[ $# -ge 2 ] || usage_error "--finally requires a shell command"
+			finally_cmd=$2
+			shift 2
+			;;
+		--finally-no-error)
+			[ $# -ge 2 ] || usage_error "--finally-no-error requires a shell command"
+			finally_no_error_cmd=$2
+			shift 2
+			;;
+		--finally-on-error)
+			[ $# -ge 2 ] || usage_error "--finally-on-error requires a shell command"
+			finally_on_error_cmd=$2
+			shift 2
+			;;
 		*) usage_error "unknown gc option: $1" ;;
 		esac
 	done
+	if { [ -n "$finally_cmd" ] || [ -n "$finally_no_error_cmd" ] || [ -n "$finally_on_error_cmd" ]; } &&
+		[ "$json" -eq 1 ]; then
+		usage_error "gc --finally* cannot be combined with machine-readable output"
+	fi
 
 	gc_opts=
 	[ "$aggressive" -eq 1 ] && gc_opts="--aggressive"
@@ -4524,7 +4727,13 @@ cmd_gc() {
 		done <"$gc_rows"
 	fi
 
+	gc_rc=0
+	if [ -s "$gc_warnings" ]; then
+		gc_rc=1
+	fi
+	run_finally_callbacks "$gc_rc" "$finally_cmd" "$finally_no_error_cmd" "$finally_on_error_cmd"
 	rm -f "$gc_rows" "$gc_errors" "$gc_warnings"
+	return "$gc_rc"
 }
 
 # Authoritative list of public command names (one line, space-separated),
@@ -4721,6 +4930,9 @@ _GIT_NEST_complete_for() {
 		_GIT_NEST_emit_option --prune "remove reviewed stale paths"
 		_GIT_NEST_emit_option --force "proceed past tag drift warnings"
 		_GIT_NEST_emit_option --dry-run "show planned actions without writing"
+		_GIT_NEST_emit_value --finally "shell command to run afterwards"
+		_GIT_NEST_emit_value --finally-no-error "shell command to run on success"
+		_GIT_NEST_emit_value --finally-on-error "shell command to run on failure"
 		_GIT_NEST_emit_directive no-file
 		;;
 	pull)
@@ -4730,6 +4942,9 @@ _GIT_NEST_complete_for() {
 		_GIT_NEST_emit_option --dry-run "show planned changes"
 		_GIT_NEST_emit_option --json "print JSON"
 		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_value --finally "shell command to run afterwards"
+		_GIT_NEST_emit_value --finally-no-error "shell command to run on success"
+		_GIT_NEST_emit_value --finally-on-error "shell command to run on failure"
 		_GIT_NEST_emit_directive no-file
 		;;
 	freeze)
@@ -4743,6 +4958,9 @@ _GIT_NEST_complete_for() {
 		_GIT_NEST_emit_option --dry-run "show planned actions"
 		_GIT_NEST_emit_option --json "print JSON"
 		_GIT_NEST_emit_option --json-pretty "print formatted JSON"
+		_GIT_NEST_emit_value --finally "shell command to run afterwards"
+		_GIT_NEST_emit_value --finally-no-error "shell command to run on success"
+		_GIT_NEST_emit_value --finally-on-error "shell command to run on failure"
 		_GIT_NEST_emit_directive no-file
 		;;
 	doctor)
@@ -4816,6 +5034,9 @@ _GIT_NEST_complete_for() {
 			_GIT_NEST_emit_option --check "check without writing"
 			_GIT_NEST_emit_option --strict "fail on unreproducible state"
 			_GIT_NEST_emit_option --no-fetch "use local refs"
+			_GIT_NEST_emit_value --finally "shell command to run afterwards"
+			_GIT_NEST_emit_value --finally-no-error "shell command to run on success"
+			_GIT_NEST_emit_value --finally-on-error "shell command to run on failure"
 		fi
 		_GIT_NEST_emit_directive no-file
 		;;
@@ -4914,11 +5135,17 @@ _GIT_NEST_complete_for() {
 		_GIT_NEST_emit_option --include-root-last "run on nest root after subprojects"
 		_GIT_NEST_emit_option --only-nested "limit to nested nests"
 		_GIT_NEST_emit_option --no-nested "exclude nested nests"
+		_GIT_NEST_emit_value --finally "shell command to run afterwards"
+		_GIT_NEST_emit_value --finally-no-error "shell command to run on success"
+		_GIT_NEST_emit_value --finally-on-error "shell command to run on failure"
 		_GIT_NEST_emit_value "--" "end of options"
 		_GIT_NEST_emit_directive no-file
 		;;
 	foreach-modified | foreach-clean)
 		_GIT_NEST_emit_option --continue-on-error "keep iterating after failures"
+		_GIT_NEST_emit_value --finally "shell command to run afterwards"
+		_GIT_NEST_emit_value --finally-no-error "shell command to run on success"
+		_GIT_NEST_emit_value --finally-on-error "shell command to run on failure"
 		_GIT_NEST_emit_option --porcelain "stable fixed-column records"
 		_GIT_NEST_emit_option --json "print JSON"
 		_GIT_NEST_emit_option --json-pretty "print formatted JSON"

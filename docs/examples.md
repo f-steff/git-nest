@@ -581,6 +581,117 @@ F	packages/widgets	modified	-	-	-	dirty
 
 Use `--only-nested` to limit iteration to subprojects that are themselves git-nest workspaces, or `--no-nested` to exclude them and run only in plain subproject checkouts. `--only-nested`/`--no-nested`/`--include-root-first`/`--include-root-last` apply to plain `foreach`; `--continue-on-error` applies to `foreach-modified`/`foreach-clean`.
 
+### 15.1 Running A Shell After The Loop (--finally)
+
+The `--finally` flags run one shell command in the nest root after the
+loop finishes -- not once per subproject, but exactly once at the end.
+They are the "do the subproject work first, then handle the result at the
+nest level" pattern in a single command:
+
+| Flag | Runs when |
+|-|-|
+| `--finally <cmd>` | Always, after the loop |
+| `--finally-no-error <cmd>` | Only when every subproject command succeeded |
+| `--finally-on-error <cmd>` | Only when any subproject command failed |
+
+```console
+$ git-nest foreach --finally 'echo batch done' -- sh -c 'git status --short >/dev/null'
+[exit 0]
+batch done
+
+$ git-nest foreach-modified --finally-on-error 'echo "one or more dirty commits failed"' -- sh -c 'git commit -m "WIP"'
+libs/one: committed WIP
+Error: libs/two: commit failed (unresolved conflict)
+one or more dirty commits failed
+```
+
+The callback runs in the nest root with `GIT_NEST_ROOT` exported. It may
+itself invoke `git-nest` -- the manifest lock is released before the
+callback runs, so nested calls do not deadlock. A typical batch is
+"commit in every dirty subproject, then snapshot the result":
+
+```console
+$ git-nest foreach-modified \
+    --finally-no-error 'git-nest snapshot && git add .gitnest && git commit -m "batch snapshot"' \
+    -- sh -c 'git add -A && git commit -m "WIP"'
+[main a1b2c3d] WIP                 (libs/one)
+[main d4e5f6a] WIP                 (libs/two)
+Refreshed git-nest snapshot.       (callback, all succeeded)
+[main 9f8e7d6] batch snapshot      (callback commits .gitnest)
+```
+
+The same three flags work on `restore`, `snapshot`, `pull`, and `gc`:
+
+```console
+$ git-nest pull --finally-no-error 'git-nest snapshot'
+  Pulled: 2, up-to-date: 1          (pull result)
+Refreshed git-nest snapshot.        (callback pinned the pulled revisions)
+
+$ git-nest restore --finally-on-error 'echo "restore incomplete"'
+Error: restore failed for one or more subprojects
+restore incomplete                 (callback saw the failure)
+```
+
+For nested nests, invoke `git-nest` from inside the loop -- each nested
+nest has its own manifest and lock, so this works without interference:
+
+```console
+$ git-nest foreach --only-nested --finally 'git-nest pull' -- git-nest status
+   (status runs in every nested nest, then pull runs once in the root)
+```
+
+`--finally*` cannot be combined with `--porcelain`/`--json`/`--json-pretty`
+machine-readable output (those modes do not run a subproject command, so
+there is nothing for a callback to follow).
+
+### 15.1 The `--finally` family: one callback after the loop
+
+The three `--finally*` flags run a shell command in the nest root **once, after every subproject iteration**, and differ only in when they fire:
+
+- `--finally <cmd>` -- always, regardless of the subproject exit status.
+- `--finally-no-error <cmd>` -- only when every subproject command succeeded.
+- `--finally-on-error <cmd>` -- only when any subproject command failed.
+
+```console
+$ git-nest foreach --finally 'echo Done' git status --short
+ M libs/one/file.txt
+ M libs/two/file.txt
+Done
+```
+
+The callback runs after the last subproject command, never between iterations. `--finally` alone is a "wrap it up" hook; combine it with the conditional variants for success/failure handling:
+
+```console
+$ git-nest foreach-modified \
+    --finally-no-error 'git-nest snapshot && git add .gitnest && git commit -m "batch snapshot"' \
+    --finally-on-error 'git checkout .gitnest' \
+    -- sh -c 'git add -A && git commit -m "WIP"'
+[main abc1234] WIP          (subproject 1 committed)
+[main def5678] WIP          (subproject 2 committed)
+Refreshed git-nest snapshot.
+[main 9a1b2c3] batch snapshot   (nest root commit)
+```
+
+If a subproject command fails, the loop stops (without `--continue-on-error`), the command exits nonzero, and only `--finally-on-error` runs -- here restoring the manifest:
+
+```console
+$ git-nest foreach --finally-on-error 'git checkout .gitnest' -- sh -c 'git fetch origin'
+  (subproject 1 fetched fine)
+  (subproject 2's remote is unreachable -- command fails)
+Error: subproject command failed in libs/two
+Updated 1 path from the index    (git checkout .gitnest in the nest root)
+```
+
+Because the callback runs in the nest root and may itself invoke `git-nest` (the manifest lock is released before it runs), a `--finally*` hook can drive nested nests or re-run git-nest operations:
+
+```console
+$ git-nest pull --finally-no-error 'git-nest snapshot'
+Pulled libs/one to a1b2c3d.
+Refreshed git-nest snapshot.
+```
+
+The `--finally*` flags exist on `foreach`, `foreach-modified`, `foreach-clean`, `restore`, `snapshot`, `pull`, and `gc`, with the same once-after-completion semantics and the same success/failure conditions.
+
 ## 16. Machine-Readable Output For Scripts
 
 **Scenario:** a script needs the current subproject inventory as structured data instead of a human table.
