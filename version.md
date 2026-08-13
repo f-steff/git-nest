@@ -1,3 +1,24 @@
+## 0.8.26 - 2026-08-13
+
+### Interactive terminal UI (git-nest tui)
+  * Added `git-nest tui`: a minimal, pure-POSIX-shell terminal UI over
+    the inspection commands. Panes: header, menu (actions -> subproject
+    picker), read-only description (reuses `git-nest help <command>`),
+    and a scrollable command log seeded with `git-nest version`.
+  * Keys: arrows move, Enter selects, Tab/Shift-Tab cycle pane focus,
+    Ctrl-H help overlay, Ctrl-L resize, ESC back, q/Ctrl-C quit.
+  * Class-3 actions (Add, Move, Clone, Update, Export, Branch-Mark,
+    Config) prompt for one free-text value; destructive actions ask for
+    confirmation. Every action runs a fresh `git-nest` instance.
+  * Gated: requires a real TTY plus `stty` raw mode; on failure it
+    prints a one-line message and exits cleanly. On Windows the TUI
+    works from a Git Bash (mintty) window; the `.bat`/`.ps1` launchers
+    set `GIT_NEST_WIN_LAUNCHER` so the gate can name the caller.
+  * Rendering is ASCII-only (no box-drawing Unicode); implemented in
+    `bin/lib/git-nest-tui.sh` with pure, unit-testable functions
+    (key normalization, box/wrap/clip, help trimming, layout, menu and
+    input state machines).
+
 ## 0.8.25 - 2026-08-12
 
 ### --finally callbacks on iteration and batch commands

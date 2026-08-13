@@ -74,5 +74,6 @@ prepend_fm docs/howto.md default How-To 6
 prepend_fm docs/exit-codes.md default "Exit Codes" 7
 prepend_fm SECURITY.md default "Security Policy" 8
 prepend_fm docs/ci-consumer-guide.md default "CI Consumer Guide" 9
+prepend_fm docs/tui.md default "Terminal UI" 10
 
 echo "site-prep.sh: staged site source in $stage"

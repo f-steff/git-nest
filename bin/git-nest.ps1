@@ -41,6 +41,7 @@ if ($IsWindows) {
         }
         $shellScript = $shellScript.Source
     }
+    $env:GIT_NEST_WIN_LAUNCHER = 'powershell'
     & $bashExe --noprofile --norc $shellScript @args
     exit $LASTEXITCODE
 } else {

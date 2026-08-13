@@ -35,6 +35,7 @@ if not defined SCRIPT (
 )
 
 set "SCRIPT=%SCRIPT:\=/%"
+set "GIT_NEST_WIN_LAUNCHER=cmd"
 "%BASH_EXE%" --noprofile --norc "%SCRIPT%" %*
 exit /b %ERRORLEVEL%
 BATCH
