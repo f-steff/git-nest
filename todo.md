@@ -86,37 +86,24 @@ the stated trigger condition actually occurs in practice.
 
 Items in priority order.
 
-1. **`--finally <command>` sub-command modifier** -- runs a command after
-   the main iteration completes. Useful on: `foreach`, `foreach-modified`,
-   `foreach-clean`, `restore`, `snapshot`, `pull`, `gc`. Example:
-   `git-nest foreach -- sh -c 'git add -A && git commit -m "WIP"' --finally 'git-nest snapshot && git add .gitnest && git commit -m "snapshot"'`.
-   Keeps the flow explicit: subproject work first, root work last.
-   - Pros: powerful one-shot batch workflows; generalises the concept of
-     `--include-root-last`.
-   - Cons: adds complexity to argument parsing; commands that accept
-     `--continue-on-error` need to decide whether `--finally` runs
-     regardless.
-   - How to do it: `--finally` takes the rest of the argument list as the
-     command, so it must be the last flag before the command separator.
-
-2. **`--jobs <N>` parallelism** -- for `restore`, `snapshot`, `pull`,
+1. **`--jobs <N>` parallelism** -- for `restore`, `snapshot`, `pull`,
    `foreach`. Shell background processes with a job counter and `wait`.
    Gate behind `--jobs` so existing behavior is unchanged. Include a
    progress indicator for human output. This is the strongest argument
    for the Go port, since shell background-process management is
    inherently fragile.
 
-3. **Performance/scale tests** -- create a nest with 20, 50, 100
+2. **Performance/scale tests** -- create a nest with 20, 50, 100
    subprojects (script-generated remotes) and verify that `status`,
    `list`, `restore --dry-run`, `snapshot --dry-run` complete within
    reasonable time. Mark as `[slow]` and gate behind `--include-slow`.
 
-4. **`absorb-all --only-submodules` / `--only-repos` filter flags** --
+3. **`absorb-all --only-submodules` / `--only-repos` filter flags** --
    narrow `absorb-all` to only submodule registrations (`.gitmodules`
    entries) or only standalone nested repos. Useful for migration
    scenarios where you want to convert only one kind at a time.
 
-5. **Remove awk dependency** -- replace `git-nest-parse.awk` with a
+4. **Remove awk dependency** -- replace `git-nest-parse.awk` with a
    pure-shell manifest parser (slower but awk-free). Replace
    `git-nest-tree-render.awk` with shell `printf`/`sed` loops. Replace 30+ awk
    one-liners with `sed`/`cut`/`grep` equivalents. Eliminates

@@ -77,9 +77,17 @@ git -C libs/ff rev-parse HEAD >ff_before.txt
 
 # --- Actual pull: ff fast-forwards; dirty/detached/noup are skipped with
 # fix-it commands; div is reported diverged, never forced; netfail is
-# reported failed and does not stop the rest ---
-test_step "pull fast-forwards the clean tracked subproject and reports every other outcome by path" "Each category must list the actual subproject path with a concrete, safely quoted fix-it command."
-run_capture "pull reports every outcome" run.out run.err -- "$GIT_NEST" pull
+# reported failed and does not stop the rest. The command exits nonzero
+# because libs/div diverged and libs/netfail failed. ---
+test_step "pull fast-forwards the clean tracked subproject and reports every other outcome by path" "Each category must list the actual subproject path with a concrete, safely quoted fix-it command, and the command must exit nonzero when any subproject failed or diverged."
+set +e
+"$GIT_NEST" pull >run.out 2>run.err
+pull_rc=$?
+set -e
+[ "$pull_rc" -ne 0 ] || {
+    printf 'UNEXPECTED RESULT: pull must exit nonzero when a subproject diverged or failed, got 0\n' >&2
+    exit 1
+}
 assert_file_contains run.out 'Pulled libs/ff to'
 assert_file_contains run.out '  Pulled:        1'
 assert_file_contains run.out 'Skipped (dirty):'
@@ -110,9 +118,18 @@ div_head=$(git -C libs/div log -1 --format=%s)
 assert_file_contains .gitnest "revision=$ff_after"
 
 # --- JSON output for a subsequent, already-up-to-date run ---
-test_step "pull --json emits machine-readable output" "A second run (ff already up to date) must still succeed and emit the shared envelope."
-run_capture "pull json succeeds" run.json run.json.err -- "$GIT_NEST" pull --json
+# (libs/div still diverged and libs/netfail still fails, so pull keeps
+# exiting nonzero; the JSON envelope is what matters here.)
+test_step "pull --json emits machine-readable output" "A second run (ff already up to date) must still emit the shared envelope."
+set +e
+"$GIT_NEST" pull --json >run.json 2>run.json.err
+json_rc=$?
+set -e
 assert_file_contains run.json '"command":"pull"'
+[ "$json_rc" -ne 0 ] || {
+    printf 'UNEXPECTED RESULT: pull --json must exit nonzero while libs/div and libs/netfail are broken, got 0\n' >&2
+    exit 1
+}
 
 # --- --sure also pulls the nest root ---
 test_step "pull --sure also pulls the nest root" "Without --sure the root is left alone; with it, the root's own remote is fetched and fast-forwarded."
@@ -128,9 +145,23 @@ git --git-dir="$root_remote" symbolic-ref HEAD refs/heads/main
 # points elsewhere (robust across all git versions).
 git clone -q -b main "$root_remote" "$root/root-mirror" >/dev/null 2>&1
 (cd "$root/root-mirror" && git_config && echo marker >root_marker.txt && git add -A && git commit -qm "advance root remotely" && git push -q origin main)
-run_capture "pull without --sure leaves the root alone" nosure.out nosure.err -- "$GIT_NEST" pull
+set +e
+"$GIT_NEST" pull >nosure.out 2>nosure.err
+nosure_rc=$?
+set -e
+[ "$nosure_rc" -ne 0 ] || {
+    printf 'UNEXPECTED RESULT: pull must exit nonzero while libs/div and libs/netfail are broken, got 0\n' >&2
+    exit 1
+}
 test ! -f root_marker.txt
-run_capture "pull --sure pulls the root too" sure.out sure.err -- "$GIT_NEST" pull --sure
+set +e
+"$GIT_NEST" pull --sure >sure.out 2>sure.err
+sure_rc=$?
+set -e
+[ "$sure_rc" -ne 0 ] || {
+    printf 'UNEXPECTED RESULT: pull --sure must exit nonzero while libs/div and libs/netfail are broken, got 0\n' >&2
+    exit 1
+}
 test -f root_marker.txt
 
 # --- --recursive pulls into nested nests ---
@@ -147,13 +178,27 @@ mkdir -p nested
     git add -A && git commit -qm "advance ff again" && git push -q origin main
 )
 inner_before=$(git -C nested/inner-ff rev-parse HEAD)
-run_capture "plain pull does not descend into the nested nest" norec.out norec.err -- "$GIT_NEST" pull
+set +e
+"$GIT_NEST" pull >norec.out 2>norec.err
+norec_rc=$?
+set -e
+[ "$norec_rc" -ne 0 ] || {
+    printf 'UNEXPECTED RESULT: plain pull must exit nonzero while libs/div and libs/netfail are broken, got 0\n' >&2
+    exit 1
+}
 inner_after_norec=$(git -C nested/inner-ff rev-parse HEAD)
 [ "$inner_before" = "$inner_after_norec" ] || {
     printf 'UNEXPECTED RESULT: nested nest subproject changed without --recursive\n' >&2
     exit 1
 }
-run_capture "pull --recursive descends into the nested nest" rec.out rec.err -- "$GIT_NEST" pull --recursive
+set +e
+"$GIT_NEST" pull --recursive >rec.out 2>rec.err
+rec_rc=$?
+set -e
+[ "$rec_rc" -ne 0 ] || {
+    printf 'UNEXPECTED RESULT: pull --recursive must exit nonzero while libs/div and libs/netfail are broken, got 0\n' >&2
+    exit 1
+}
 assert_file_contains rec.out 'Pulling project:'
 inner_after_rec=$(git -C nested/inner-ff rev-parse HEAD)
 [ "$inner_before" != "$inner_after_rec" ] || {

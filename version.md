@@ -1,3 +1,23 @@
+## 0.8.25 - 2026-08-12
+
+### --finally callbacks on iteration and batch commands
+  * Added `--finally <cmd>`, `--finally-no-error <cmd>`, and
+    `--finally-on-error <cmd>` to `foreach`, `foreach-modified`,
+    `foreach-clean`, `restore`, `snapshot`, `pull`, and `gc`. Each runs a
+    shell command in the nest root exactly once, after the operation
+    completes: `--finally` always, `--finally-no-error` only on full
+    success, `--finally-on-error` only when any part failed.
+  * The manifest lock is released before a callback runs, so a callback
+    may invoke `git-nest` itself (e.g. `pull --finally 'git-nest
+    snapshot'` or a nested-nest operation) without deadlocking.
+  * `--finally*` cannot be combined with machine-readable output
+    (`--porcelain`/`--json`/`--json-pretty`).
+  * `pull` and `gc` now return nonzero when any subproject failed or
+    diverged, so scripting and `--finally-on-error` can react to issues
+    instead of always seeing success.
+  * The open `--finally` suggestion in todo.md was implemented and
+    removed; the remaining suggestion items were renumbered.
+
 ## 0.8.24 - 2026-08-11
 
 ### Repository cleanup
