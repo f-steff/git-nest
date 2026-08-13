@@ -86,24 +86,83 @@ the stated trigger condition actually occurs in practice.
 
 Items in priority order.
 
-1. **`--jobs <N>` parallelism** -- for `restore`, `snapshot`, `pull`,
+1. **`git-nest tui` -- minimal pure-POSIX-shell terminal UI**
+   Interactive front-end over the existing inspection commands. Every
+   action spawns a fresh `git-nest` instance and captures its output.
+   Implemented in `bin/lib/git-nest-tui.sh` (~400-500 lines), split as a
+   testable "functional core + imperative shell":
+   - **Pure functions** (unit-testable, no TTY/git): `tui_key_normalize`
+     (byte sequences -> tokens), `tui_box`/`tui_clip`/`tui_wrap` (ASCII
+     rendering), `tui_trim_help` (extract description + bullets from
+     `git-nest help <cmd>`), `tui_layout` (rows/cols -> pane rects),
+     `tui_menu_step` (two-tier menu state machine),
+     `tui_input_step` (input-strip buffer machine).
+   - **Imperative shell** (thin, integration-tested): `tui_read_key`
+     (`stty -echo -icanon min 0 time 1` + `dd bs=1`, `stty -g` save +
+     `trap ... EXIT INT TERM HUP` restore), `cmd_tui` (gate), `tui_run`
+     (render loop, `Ctrl-L` re-measure via `stty size`).
+   - **Panes**: 1-line header (title + nest root + count + hotkey
+     legend); menu pane on the left (level 1 = actions: Status, Tree,
+     List, Survey, Verify, Outdated, Diff, Doctor, Snapshot, Pull,
+     Restore, GC, Freeze, Help; level 2 = subproject picker from
+     `git-nest list --porcelain` for path-taking actions; ESC pops
+     back); read-only description pane on the right (actions: cached
+     `git-nest help <cmd>` trimmed; subprojects: state lines); full-width
+     scrollable log pane at the bottom (`>`-prefixed commands + output,
+     seeded with `> git-nest version`, capped buffer).
+   - **Focus**: Tab forward, Shift-Tab (`ESC [ Z`) backward, cycling
+     menu -> description -> log. Per-pane arrows (menu moves highlight,
+     log/description scroll).
+   - **Keys**: `↑/↓/←/→` = `ESC [ A/B/C/D`; Enter = `\r`; Tab = `\t`;
+     Shift-Tab = `ESC [ Z`; ESC = `\x1b`; Ctrl-H = `\x08`; Ctrl-L =
+     `\x0c`; Ctrl-C = `\x03`; `q` quits. Lone ESC vs arrow disambiguated
+     by the `min 0 time 1` timeout. Help overlay on Ctrl-H.
+   - **Actions**: class 1 (zero-arg whole-nest commands), class 2
+     (path-targeted: snapshot/update/detach/remove/inline, with an
+     inline `[y/N]` confirm for destructive ones), class 3 (single-line
+     input strip for add/move/clone/update/export/branch-mark/config --
+     one required free-text field per command, not a command palette).
+   - **Gate**: require a real terminal (`[ -t 0 ] && [ -t 1 ]` + a
+     `stty` probe); on failure print a one-line message and exit cleanly
+     (terminal never left raw). On Windows the `.bat`/`.ps1` launchers
+     both attach bash to the console (not mintty), so `tui` only works
+     from a Git Bash window; each launcher sets
+     `GIT_NEST_WIN_LAUNCHER` (cmd / powershell) so the gate message can
+     name the caller. The `.bat` marker goes in the cmd.exe half only
+     (before the `BATCH` heredoc terminator); the sh half and
+     `bin/git-nest` set nothing.
+   - **Rendering**: ASCII-only, full printable set (`+ - | = # * : / \ _
+     . ~`), no box-drawing Unicode; ANSI escapes emitted via
+     `printf '\033'` so the source stays ASCII (check_ascii enforced).
+   - **Tests**: pure-function unit tests (key parser, box, wrap, trim,
+     layout, menu/input state machines) with `# Coverage:` headers; a
+     new integration test `test_0117_command_tui.sh` covering gate
+     refusal (non-tty stdin exits nonzero with a clean message),
+     `tui --help`/`help tui`/completion listing, static launcher-marker
+     checks, and a pty smoke test guarded to non-Windows (`script
+     -qec`/`expect`; skipped on Windows).
+   - Reserve `gui` for a future windowed front-end (mirroring
+     `git gui`).
+   - Status: **in progress** on branch `interactive_tui`.
+
+2. **`--jobs <N>` parallelism** -- for `restore`, `snapshot`, `pull`,
    `foreach`. Shell background processes with a job counter and `wait`.
    Gate behind `--jobs` so existing behavior is unchanged. Include a
    progress indicator for human output. This is the strongest argument
    for the Go port, since shell background-process management is
    inherently fragile.
 
-2. **Performance/scale tests** -- create a nest with 20, 50, 100
+3. **Performance/scale tests** -- create a nest with 20, 50, 100
    subprojects (script-generated remotes) and verify that `status`,
    `list`, `restore --dry-run`, `snapshot --dry-run` complete within
    reasonable time. Mark as `[slow]` and gate behind `--include-slow`.
 
-3. **`absorb-all --only-submodules` / `--only-repos` filter flags** --
+4. **`absorb-all --only-submodules` / `--only-repos` filter flags** --
    narrow `absorb-all` to only submodule registrations (`.gitmodules`
    entries) or only standalone nested repos. Useful for migration
    scenarios where you want to convert only one kind at a time.
 
-4. **Remove awk dependency** -- replace `git-nest-parse.awk` with a
+5. **Remove awk dependency** -- replace `git-nest-parse.awk` with a
    pure-shell manifest parser (slower but awk-free). Replace
    `git-nest-tree-render.awk` with shell `printf`/`sed` loops. Replace 30+ awk
    one-liners with `sed`/`cut`/`grep` equivalents. Eliminates
