@@ -149,6 +149,7 @@ usage() {
 
 	help_usage_group "Tooling"
 	help_usage "completion" "<bash|zsh|fish>"
+	help_usage "tui"
 	help_usage "version"
 
 	printf '\n'
@@ -362,6 +363,8 @@ usage() {
 	help_command_group "Tooling"
 	help_command "completion <bash|zsh|fish|yash|powershell>"
 	help_text "Print a shell completion script to stdout."
+	help_command "tui"
+	help_text "Run an interactive terminal UI over the inspection commands."
 	help_command "version"
 	help_text "Print the git-nest version."
 
@@ -907,6 +910,17 @@ command_help() {
 		help_heading "Example:"
 		help_example "git-nest version"
 		;;
+	tui)
+		help_command "tui"
+		help_text "Run an interactive terminal UI (TUI) over the git-nest inspection commands."
+		help_detail "Requires an interactive terminal (stdin/stdout must be a TTY) and stty raw mode."
+		help_detail "Windows: run from a Git Bash (mintty) window, not from cmd.exe or PowerShell launchers."
+		help_detail "Panes: header, menu (actions -> subproject picker), read-only description, scrollable command log."
+		help_detail "Keys: arrows move, Enter select, Tab/Shift-Tab focus, Ctrl-H help, Ctrl-L resize, ESC back, q quit."
+		help_detail "Every action runs a fresh git-nest instance and shows its output in the log."
+		help_heading "Example:"
+		help_example "git-nest tui"
+		;;
 	help)
 		help_command "help [command]"
 		help_text "Show the grouped command overview or focused help for one command."
@@ -1113,6 +1127,7 @@ git_nest_main() {
 		cmd_internal_hook "$@"
 		;;
 	version | --version | -v) cmd_version "$@" ;;
+	tui) cmd_tui "$@" ;;
 	help) cmd_help "$@" ;;
 	-h | --help | "") usage ;;
 	*) usage_error "unknown command: $cmd" ;;
@@ -4740,7 +4755,7 @@ cmd_gc() {
 # used by completion, help, and the internal __complete endpoint so the
 # command surface is defined exactly once.
 GIT_NEST_command_names() {
-	printf '%s\n' "init tidy add remove rm move mv clone status outdated verify diff log snapshot restore pull gc freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
+	printf '%s\n' "init tidy add remove rm move mv clone status outdated verify diff log snapshot restore pull gc freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach tui version help"
 }
 
 # Internal completion data endpoint used by generated shell completion scripts.
@@ -5174,6 +5189,9 @@ _GIT_NEST_complete_for() {
 		_GIT_NEST_emit_directive no-file
 		;;
 	hooks-install | hooks-uninstall)
+		_GIT_NEST_emit_directive no-file
+		;;
+	tui | version)
 		_GIT_NEST_emit_directive no-file
 		;;
 	__complete | __owning-manifest | __hook)
