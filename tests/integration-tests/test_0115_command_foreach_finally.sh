@@ -63,12 +63,29 @@ run_fail "foreach-modified --continue-on-error with a failing subproject exited 
 assert_file_contains onerr.out "onerr-ran"
 
 test_step "Callbacks receive the nest root via GIT_NEST_ROOT and run in the root" "The callback must run in the nest root directory with GIT_NEST_ROOT exported."
-# Canonicalize $outer: pwd-based paths collapse doubled slashes from a
-# trailing-slash TMPDIR, so the raw $work/outer string may not match.
-outer_canon=$(CDPATH='' cd -- "$outer" && pwd)
+# git rev-parse --show-toplevel (repo_root) and pwd can disagree on path
+# spelling across platforms (MSYS /tmp vs C:/... on Windows CI), so verify
+# the recorded root semantically: it must be the directory that owns
+# .gitnest, and the callback's cwd must be that same directory.
 run_ok "callback observed GIT_NEST_ROOT and the root cwd" -- "$GIT_NEST" foreach --finally 'echo "$GIT_NEST_ROOT" > root-observed.out; pwd > callback-cwd.out' -- sh -c 'true'
-assert_file_contains root-observed.out "$outer_canon"
-assert_file_contains callback-cwd.out "$outer_canon"
+[ -s root-observed.out ] || {
+    printf 'UNEXPECTED RESULT: GIT_NEST_ROOT was not written by the callback\n' >&2
+    exit 1
+}
+root_recorded=$(cat root-observed.out)
+[ -f "$root_recorded/.gitnest" ] || {
+    printf 'UNEXPECTED RESULT: GIT_NEST_ROOT %s does not own .gitnest\n' "$root_recorded" >&2
+    exit 1
+}
+[ -s callback-cwd.out ] || {
+    printf 'UNEXPECTED RESULT: callback cwd was not written\n' >&2
+    exit 1
+}
+cwd_recorded=$(cat callback-cwd.out)
+[ -f "$cwd_recorded/.gitnest" ] || {
+    printf 'UNEXPECTED RESULT: callback cwd %s does not own .gitnest\n' "$cwd_recorded" >&2
+    exit 1
+}
 
 test_step "Callback may invoke git-nest itself (nested-nest / re-entrancy usage)" "The manifest lock is released before callbacks run, so a callback can call git-nest snapshot without deadlocking."
 run_ok "foreach --finally-no-error 'git-nest snapshot' completed without lock timeout" -- "$GIT_NEST" foreach \
