@@ -631,8 +631,16 @@ tui_prompt() {
 		printf '\033[%d;1H\033[K%s: %s_\033[0m\n' "$((TUI_LOG_H + 3))" "$pr_label" "$pr_buffer"
 		pr_key=$(tui_read_key)
 		case "$pr_key" in
-		enter) printf '\n'; echo "$pr_buffer"; return 0 ;;
-		esc | ctrl_c) printf '\n'; echo CANCEL; return 0 ;;
+		enter)
+			printf '\n'
+			echo "$pr_buffer"
+			return 0
+			;;
+		esc | ctrl_c)
+			printf '\n'
+			echo CANCEL
+			return 0
+			;;
 		backspace)
 			pr_len=${#pr_buffer}
 			[ "$pr_len" -gt 0 ] && pr_buffer=$(printf '%s' "$pr_buffer" | cut -c1-$((pr_len - 1)))

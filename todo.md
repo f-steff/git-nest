@@ -113,7 +113,7 @@ Items in priority order.
    - **Focus**: Tab forward, Shift-Tab (`ESC [ Z`) backward, cycling
      menu -> description -> log. Per-pane arrows (menu moves highlight,
      log/description scroll).
-   - **Keys**: `↑/↓/←/→` = `ESC [ A/B/C/D`; Enter = `\r`; Tab = `\t`;
+   - **Keys**: Up/Down/Left/Right arrows = `ESC [ A/B/C/D`; Enter = `\r`; Tab = `\t`;
      Shift-Tab = `ESC [ Z`; ESC = `\x1b`; Ctrl-H = `\x08`; Ctrl-L =
      `\x0c`; Ctrl-C = `\x03`; `q` quits. Lone ESC vs arrow disambiguated
      by the `min 0 time 1` timeout. Help overlay on Ctrl-H.
