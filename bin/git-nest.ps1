@@ -10,7 +10,7 @@
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $shellScript = Join-Path $scriptDir "git-nest-main.sh"
 
-if ($IsWindows) {
+if ($IsWindows -or -not $IsLinux -and -not $IsMacOS) {
     # Locate Git Bash from git.exe on PATH (same intent as bin/git-nest.bat).
     # Walk up from the git.exe directory looking for a bin\bash.exe so any
     # Git for Windows layout works (cmd\, bin\, mingw64\bin\, ...).

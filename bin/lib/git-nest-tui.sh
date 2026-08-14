@@ -333,9 +333,19 @@ tui_install_traps() {
 	trap 'tui_restore_terminal; exit 0' EXIT INT TERM HUP
 }
 
-# Gate: refuse to run unless stdin and stdout are real terminals and stty
-# raw mode can be engaged. Prints a one-line message and exits cleanly.
+# Gate: refuse to run unless stdin and stdout are real terminals, stty
+# raw mode can be engaged, and we are NOT launched through the Windows
+# cmd.exe / PowerShell launchers (which attach bash to the console, not
+# mintty). Prints a one-line message and exits cleanly.
 tui_gate() {
+	# The .bat / .ps1 launchers set this marker: bash is attached to the
+	# Windows console where stty raw mode reports success but single-byte
+	# key reads never return -- the TUI would spin. Refuse up front.
+	if [ -n "${GIT_NEST_WIN_LAUNCHER:-}" ]; then
+		echo "git-nest tui needs a Git Bash (mintty) window; you launched it via the $GIT_NEST_WIN_LAUNCHER launcher." >&2
+		echo "Open a Git Bash window and run: git-nest tui" >&2
+		exit 2
+	fi
 	if [ ! -t 0 ] || [ ! -t 1 ]; then
 		echo "git-nest tui needs an interactive terminal (stdin/stdout must be a TTY)." >&2
 		exit 2
@@ -366,45 +376,62 @@ tui_gate() {
 tui_help_for() {
 	th_cmd=$1
 	th_var=$2
-	th_text=$(git-nest help "$th_cmd" 2>/dev/null | tui_trim_help)
+	[ -n "${TUI_GIT_NEST:-}" ] || tui_resolve_git_nest
+	th_text=$("$TUI_GIT_NEST" help "$th_cmd" 2>/dev/null | tui_trim_help)
 	th_trimmed=$(printf '%s\n' "$th_text" | sed -n '1,6p')
 	eval "$th_var=\$th_trimmed"
 }
 
-# Render the whole frame to stdout using ANSI cursor control. Reads the
-# terminal size fresh each frame (cheap), so Ctrl-L / resize reflows.
+# Render the menu + description panes side by side (one awk pass over the
+# two cached pane texts). Emits the joined lines to stdout. Called only
+# when the cursor or level changes, never per frame.
+tui_panes_render() {
+	pr_cols=$1
+	pr_desc_w=$((pr_cols / 3))
+	[ "$pr_desc_w" -gt 20 ] || pr_desc_w=20
+	pr_menu_w=$((pr_cols - pr_desc_w - 3))
+	pr_menu_file=$(mktemp 2>/dev/null || printf '%s' "$TMPDIR/tui-menu.$$")
+	pr_desc_file=$(mktemp 2>/dev/null || printf '%s' "$TMPDIR/tui-desc.$$")
+	tui_menu_text >"$pr_menu_file"
+	tui_desc_text >"$pr_desc_file"
+	awk -v mw="$pr_menu_w" -v dw="$pr_desc_w" '
+		NR == FNR {
+			menu[NR] = $0
+			next
+		}
+		{
+			desc[FNR] = $0
+		}
+		END {
+			rows = (length(menu) > length(desc)) ? length(menu) : length(desc)
+			for (i = 1; i <= rows; i++) {
+				m = (i in menu) ? menu[i] : ""
+				d = (i in desc) ? desc[i] : ""
+				printf "%-*s| %-*s\n", mw, m, dw, d
+			}
+		}' "$pr_menu_file" "$pr_desc_file"
+	rm -f "$pr_menu_file" "$pr_desc_file"
+}
+
+# Render the whole frame to stdout using ANSI cursor control, from cached
+# pane/log text (recomputed only when the selection or log changes), so a
+# steady-state frame costs one stty subprocess.
 tui_render() {
-	tr_rows=$(stty size 2>/dev/null | awk '{print $1}')
-	tr_cols=$(stty size 2>/dev/null | awk '{print $2}')
-	[ -n "$tr_rows" ] || tr_rows=24
-	[ -n "$tr_cols" ] || tr_cols=80
+	set -- $(stty size 2>/dev/null || printf '24 80')
+	tr_rows=${1:-24}
+	tr_cols=${2:-80}
+	[ "$tr_rows" -gt 0 ] || tr_rows=24
+	[ "$tr_cols" -gt 0 ] || tr_cols=80
 	# Full clear + home.
 	printf '\033[2J\033[H'
 	# Header line.
 	printf '\033[7m %s \033[0m\n' "git-nest tui  -  $TUI_ROOT  -  $TUI_COUNT subprojects"
 	printf '%s\n' '  ^ arrowkeys move, Enter select, Tab focus, ^H help, ^L resize, ESC back, q quit'
-	# Menu pane (left) + description pane (right).
-	tr_mid=$((tr_rows - 2 - tr_log_h))
-	[ "$tr_mid" -gt 6 ] || tr_mid=6
-	tr_desc_w=$((tr_cols / 3))
-	[ "$tr_desc_w" -gt 20 ] || tr_desc_w=20
-	tr_menu_w=$((tr_cols - tr_desc_w - 3))
-	# Build menu lines into a variable.
-	tr_menu_text=$(tui_menu_text)
-	tr_desc_text=$(tui_desc_text)
-	printf '%s\n' "$tr_menu_text" | while IFS= read -r tr_line; do
-		printf '%-*s' "$tr_menu_w" "$tr_line"
-		printf '| '
-		# Next description line (if any).
-		tr_dl=$(printf '%s\n' "$tr_desc_text" | sed -n '1p')
-		printf '%-*s\n' "$tr_desc_w" "$tr_dl"
-		if [ -n "$tr_desc_text" ]; then
-			tr_desc_text=$(printf '%s\n' "$tr_desc_text" | sed '1d')
-		fi
-	done
+	# Cached menu|description panes.
+	printf '%s\n' "$TUI_PANE_TEXT"
 	# Log pane at the bottom.
 	printf '\n'
-	tui_log_render "$tr_cols"
+	printf '%s\n' "$TUI_LOG_TEXT"
 }
 
 # Produce the menu pane text: the active item list with the cursor marked.
@@ -433,12 +460,18 @@ tui_list_text() {
 }
 
 # Produce the description pane text for the currently highlighted item.
+# Cached by command name: the help text never changes, and spawning
+# `git-nest help` every frame is the single most expensive thing the
+# render does on Windows.
 tui_desc_text() {
 	if [ "$TUI_LEVEL" -eq 1 ]; then
 		dt_cmd=$(tui_current_action_command)
 		[ -n "$dt_cmd" ] || return 0
-		tui_help_for "$dt_cmd" dt_out
-		printf '%s\n' "$dt_out"
+		if [ "$TUI_DESC_KEY" != "1:$dt_cmd" ]; then
+			tui_help_for "$dt_cmd" TUI_DESC_TEXT
+			TUI_DESC_KEY="1:$dt_cmd"
+		fi
+		printf '%s\n' "$TUI_DESC_TEXT"
 	else
 		# Subproject picker: show the selected row's state from list --porcelain.
 		dt_row=$(printf '%s\n' "$TUI_SUBPROJECTS" | sed -n "$((TUI_CURSOR + 1))p")
@@ -458,16 +491,21 @@ tui_current_action_command() {
 	done
 }
 
-# Render the log pane (the last N lines of the log buffer), full width.
+# Render the log pane (the last N lines of the log buffer), padded to the
+# given width. One awk pass; runs only when the log changes.
 tui_log_render() {
 	lr_cols=$1
-	lr_lines=$(printf '%s\n' "$TUI_LOG" | tail -n "$TUI_LOG_H")
-	printf '%s\n' "$lr_lines" | while IFS= read -r lr_line; do
-		printf '%-*s\n' "$lr_cols" "$lr_line"
-	done
+	printf '%s\n' "$TUI_LOG" | awk -v n="$TUI_LOG_H" -v w="$lr_cols" '
+		{ lines[NR] = $0 }
+		END {
+			first = NR - n + 1
+			if (first < 1) first = 1
+			for (i = first; i <= NR; i++) printf "%-*s\n", w, lines[i]
+		}'
 }
 
-# Append text to the log buffer, capping its size.
+# Append text to the log buffer, capping its size with a single awk, and
+# refresh the cached padded log text used by tui_render.
 tui_log_append() {
 	la_text=$1
 	if [ -n "$TUI_LOG" ]; then
@@ -475,7 +513,14 @@ tui_log_append() {
 	else
 		TUI_LOG=$la_text
 	fi
-	TUI_LOG=$(printf '%s\n' "$TUI_LOG" | tail -n "$TUI_LOG_CAP")
+	TUI_LOG=$(printf '%s\n' "$TUI_LOG" | awk -v n="$TUI_LOG_CAP" '
+		{ lines[NR] = $0 }
+		END {
+			first = NR - n + 1
+			if (first < 1) first = 1
+			for (i = first; i <= NR; i++) print lines[i]
+		}')
+	TUI_LOG_TEXT=$(tui_log_render "$TUI_LOG_COLS")
 }
 
 # Run a git-nest command through a fresh instance and append its output
@@ -488,8 +533,22 @@ tui_run_command() {
 		rc_label="$rc_label $rc_a"
 	done
 	tui_log_append "> $rc_label"
-	rc_out=$(git-nest "$rc_cmd" "$@" 2>&1) || true
+	rc_out=$("$TUI_GIT_NEST" "$rc_cmd" "$@" 2>&1) || true
 	tui_log_append "$rc_out"
+}
+
+# Resolve the git-nest executable. The launchers run git-nest-main.sh
+# directly (bin/ is not on PATH there), so prefer the entrypoint adjacent
+# to this module; fall back to the PATH command.
+tui_resolve_git_nest() {
+	if [ -x "$SCRIPT_DIR/git-nest" ]; then
+		TUI_GIT_NEST="$SCRIPT_DIR/git-nest"
+	elif command -v git-nest >/dev/null 2>&1; then
+		TUI_GIT_NEST=git-nest
+	else
+		echo "git-nest tui cannot find the git-nest executable." >&2
+		exit 3
+	fi
 }
 
 # The main interactive loop. Assumes the gate passed and raw mode is on.
@@ -499,17 +558,30 @@ tui_run() {
 	stty -echo -icanon min 0 time 1 2>/dev/null || true
 	tui_install_traps
 	printf '\033[?25l'
+	tui_resolve_git_nest
 
 	TUI_LEVEL=1
 	TUI_CURSOR=0
-	TUI_SUBPROJECTS=$(git-nest list --porcelain 2>/dev/null | awk '{print $2"|"$2}' || true)
+	TUI_DESC_KEY=
+	TUI_DESC_TEXT=
+	TUI_SUBPROJECTS=$("$TUI_GIT_NEST" list --porcelain 2>/dev/null | awk '{print $2"|"$2}' || true)
 	TUI_COUNT=$(printf '%s\n' "$TUI_SUBPROJECTS" | grep -c . || true)
 	TUI_ROOT=$(pwd)
 	TUI_LOG_CAP=200
 	TUI_LOG_H=6
+	set -- $(stty size 2>/dev/null || printf '24 80')
+	TUI_LOG_COLS=${2:-80}
 	TUI_LOG=""
+	TUI_LOG_TEXT=""
 	tui_log_append "> git-nest version"
-	tui_log_append "$(git-nest version 2>&1 || true)"
+	tui_log_append "$("$TUI_GIT_NEST" version 2>&1 || true)"
+	# Prefetch the first description so the first frame is not slowed by
+	# spawning `git-nest help` (expensive on Windows).
+	TUI_DESC_KEY=
+	TUI_DESC_TEXT=
+	tui_desc_text >/dev/null
+	TUI_PANE_TEXT=
+	tui_refresh_panes
 
 	while :; do
 		tui_render
@@ -518,9 +590,11 @@ tui_run() {
 		q | ctrl_c) break ;;
 		up | down)
 			tui_menu_move "$tui_key"
+			tui_refresh_panes
 			;;
 		enter)
 			tui_select || break
+			tui_refresh_panes
 			;;
 		tab | backtab)
 			# Single pane set for now; focus cycling is a no-op stub.
@@ -530,20 +604,32 @@ tui_run() {
 			if [ "$TUI_LEVEL" -eq 2 ]; then
 				TUI_LEVEL=1
 				TUI_CURSOR=0
+				tui_refresh_panes
 			else
 				break
 			fi
 			;;
 		ctrl_l)
-			# Re-measure happens in tui_render; force a redraw.
-			:
+			# Re-measure the size and refresh the cached text.
+			set -- $(stty size 2>/dev/null || printf '24 80')
+			TUI_LOG_COLS=${2:-80}
+			TUI_LOG_TEXT=$(tui_log_render "$TUI_LOG_COLS")
+			tui_refresh_panes
 			;;
 		ctrl_h)
 			tui_help_overlay
+			tui_refresh_panes
 			;;
 		esac
 	done
 	tui_restore_terminal
+}
+
+# Recompute the cached side-by-side pane text from the current selection.
+# Called only when the cursor/level/state changes, never per frame.
+tui_refresh_panes() {
+	set -- $(stty size 2>/dev/null || printf '24 80')
+	TUI_PANE_TEXT=$(tui_panes_render "${2:-80}")
 }
 
 # Move the menu cursor (level-aware) by up/down.

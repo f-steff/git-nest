@@ -47,6 +47,13 @@ if printf '%s\n' "$bat" | grep -n 'set "GIT_NEST_WIN_LAUNCHER=cmd"' | cut -d: -f
 fi
 assert_file_contains "$REPO_ROOT/bin/git-nest.ps1" "\$env:GIT_NEST_WIN_LAUNCHER = 'powershell'"
 
+test_step "Gate refuses the Windows launcher markers" "GIT_NEST_WIN_LAUNCHER=cmd or =powershell (set by the .bat/.ps1 launchers) must refuse with a mintty hint, because those launchers attach bash to the console where raw key reads never work."
+run_fail "launcher marker cmd refused" 2 -- sh -c 'GIT_NEST_WIN_LAUNCHER=cmd "$1" tui </dev/null >marker_cmd.out 2>marker_cmd.err' sh "$GIT_NEST"
+assert_file_contains marker_cmd.err "Git Bash (mintty) window"
+assert_file_contains marker_cmd.err "cmd launcher"
+run_fail "launcher marker powershell refused" 2 -- sh -c 'GIT_NEST_WIN_LAUNCHER=powershell "$1" tui </dev/null >marker_ps.out 2>marker_ps.err' sh "$GIT_NEST"
+assert_file_contains marker_ps.err "powershell launcher"
+
 test_step "pty smoke test (only where script exists)" "Under a pty, the TUI must start, render its header, and quit on q. Skipped on Windows Git Bash (no script/expect)."
 if command -v script >/dev/null 2>&1; then
     pty_outer="$work/pty-outer"
