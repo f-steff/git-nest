@@ -53,7 +53,7 @@ assert_file_contains marker_cmd.err "cannot launch itself into a Git Bash (mintt
 assert_file_contains marker_cmd.err "via the cmd launcher"
 assert_file_contains marker_cmd.err 'git-bash.exe'
 assert_file_contains marker_cmd.err '--cd='
-assert_file_contains marker_cmd.err '-c "sh '
+assert_file_contains marker_cmd.err '-c "unset GIT_NEST_WIN_LAUNCHER;'
 # The cmd launcher must show only the cmd.exe one-liner, never the PowerShell form.
 assert_file_not_contains marker_cmd.err '& "C:\Program Files\Git\git-bash.exe"'
 run_fail "launcher marker powershell refused" 2 -- sh -c 'GIT_NEST_WIN_LAUNCHER=powershell "$1" tui </dev/null >marker_ps.out 2>marker_ps.err' sh "$GIT_NEST"
@@ -62,18 +62,12 @@ assert_file_contains marker_ps.err '& "C:\Program Files\Git\git-bash.exe"'
 # The PowerShell launcher must show only the PowerShell one-liner, never the cmd.exe form.
 assert_file_not_contains marker_ps.err '^  "C:\Program Files\Git\git-bash.exe"'
 
-test_step "The one-liner is static and the helper clears the launcher env var" "The -c argument must use the fixed helper name (no PID) so the line is re-runnable, and the helper must clear GIT_NEST_WIN_LAUNCHER so the TUI gate does not refuse again inside mintty."
-assert_file_contains marker_ps.err '-c "sh /tmp/git-nest-tui.sh"'
-if printf '%s\n' "$(cat marker_ps.err)" | grep -qE 'git-nest-tui-[0-9]+\.sh'; then
-    printf 'UNEXPECTED RESULT: the one-liner must use the fixed helper name, not a PID-suffixed one\n' >&2
-    exit 1
-fi
-helper=/tmp/git-nest-tui.sh
-if [ -f "$helper" ]; then
-    assert_file_contains "$helper" "unset GIT_NEST_WIN_LAUNCHER"
-    assert_file_contains "$helper" 'git-nest tui'
-else
-    printf 'UNEXPECTED RESULT: the gate did not write the static helper %s\n' "$helper" >&2
+test_step "The one-liner is static, inline, and clears the launcher env var" "The -c argument must be a static inline bash command (no temp helper, no PID), clearing GIT_NEST_WIN_LAUNCHER so the TUI gate does not refuse again inside mintty."
+assert_file_contains marker_ps.err "-c \"unset GIT_NEST_WIN_LAUNCHER;"
+assert_file_contains marker_ps.err "then git-nest tui; else bin/git-nest tui; fi"
+assert_file_not_contains marker_ps.err "/tmp/git-nest-tui"
+if [ -f /tmp/git-nest-tui.sh ]; then
+    printf 'UNEXPECTED RESULT: the gate must not leave a temp helper script\n' >&2
     exit 1
 fi
 

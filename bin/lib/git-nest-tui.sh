@@ -363,14 +363,15 @@ tui_find_git_bash() {
 # `git-bash.exe --cd=... -c ...` opens a real mintty window, so pasting
 # the line into that host works.
 #
-# The command line is static except for --cd: the -c argument always runs
-# a helper script at the FIXED name /tmp/git-nest-tui.sh (no PID), so the
-# same line can be re-run any number of times. The helper:
-#   - clears GIT_NEST_WIN_LAUNCHER, which the launcher session inherited
-#     into mintty (otherwise the TUI gate would refuse again, rc=2);
-#   - prefers git-nest on PATH, falling back to $PWD/bin/git-nest (the
-#     checkout layout), where $PWD is the folder --cd landed in;
-#   - keeps the window open after the TUI exits.
+# The command line is static except for --cd (the nest folder). The -c
+# argument is a plain bash command with no double quotes, so it survives
+# cmd.exe/PowerShell -> git-bash.exe -> bash untouched:
+#   - `unset GIT_NEST_WIN_LAUNCHER` clears the env var the launcher
+#     session inherited into mintty (otherwise the TUI gate would refuse
+#     again, rc=2);
+#   - it prefers `git-nest` on PATH, falling back to `bin/git-nest`
+#     relative to the folder --cd landed in (the checkout layout);
+#   - it keeps the window open until Enter after the TUI exits.
 tui_win_hint() {
 	th_launcher=$1
 	th_dir=$(pwd 2>/dev/null || printf '.')
@@ -382,39 +383,18 @@ tui_win_hint() {
 	th_bash=$(tui_find_git_bash || true)
 	if [ -n "$th_bash" ]; then
 		th_bash_w=$(command -v cygpath >/dev/null 2>&1 && cygpath -w "$th_bash" 2>/dev/null || printf '%s' "$th_bash")
-		if [ -n "${TMPDIR:-}" ]; then
-			th_tmp=$TMPDIR
-		else
-			th_tmp=/tmp
-		fi
-		th_script="$th_tmp/git-nest-tui.sh"
-		{
-			printf '#!/bin/sh\n'
-			# The launcher env var leaks into mintty; the TUI gate would
-			# refuse again. Clear it.
-			printf 'unset GIT_NEST_WIN_LAUNCHER\n'
-			# $PWD is the folder --cd landed in (the nest root).
-			printf 'if command -v git-nest >/dev/null 2>&1; then\n'
-			printf '    git-nest tui\n'
-			printf 'else\n'
-			printf '    "$PWD/bin/git-nest" tui\n'
-			printf 'fi\n'
-			printf 'rc=$?\n'
-			printf 'echo\n'
-			printf 'read -r -p "TUI exited (rc=$rc). Press Enter to close the window... " _\n'
-			printf 'exit $rc\n'
-		} >"$th_script"
-		# The -c argument is interpreted by bash, so the helper path must
-		# be the MSYS path (a Windows path with backslashes would be
-		# mangled by bash escapes). git-bash.exe --cd puts us in the nest
-		# folder.
+		# No double quotes inside the -c argument: cmd.exe and PowerShell
+		# both terminate their own double-quoted argument at the first
+		# embedded double quote. Single quotes survive both and are valid
+		# bash quoting.
+		th_cmd="unset GIT_NEST_WIN_LAUNCHER; if command -v git-nest >/dev/null 2>&1; then git-nest tui; else bin/git-nest tui; fi; echo; read -r -p 'TUI exited. Press Enter to close the window... ' _"
 		printf 'Please start it directly in Git Bash (mintty) using:\n' >&2
 		case "$th_launcher" in
 		cmd)
-			printf '  "%s" --cd="%s" -c "sh %s"\n' "$th_bash_w" "$th_dir_w" "$th_script" >&2
+			printf '  "%s" --cd="%s" -c "%s"\n' "$th_bash_w" "$th_dir_w" "$th_cmd" >&2
 			;;
 		powershell | *)
-			printf '  & "%s" --cd="%s" -c "sh %s"\n' "$th_bash_w" "$th_dir_w" "$th_script" >&2
+			printf '  & "%s" --cd="%s" -c "%s"\n' "$th_bash_w" "$th_dir_w" "$th_cmd" >&2
 			;;
 		esac
 	else
@@ -429,10 +409,6 @@ tui_gate() {
 	# Windows console where stty raw mode reports success but single-byte
 	# key reads never return -- the TUI would spin. Refuse up front.
 	if [ -n "${GIT_NEST_WIN_LAUNCHER:-}" ]; then
-		# Best-effort: drop helper scripts from previous refused launches
-		# that were never run (the mintty run deletes its own on exit).
-		th_tmp=${TMPDIR:-/tmp}
-		rm -f "$th_tmp"/git-nest-tui-*.sh 2>/dev/null || true
 		echo "The git-nest tui cannot launch itself into a Git Bash (mintty) window when launched via the $GIT_NEST_WIN_LAUNCHER launcher." >&2
 		tui_win_hint "$GIT_NEST_WIN_LAUNCHER"
 		exit 2

@@ -91,26 +91,32 @@ launched via `git-nest.bat`:
 ```
 The git-nest tui cannot launch itself into a Git Bash (mintty) window when launched via the powershell launcher.
 Please start it directly in Git Bash (mintty) using:
-  & "C:\Program Files\Git\git-bash.exe" --cd="C:\Projects\github\f-steff\git-nest" -c "sh /tmp/git-nest-tui.sh"
+  & "C:\Program Files\Git\git-bash.exe" --cd="C:\Projects\github\f-steff\git-nest" -c "unset GIT_NEST_WIN_LAUNCHER; if command -v git-nest >/dev/null 2>&1; then git-nest tui; else bin/git-nest tui; fi; echo; read -r -p 'TUI exited. Press Enter to close the window... ' _"
 ```
 
 `git-bash.exe --cd="<dir>" -c "<command>"` is mintty's launcher: it opens
 a new window with a real pty, changes to `<dir>`, and runs the command.
-The command line is **static**: only the `--cd` folder changes, because
-the `-c` argument always runs the same helper script at the fixed name
-`/tmp/git-nest-tui.sh`. The helper:
+The command line is **static**: only the `--cd` folder changes. The `-c`
+argument is a single inline bash command that:
 
 - clears `GIT_NEST_WIN_LAUNCHER`, which the PowerShell/cmd session
   inherited into mintty -- without this, the TUI's own gate would refuse
   again inside mintty (exit 2) and the window would close;
-- prefers `git-nest` on PATH and falls back to `$PWD/bin/git-nest` (the
-  checkout layout), where `$PWD` is the folder `--cd` landed in;
+- prefers `git-nest` on PATH and falls back to `bin/git-nest` relative
+  to the folder `--cd` landed in (the checkout layout);
 - keeps the window open until you press Enter after the TUI quits.
+
+The `-c` argument deliberately contains no double quotes, only single
+quotes for the prompt message -- cmd.exe and PowerShell both terminate
+their own double-quoted argument at the first embedded double quote, so
+this quoting survives the two layers (host -> git-bash.exe -> bash)
+untouched.
 
 Pasting the line into cmd.exe or PowerShell works -- it does not run the
 TUI *in* your console window, it opens a separate Git Bash window for it
 (that is inherent: the current console cannot host the TUI). Because the
-helper name is fixed, the same line can be re-run any number of times.
+command is static and inline, the same line can be re-run any number of
+times and leaves nothing behind.
 
 The path and folder in the message are resolved on the machine where the
 message is printed (`git-bash.exe` from the MSYS root, the nest folder
