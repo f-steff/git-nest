@@ -91,18 +91,26 @@ launched via `git-nest.bat`:
 ```
 The git-nest tui cannot launch itself into a Git Bash (mintty) window when launched via the powershell launcher.
 Please start it directly in Git Bash (mintty) using:
-  & "C:\Program Files\Git\git-bash.exe" --cd="C:\Projects\github\f-steff\git-nest" -c "sh C:\Users\you\AppData\Local\Temp\git-nest-tui-123.sh"
+  & "C:\Program Files\Git\git-bash.exe" --cd="C:\Projects\github\f-steff\git-nest" -c "sh /tmp/git-nest-tui.sh"
 ```
 
 `git-bash.exe --cd="<dir>" -c "<command>"` is mintty's launcher: it opens
 a new window with a real pty, changes to `<dir>`, and runs the command.
-The command is a tiny helper script (written to your temp folder and
-deleted when the window closes) that cd's to the nest, runs
-`git-nest tui`, and keeps the window open until you press Enter after
-quitting. Pasting the line into cmd.exe or PowerShell works -- it does
-not run the TUI *in* your console window, it opens a separate Git Bash
-window for it (that is inherent: the current console cannot host the
-TUI).
+The command line is **static**: only the `--cd` folder changes, because
+the `-c` argument always runs the same helper script at the fixed name
+`/tmp/git-nest-tui.sh`. The helper:
+
+- clears `GIT_NEST_WIN_LAUNCHER`, which the PowerShell/cmd session
+  inherited into mintty -- without this, the TUI's own gate would refuse
+  again inside mintty (exit 2) and the window would close;
+- prefers `git-nest` on PATH and falls back to `$PWD/bin/git-nest` (the
+  checkout layout), where `$PWD` is the folder `--cd` landed in;
+- keeps the window open until you press Enter after the TUI quits.
+
+Pasting the line into cmd.exe or PowerShell works -- it does not run the
+TUI *in* your console window, it opens a separate Git Bash window for it
+(that is inherent: the current console cannot host the TUI). Because the
+helper name is fixed, the same line can be re-run any number of times.
 
 The path and folder in the message are resolved on the machine where the
 message is printed (`git-bash.exe` from the MSYS root, the nest folder

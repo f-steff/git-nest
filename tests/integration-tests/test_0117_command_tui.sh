@@ -62,6 +62,21 @@ assert_file_contains marker_ps.err '& "C:\Program Files\Git\git-bash.exe"'
 # The PowerShell launcher must show only the PowerShell one-liner, never the cmd.exe form.
 assert_file_not_contains marker_ps.err '^  "C:\Program Files\Git\git-bash.exe"'
 
+test_step "The one-liner is static and the helper clears the launcher env var" "The -c argument must use the fixed helper name (no PID) so the line is re-runnable, and the helper must clear GIT_NEST_WIN_LAUNCHER so the TUI gate does not refuse again inside mintty."
+assert_file_contains marker_ps.err '-c "sh /tmp/git-nest-tui.sh"'
+if printf '%s\n' "$(cat marker_ps.err)" | grep -qE 'git-nest-tui-[0-9]+\.sh'; then
+    printf 'UNEXPECTED RESULT: the one-liner must use the fixed helper name, not a PID-suffixed one\n' >&2
+    exit 1
+fi
+helper=/tmp/git-nest-tui.sh
+if [ -f "$helper" ]; then
+    assert_file_contains "$helper" "unset GIT_NEST_WIN_LAUNCHER"
+    assert_file_contains "$helper" 'git-nest tui'
+else
+    printf 'UNEXPECTED RESULT: the gate did not write the static helper %s\n' "$helper" >&2
+    exit 1
+fi
+
 test_step "pty smoke test (only where script exists)" "Under a pty, the TUI must start, render its header, and quit on q. Skipped on Windows Git Bash (no script/expect)."
 if command -v script >/dev/null 2>&1; then
     pty_outer="$work/pty-outer"

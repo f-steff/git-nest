@@ -363,10 +363,14 @@ tui_find_git_bash() {
 # `git-bash.exe --cd=... -c ...` opens a real mintty window, so pasting
 # the line into that host works.
 #
-# The command passed to bash is written to a tiny helper script in the
-# user's temp directory instead of being inlined: nested quoting through
-# cmd.exe/PowerShell -> git-bash.exe -> bash is too fragile, and the
-# launchers run git-nest-main.sh directly so git-nest is not on PATH.
+# The command line is static except for --cd: the -c argument always runs
+# a helper script at the FIXED name /tmp/git-nest-tui.sh (no PID), so the
+# same line can be re-run any number of times. The helper:
+#   - clears GIT_NEST_WIN_LAUNCHER, which the launcher session inherited
+#     into mintty (otherwise the TUI gate would refuse again, rc=2);
+#   - prefers git-nest on PATH, falling back to $PWD/bin/git-nest (the
+#     checkout layout), where $PWD is the folder --cd landed in;
+#   - keeps the window open after the TUI exits.
 tui_win_hint() {
 	th_launcher=$1
 	th_dir=$(pwd 2>/dev/null || printf '.')
@@ -378,34 +382,32 @@ tui_win_hint() {
 	th_bash=$(tui_find_git_bash || true)
 	if [ -n "$th_bash" ]; then
 		th_bash_w=$(command -v cygpath >/dev/null 2>&1 && cygpath -w "$th_bash" 2>/dev/null || printf '%s' "$th_bash")
-		if command -v git-nest >/dev/null 2>&1; then
-			th_cmd='git-nest tui'
-		else
-			th_cmd="\"$SCRIPT_DIR/git-nest\" tui"
-		fi
-		# Write a helper script: cd to the nest, run the TUI, keep the
-		# window open so the user can read the result.
 		if [ -n "${TMPDIR:-}" ]; then
 			th_tmp=$TMPDIR
 		else
 			th_tmp=/tmp
 		fi
-		th_script="$th_tmp/git-nest-tui-$$.sh"
+		th_script="$th_tmp/git-nest-tui.sh"
 		{
 			printf '#!/bin/sh\n'
-			# Self-delete on exit so no helper file is left behind.
-			printf 'trap "rm -f -- %s" EXIT INT TERM HUP\n' "'$th_script'"
-			printf 'cd -- "%s" || exit 1\n' "$th_dir"
-			printf '%s\n' "$th_cmd"
+			# The launcher env var leaks into mintty; the TUI gate would
+			# refuse again. Clear it.
+			printf 'unset GIT_NEST_WIN_LAUNCHER\n'
+			# $PWD is the folder --cd landed in (the nest root).
+			printf 'if command -v git-nest >/dev/null 2>&1; then\n'
+			printf '    git-nest tui\n'
+			printf 'else\n'
+			printf '    "$PWD/bin/git-nest" tui\n'
+			printf 'fi\n'
 			printf 'rc=$?\n'
 			printf 'echo\n'
-			printf 'read -r -p "TUI exited (rc=%s). Press Enter to close the window... " _\n' '$rc'
+			printf 'read -r -p "TUI exited (rc=$rc). Press Enter to close the window... " _\n'
 			printf 'exit $rc\n'
 		} >"$th_script"
 		# The -c argument is interpreted by bash, so the helper path must
 		# be the MSYS path (a Windows path with backslashes would be
 		# mangled by bash escapes). git-bash.exe --cd puts us in the nest
-		# folder; the helper cd's there again as a safety net.
+		# folder.
 		printf 'Please start it directly in Git Bash (mintty) using:\n' >&2
 		case "$th_launcher" in
 		cmd)
