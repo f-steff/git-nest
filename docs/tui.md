@@ -50,8 +50,8 @@ The screen is split into three panes:
 - `stty` raw mode must be available.
 - On Windows, run it from a **Git Bash (mintty) window**. The
   `git-nest.bat` and `git-nest.ps1` launchers attach bash to the Windows
-  console (no mintty), so the TUI refuses to start there with a one-line
-  message. `git-nest tui` from PowerShell or cmd.exe does not work.
+  console (no mintty), so the TUI refuses to start there with a message
+  that includes the exact one-liner to open mintty instead (see below).
 
 If the gate fails, the command exits cleanly with a message like:
 
@@ -59,6 +59,48 @@ If the gate fails, the command exits cleanly with a message like:
 $ git-nest tui < /dev/null
 git-nest tui needs an interactive terminal (stdin/stdout must be a TTY).
 ```
+
+### Why the TUI does not run in cmd.exe / PowerShell
+
+The TUI reads a single keystroke at a time (`stty -icanon` raw mode plus
+a one-byte read). That only works when bash has a real **pseudo-terminal
+(pty)**. The two ways to start git-nest on Windows differ in exactly that
+respect:
+
+| Start git-nest via... | bash stdin/stdout | Result |
+|-|-|-|
+| `git-nest.bat` / `git-nest.ps1` | **Windows console (no pty)** -- `tty` reports "not a tty" | the TUI refuses; raw key reads would never return |
+| `git-bash.exe` (mintty) | **real pty** (`/dev/pty0`) | the TUI runs normally |
+
+The `.bat` and `.ps1` launchers spawn `bash.exe --noprofile --norc`
+inside your current console window. MSYS fakes termios over the console
+well enough that `stty` reports success, but a single-byte read from the
+console blocks until Enter is pressed -- so the TUI cannot work there.
+It is not a scripting problem that shell code could work around; the
+console is simply not a pty. This is the same reason `vim`, `tmux`, and
+`fzf` require mintty (or `winpty`) on Windows.
+
+### Opening mintty from the message
+
+When the gate refuses a launcher start, it prints the exact command to
+open a **new mintty window** in the current folder and run the TUI:
+
+```
+git-nest tui needs a Git Bash (mintty) window; you launched it via the powershell launcher.
+Open Git Bash here and run the TUI:
+  cmd.exe:        "C:\Program Files\Git\git-bash.exe" --cd="C:\Projects\github\f-steff\git-nest" -c "git-nest tui"
+  PowerShell:     & "C:\Program Files\Git\git-bash.exe" --cd="C:\Projects\github\f-steff\git-nest" -c "git-nest tui"
+```
+
+`git-bash.exe --cd="<dir>" -c "<command>"` is mintty's launcher: it opens
+a new window with a real pty, changes to `<dir>`, and runs the command.
+Pasting either line into cmd.exe or PowerShell works -- it does not run
+the TUI *in* your console window, it opens a separate Git Bash window
+for it (that is inherent: the current console cannot host the TUI).
+
+The path and folder in the message are resolved on the machine where the
+message is printed (`git-bash.exe` from the MSYS root, the nest folder
+via `cygpath -w`), so the line is ready to paste as-is.
 
 ## Keys
 
