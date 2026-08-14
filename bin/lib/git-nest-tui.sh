@@ -358,10 +358,17 @@ tui_find_git_bash() {
 }
 
 # Print the graceful-exit hint for the Windows-launcher case: the exact
-# one-liners that open Git Bash (mintty) in the current folder and run
-# the TUI. `git-bash.exe --cd=... -c ...` opens a real mintty window, so
-# pasting either line into cmd.exe or PowerShell works.
+# one-liner that opens Git Bash (mintty) in the current folder and runs
+# the TUI, for the launcher that started git-nest (cmd or powershell).
+# `git-bash.exe --cd=... -c ...` opens a real mintty window, so pasting
+# the line into that host works.
+#
+# The command passed to bash is written to a tiny helper script in the
+# user's temp directory instead of being inlined: nested quoting through
+# cmd.exe/PowerShell -> git-bash.exe -> bash is too fragile, and the
+# launchers run git-nest-main.sh directly so git-nest is not on PATH.
 tui_win_hint() {
+	th_launcher=$1
 	th_dir=$(pwd 2>/dev/null || printf '.')
 	if command -v cygpath >/dev/null 2>&1; then
 		th_dir_w=$(cygpath -w "$th_dir" 2>/dev/null || printf '%s' "$th_dir")
@@ -371,23 +378,61 @@ tui_win_hint() {
 	th_bash=$(tui_find_git_bash || true)
 	if [ -n "$th_bash" ]; then
 		th_bash_w=$(command -v cygpath >/dev/null 2>&1 && cygpath -w "$th_bash" 2>/dev/null || printf '%s' "$th_bash")
-		printf 'Open Git Bash here and run the TUI:\n' >&2
-		printf '  cmd.exe:        "%s" --cd="%s" -c "git-nest tui"\n' "$th_bash_w" "$th_dir_w" >&2
-		printf '  PowerShell:     & "%s" --cd="%s" -c "git-nest tui"\n' "$th_bash_w" "$th_dir_w" >&2
+		if command -v git-nest >/dev/null 2>&1; then
+			th_cmd='git-nest tui'
+		else
+			th_cmd="\"$SCRIPT_DIR/git-nest\" tui"
+		fi
+		# Write a helper script: cd to the nest, run the TUI, keep the
+		# window open so the user can read the result.
+		if [ -n "${TMPDIR:-}" ]; then
+			th_tmp=$TMPDIR
+		else
+			th_tmp=/tmp
+		fi
+		th_script="$th_tmp/git-nest-tui-$$.sh"
+		{
+			printf '#!/bin/sh\n'
+			# Self-delete on exit so no helper file is left behind.
+			printf 'trap "rm -f -- %s" EXIT INT TERM HUP\n' "'$th_script'"
+			printf 'cd -- "%s" || exit 1\n' "$th_dir"
+			printf '%s\n' "$th_cmd"
+			printf 'rc=$?\n'
+			printf 'echo\n'
+			printf 'read -r -p "TUI exited (rc=%s). Press Enter to close the window... " _\n' '$rc'
+			printf 'exit $rc\n'
+		} >"$th_script"
+		# The -c argument is interpreted by bash, so the helper path must
+		# be the MSYS path (a Windows path with backslashes would be
+		# mangled by bash escapes). git-bash.exe --cd puts us in the nest
+		# folder; the helper cd's there again as a safety net.
+		printf 'Please start it directly in Git Bash (mintty) using:\n' >&2
+		case "$th_launcher" in
+		cmd)
+			printf '  "%s" --cd="%s" -c "sh %s"\n' "$th_bash_w" "$th_dir_w" "$th_script" >&2
+			;;
+		powershell | *)
+			printf '  & "%s" --cd="%s" -c "sh %s"\n' "$th_bash_w" "$th_dir_w" "$th_script" >&2
+			;;
+		esac
 	else
-		printf 'Open a Git Bash (mintty) window in %s and run: git-nest tui\n' "$th_dir_w" >&2
+		printf 'Please start it directly in a Git Bash (mintty) window in %s and run: git-nest tui\n' "$th_dir_w" >&2
 	fi
 }
 
 # cmd.exe / PowerShell launchers (which attach bash to the console, not
-# mintty). Prints a one-line message and exits cleanly.
+# mintty). Prints a message and exits cleanly.
 tui_gate() {
 	# The .bat / .ps1 launchers set this marker: bash is attached to the
 	# Windows console where stty raw mode reports success but single-byte
 	# key reads never return -- the TUI would spin. Refuse up front.
 	if [ -n "${GIT_NEST_WIN_LAUNCHER:-}" ]; then
-		echo "git-nest tui needs a Git Bash (mintty) window; you launched it via the $GIT_NEST_WIN_LAUNCHER launcher." >&2
-		tui_win_hint
+		# Best-effort: drop helper scripts from previous refused launches
+		# that were never run (the mintty run deletes its own on exit).
+		th_tmp=${TMPDIR:-/tmp}
+		rm -f "$th_tmp"/git-nest-tui-*.sh 2>/dev/null || true
+		echo "The git-nest tui cannot launch itself into a Git Bash (mintty) window when launched via the $GIT_NEST_WIN_LAUNCHER launcher." >&2
+		tui_win_hint "$GIT_NEST_WIN_LAUNCHER"
 		exit 2
 	fi
 	if [ ! -t 0 ] || [ ! -t 1 ]; then

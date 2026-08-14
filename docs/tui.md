@@ -83,20 +83,26 @@ console is simply not a pty. This is the same reason `vim`, `tmux`, and
 ### Opening mintty from the message
 
 When the gate refuses a launcher start, it prints the exact command to
-open a **new mintty window** in the current folder and run the TUI:
+open a **new mintty window** in the current folder and run the TUI. The
+message shows only the line that matches the launcher you used -- the
+PowerShell form when launched via `git-nest.ps1`, the cmd.exe form when
+launched via `git-nest.bat`:
 
 ```
-git-nest tui needs a Git Bash (mintty) window; you launched it via the powershell launcher.
-Open Git Bash here and run the TUI:
-  cmd.exe:        "C:\Program Files\Git\git-bash.exe" --cd="C:\Projects\github\f-steff\git-nest" -c "git-nest tui"
-  PowerShell:     & "C:\Program Files\Git\git-bash.exe" --cd="C:\Projects\github\f-steff\git-nest" -c "git-nest tui"
+The git-nest tui cannot launch itself into a Git Bash (mintty) window when launched via the powershell launcher.
+Please start it directly in Git Bash (mintty) using:
+  & "C:\Program Files\Git\git-bash.exe" --cd="C:\Projects\github\f-steff\git-nest" -c "sh C:\Users\you\AppData\Local\Temp\git-nest-tui-123.sh"
 ```
 
 `git-bash.exe --cd="<dir>" -c "<command>"` is mintty's launcher: it opens
 a new window with a real pty, changes to `<dir>`, and runs the command.
-Pasting either line into cmd.exe or PowerShell works -- it does not run
-the TUI *in* your console window, it opens a separate Git Bash window
-for it (that is inherent: the current console cannot host the TUI).
+The command is a tiny helper script (written to your temp folder and
+deleted when the window closes) that cd's to the nest, runs
+`git-nest tui`, and keeps the window open until you press Enter after
+quitting. Pasting the line into cmd.exe or PowerShell works -- it does
+not run the TUI *in* your console window, it opens a separate Git Bash
+window for it (that is inherent: the current console cannot host the
+TUI).
 
 The path and folder in the message are resolved on the machine where the
 message is printed (`git-bash.exe` from the MSYS root, the nest folder
