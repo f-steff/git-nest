@@ -335,6 +335,50 @@ tui_install_traps() {
 
 # Gate: refuse to run unless stdin and stdout are real terminals, stty
 # raw mode can be engaged, and we are NOT launched through the Windows
+# Find the mintty launcher (git-bash.exe) that pairs with the running
+# bash, so the graceful-exit hint can open a real terminal window. It
+# lives at the MSYS root (e.g. C:\Program Files\Git\git-bash.exe);
+# fall back to walking up from the running bash.
+tui_find_git_bash() {
+	if [ -f /git-bash.exe ]; then
+		printf '/git-bash.exe\n'
+		return 0
+	fi
+	fgb_dir=/usr/bin
+	while :; do
+		if [ -f "$fgb_dir/git-bash.exe" ]; then
+			printf '%s\n' "$fgb_dir/git-bash.exe"
+			return 0
+		fi
+		fgb_next=$(dirname "$fgb_dir")
+		[ "$fgb_next" = "$fgb_dir" ] && break
+		fgb_dir=$fgb_next
+	done
+	return 1
+}
+
+# Print the graceful-exit hint for the Windows-launcher case: the exact
+# one-liners that open Git Bash (mintty) in the current folder and run
+# the TUI. `git-bash.exe --cd=... -c ...` opens a real mintty window, so
+# pasting either line into cmd.exe or PowerShell works.
+tui_win_hint() {
+	th_dir=$(pwd 2>/dev/null || printf '.')
+	if command -v cygpath >/dev/null 2>&1; then
+		th_dir_w=$(cygpath -w "$th_dir" 2>/dev/null || printf '%s' "$th_dir")
+	else
+		th_dir_w=$th_dir
+	fi
+	th_bash=$(tui_find_git_bash || true)
+	if [ -n "$th_bash" ]; then
+		th_bash_w=$(command -v cygpath >/dev/null 2>&1 && cygpath -w "$th_bash" 2>/dev/null || printf '%s' "$th_bash")
+		printf 'Open Git Bash here and run the TUI:\n' >&2
+		printf '  cmd.exe:        "%s" --cd="%s" -c "git-nest tui"\n' "$th_bash_w" "$th_dir_w" >&2
+		printf '  PowerShell:     & "%s" --cd="%s" -c "git-nest tui"\n' "$th_bash_w" "$th_dir_w" >&2
+	else
+		printf 'Open a Git Bash (mintty) window in %s and run: git-nest tui\n' "$th_dir_w" >&2
+	fi
+}
+
 # cmd.exe / PowerShell launchers (which attach bash to the console, not
 # mintty). Prints a one-line message and exits cleanly.
 tui_gate() {
@@ -343,7 +387,7 @@ tui_gate() {
 	# key reads never return -- the TUI would spin. Refuse up front.
 	if [ -n "${GIT_NEST_WIN_LAUNCHER:-}" ]; then
 		echo "git-nest tui needs a Git Bash (mintty) window; you launched it via the $GIT_NEST_WIN_LAUNCHER launcher." >&2
-		echo "Open a Git Bash window and run: git-nest tui" >&2
+		tui_win_hint
 		exit 2
 	fi
 	if [ ! -t 0 ] || [ ! -t 1 ]; then
