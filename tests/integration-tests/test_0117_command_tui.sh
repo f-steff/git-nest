@@ -6,6 +6,11 @@ set -eu
 . "$(dirname "$0")/helper.sh"
 test_begin command_tui
 
+# All capture files must land in the test workspace, not the repo root.
+work=$(test_workspace command_tui)
+mkdir -p "$work"
+cd "$work"
+
 test_step "Gate refuses non-TTY stdin with a clean message" "git-nest tui must refuse to start when stdin is not a terminal, print one message, and exit cleanly without touching the terminal."
 run_fail "tui with redirected stdin exits nonzero" 2 -- sh -c '"$1" tui </dev/null >tui_gate.out 2>tui_gate.err' sh "$GIT_NEST"
 assert_file_contains tui_gate.err "needs an interactive terminal"
@@ -44,12 +49,11 @@ assert_file_contains "$REPO_ROOT/bin/git-nest.ps1" "\$env:GIT_NEST_WIN_LAUNCHER 
 
 test_step "pty smoke test (only where script exists)" "Under a pty, the TUI must start, render its header, and quit on q. Skipped on Windows Git Bash (no script/expect)."
 if command -v script >/dev/null 2>&1; then
-    root=$(test_workspace command_tui_pty)
-    outer="$root/outer"
-    make_repo "$outer"
-    cd "$outer"
+    pty_outer="$work/pty-outer"
+    make_repo "$pty_outer"
+    cd "$pty_outer"
     "$GIT_NEST" init >/dev/null
-    (cd "$outer" && printf 'q' | script -qec "stty rows 24 cols 100; \"$GIT_NEST_REAL\" tui" /dev/null >tui_pty.out 2>&1 || true)
+    printf 'q' | script -qec "stty rows 24 cols 100; \"$GIT_NEST_REAL\" tui" /dev/null >tui_pty.out 2>&1 || true
     if grep -q "git-nest tui" tui_pty.out; then
         :
     else
