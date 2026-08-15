@@ -1,3 +1,29 @@
+## 0.8.26 - 2026-08-15
+
+### Line-based interactive interface (git-nest interactive)
+  * Added `git-nest interactive` (alias `git-nest ii`): a guided,
+    line-based menu over the full command surface, replacing the earlier
+    terminal-UI direction.
+  * No terminal UI or raw mode: menus are numbered lines with
+    right-aligned three-digit numbering, input is plain lines, and every
+    action prints `cwd>command ...` before running in a sub-shell with
+    live output. Works directly in Git Bash, cmd.exe, PowerShell, and
+    pipes.
+  * The menu adapts to the folder: a virgin folder offers `git init`, a
+    Git repo offers `git-nest init`, and a nest offers the grouped full
+    command surface. Context is re-detected after every action, so
+    `git init` followed by `git-nest init` steps the menus forward.
+  * `change directory` moves the session one folder at a time (with
+    `..` to go up); `b`/empty line goes back, `q` exits gracefully.
+  * Commands needing arguments prompt on the next line; commands taking
+    a subproject show a numbered subproject picker.
+  * Internal test switches `--ii-test <token>...` (scripted input) and
+    `--ii-skip <n>` (drop leading tokens) let tests drive the loop
+    without a terminal; they are not part of completion.
+  * Implemented in `bin/lib/git-nest-ii.sh` with pure, unit-tested
+    functions (menu rendering, input parsing, table selection) and
+    integration coverage in test_0117.
+
 ## 0.8.25 - 2026-08-12
 
 ### --finally callbacks on iteration and batch commands

@@ -5,7 +5,7 @@ title: git-nest
 description: git-nest is a lightweight shell tool that manages many independent Git repositories as one cohesive project. Built for modular codebases split across separate repos, it removes the need for submodules, subtrees, and subrepos - using only plain Git.
 # The latest release version, shown on the home page. check_version_alignment
 # keeps this in lockstep with bin/git-nest-main.sh and version.md.
-version: 0.8.25
+version: 0.8.26
 remote_theme: just-the-docs/just-the-docs
 plugins:
   - jekyll-remote-theme

@@ -149,6 +149,7 @@ usage() {
 
 	help_usage_group "Tooling"
 	help_usage "completion" "<bash|zsh|fish>"
+	help_usage "interactive|ii"
 	help_usage "version"
 
 	printf '\n'
@@ -362,6 +363,8 @@ usage() {
 	help_command_group "Tooling"
 	help_command "completion <bash|zsh|fish|yash|powershell>"
 	help_text "Print a shell completion script to stdout."
+	help_command "interactive|ii"
+	help_text "Run a guided, line-based interactive menu over the command surface."
 	help_command "version"
 	help_text "Print the git-nest version."
 
@@ -907,6 +910,18 @@ command_help() {
 		help_heading "Example:"
 		help_example "git-nest version"
 		;;
+	interactive | ii)
+		help_command "interactive|ii"
+		help_text "Run a guided, line-based interactive menu over the command surface."
+		help_detail "No terminal UI or raw mode: menus are numbered lines and input is plain lines, so it works in Git Bash, cmd.exe, and PowerShell alike."
+		help_detail "The menu adapts to the folder: a virgin folder offers git init, a Git repo offers git-nest init, and a nest offers the full command surface."
+		help_detail "Enter a number to run the option, b (or an empty line) to go back, q to exit."
+		help_detail "Every action prints cwd>command and then runs it with live output."
+		help_heading "Examples:"
+		help_example "git-nest interactive"
+		help_example "git-nest ii"
+		help_detail "Testing: interactive --ii-test <token>... feeds scripted input lines; --ii-skip <n> drops the first n tokens. These switches are internal and not part of completion."
+		;;
 	help)
 		help_command "help [command]"
 		help_text "Show the grouped command overview or focused help for one command."
@@ -1113,6 +1128,7 @@ git_nest_main() {
 		cmd_internal_hook "$@"
 		;;
 	version | --version | -v) cmd_version "$@" ;;
+	interactive | ii) cmd_interactive "$@" ;;
 	help) cmd_help "$@" ;;
 	-h | --help | "") usage ;;
 	*) usage_error "unknown command: $cmd" ;;
@@ -4740,7 +4756,7 @@ cmd_gc() {
 # used by completion, help, and the internal __complete endpoint so the
 # command surface is defined exactly once.
 GIT_NEST_command_names() {
-	printf '%s\n' "init tidy add remove rm move mv clone status outdated verify diff log snapshot restore pull gc freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach version help"
+	printf '%s\n' "init tidy add remove rm move mv clone status outdated verify diff log snapshot restore pull gc freeze hooks-install hooks-uninstall branch-mark branch-unmark branch-list branch-cleanup foreach foreach-modified foreach-clean config update doctor survey list tree completion export absorb absorb-all inline detach ii interactive version help"
 }
 
 # Internal completion data endpoint used by generated shell completion scripts.
@@ -4886,6 +4902,9 @@ _GIT_NEST_complete_for() {
 		_GIT_NEST_emit_directive no-file
 		;;
 	version)
+		_GIT_NEST_emit_directive no-file
+		;;
+	interactive | ii)
 		_GIT_NEST_emit_directive no-file
 		;;
 	status)
