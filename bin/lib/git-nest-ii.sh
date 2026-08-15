@@ -279,7 +279,10 @@ EOF
 # nest root in select mode, so the result is always nest-relative.
 ii_browse_rel() {
 	ii_bmin2=$1
-	ii_bpwd=$(pwd)
+	# Physical path (pwd -P): the cap from find_project_root is
+	# physical too, so the prefix comparison is symlink-safe (macOS
+	# /var -> /private/var would otherwise break the strip).
+	ii_bpwd=$(pwd -P)
 	if [ -n "$ii_bmin2" ] && [ "$ii_bpwd" != "$ii_bmin2" ]; then
 		printf '%s' "${ii_bpwd#"$ii_bmin2"/}"
 	else
@@ -309,7 +312,7 @@ ii_truncate_path() {
 ii_browse_path() {
 	ii_bmin=$1
 	ii_bmode=$2
-	ii_bentry=$(pwd)
+	ii_bentry=$(pwd -P)
 	ii_banchors=1
 	while :; do
 		ii_btable=
@@ -339,9 +342,9 @@ EOF
 		fi
 		# Parent entry: hidden when at the cap or the filesystem root.
 		ii_bup=0
-		if [ -z "$ii_bmin" ] || [ "$(pwd)" != "$ii_bmin" ]; then
-			ii_bparent=$(cd .. 2>/dev/null && pwd || true)
-			[ -n "$ii_bparent" ] && [ "$ii_bparent" != "$(pwd)" ] && ii_bup=1
+		if [ -z "$ii_bmin" ] || [ "$(pwd -P)" != "$ii_bmin" ]; then
+			ii_bparent=$(cd .. 2>/dev/null && pwd -P || true)
+			[ -n "$ii_bparent" ] && [ "$ii_bparent" != "$(pwd -P)" ] && ii_bup=1
 		fi
 		# Subdirectories one level down (hidden excluded, sorted).
 		ii_bsubdirs=$(ii_subdirs)
@@ -393,7 +396,7 @@ EOF
 			if [ "$ii_bup" -eq 1 ]; then
 				cd .. 2>/dev/null || true
 				ii_banchors=0
-				[ "$ii_bmode" = cd ] && II_SESSION_CWD=$(pwd)
+				[ "$ii_bmode" = cd ] && II_SESSION_CWD=$(pwd -P)
 			else
 				printf 'Already at the top.\n'
 			fi
@@ -451,7 +454,7 @@ EOF
 				if [ -n "$ii_btarget" ]; then
 					cd "$ii_btarget" 2>/dev/null || printf 'Cannot enter %s.\n' "$ii_btarget"
 					ii_banchors=0
-					[ "$ii_bmode" = cd ] && II_SESSION_CWD=$(pwd)
+					[ "$ii_bmode" = cd ] && II_SESSION_CWD=$(pwd -P)
 				fi
 				;;
 			esac
@@ -537,8 +540,8 @@ EOF
 		run)
 			ii_jtarget=$(printf '%s\n' "$ii_jtable" | ii_table_entry "$II_LINE" | cut -d'|' -f1)
 			if [ -d "$ii_jtarget" ] && cd "$ii_jtarget" 2>/dev/null; then
-				II_SESSION_CWD=$(pwd)
-				printf 'Now in nest: %s\n' "$(pwd)"
+				II_SESSION_CWD=$(pwd -P)
+				printf 'Now in nest: %s\n' "$(pwd -P)"
 			else
 				printf 'Cannot enter %s.\n' "$ii_jtarget"
 			fi
@@ -818,9 +821,11 @@ cmd_interactive() {
 	II_ENTRY_CMD=
 	# Navigation state: where the session started, where it is now, the
 	# browser's selection result, and the visited-nest history (deduped
-	# consecutive, capped, most recent first) used by jump nest.
-	II_START_CWD=$(pwd)
-	II_SESSION_CWD=$(pwd)
+	# consecutive, capped, most recent first) used by jump nest. All
+	# paths are physical (pwd -P) so they compare equal to the nest
+	# roots found by find_project_root on symlinked layouts.
+	II_START_CWD=$(pwd -P)
+	II_SESSION_CWD=$(pwd -P)
 	II_BROWSE_PATH=
 	II_NEST_HISTORY=
 	II_LAST_NEST=
