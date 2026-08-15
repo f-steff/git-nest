@@ -20,7 +20,8 @@
 # Each entry is label|kind|cmd|description; lines starting with ':' are
 # group headings. Kinds: run = execute as-is, text = prompt for
 # arguments, path = pick a subproject, path-text = pick plus one text
-# prompt, cd = directory navigation. The `change directory` entry is
+# prompt, cd = directory navigation, absorb-flow / takeout-flow = the
+# combined membership workflows. The `change directory` entry is
 # last in every context because filesystem navigation is always useful,
 # no matter the workspace state.
 
@@ -47,8 +48,6 @@ tidy|run|tidy|Refresh managed support files
 clone|text|clone|Clone a nest repository and restore it here
 :Subprojects
 add|text|add|Add a repository as a managed subproject (URL + path)
-remove|path|remove|Remove a subproject and delete its checkout
-detach|path|detach|Remove a subproject but keep its checkout
 move|path-text|move|Move a subproject to a new path
 config|text|config|Read or update manifest and local settings
 update|path-text|update|Move a subproject to a selected revision
@@ -80,11 +79,10 @@ hooks-uninstall|run|hooks-uninstall|Remove managed hooks from all repos
 foreach|text|foreach|Run a command in every checked-out subproject
 foreach-modified|text|foreach-modified|Run a command in dirty subprojects
 foreach-clean|text|foreach-clean|Run a command in clean subprojects
-:Export and nest membership
+:Nest contents
+bring in (absorb)|absorb-flow|-|Show detected repos/submodules, then absorb them
+take out (inline/detach/remove)|takeout-flow|-|Show the tree, pick a subproject, inline/detach/remove
 export|text|export|Export a source snapshot with MANIFEST.lock
-absorb|text|absorb|Bring an on-disk repo or submodule into the nest
-absorb-all|run|absorb-all|Absorb every detected nested repo in one pass
-inline|path|inline|Dissolve a subproject into outer tracked files
 :Tooling
 version|run|version|Show the git-nest version
 :Navigation
@@ -333,8 +331,138 @@ ii_table_entry() {
 		{ got++; if (got == want) { print; exit } }'
 }
 
+# Bring-in flow: show what survey found, then let the user absorb the
+# detected targets one by one, all at once, or a manually typed path.
+# The survey state code selects the right absorb form: git-subrepos need
+# the explicit --subrepo flag, everything else absorbs plainly. The
+# picker re-renders after every action, so absorbed items disappear.
+ii_pick_absorb() {
+	ii_run_command survey
+	while :; do
+		ii_rows=$("$II_GIT_NEST" survey --porcelain 2>/dev/null || true)
+		ii_abs_table=
+		while IFS='	' read -r ii_code ii_apath ii_astate ii_arest; do
+			[ -n "$ii_apath" ] || continue
+			case "$ii_astate" in
+			subrepo) ii_form="absorb --subrepo" ;;
+			*) ii_form="absorb" ;;
+			esac
+			ii_abs_table="$ii_abs_table$ii_apath|run|$ii_form|$ii_astate
+"
+		done <<EOF
+$ii_rows
+EOF
+		if [ -n "$ii_abs_table" ]; then
+			ii_menu_show <<EOF
+$ii_abs_table
+EOF
+		else
+			printf 'No unmanaged repositories or submodules detected.\n'
+			II_MENU_COUNT=0
+		fi
+		ii_read_line '> ' || {
+			II_QUIT=1
+			return 1
+		}
+		case "$II_LINE" in
+		a | A)
+			# Bulk absorb, confirmed: absorb-all also rolls back its
+			# own batch on failure, so the confirm is the only guard.
+			ii_read_line "Absorb all detected? [y/N]: " || {
+				II_QUIT=1
+				return 1
+			}
+			case "$II_LINE" in
+			y | Y | yes | YES) ii_run_command absorb-all ;;
+			*) printf 'Cancelled.\n' ;;
+			esac
+			;;
+		m | M)
+			ii_pick_absorb_manual
+			;;
+		*)
+			case "$(ii_parse_input "$II_LINE" "$II_MENU_COUNT")" in
+			back) return 0 ;;
+			quit)
+				II_QUIT=1
+				return 1
+				;;
+			invalid) printf 'Unknown choice: %s\n' "$II_LINE" ;;
+			run)
+				ii_target=$(printf '%s\n' "$ii_abs_table" | ii_table_entry "$II_LINE" | cut -d'|' -f1)
+				ii_form=$(printf '%s\n' "$ii_abs_table" | ii_table_entry "$II_LINE" | cut -d'|' -f3)
+				ii_run_command "$ii_form $ii_target"
+				;;
+			esac
+			;;
+		esac
+	done
+}
+
+# Manual bring-in target: classify the typed path so folders (which
+# cannot absorb without a remote URL) are prompted for one, while
+# repositories and git-subrepos absorb without extra input.
+ii_pick_absorb_manual() {
+	ii_read_line "Path (folders need a remote URL after): " || {
+		II_QUIT=1
+		return 1
+	}
+	[ -n "$II_LINE" ] || {
+		printf 'Cancelled.\n'
+		return 0
+	}
+	ii_manual_path=$II_LINE
+	if [ -e "$ii_manual_path/.git" ]; then
+		ii_run_command "absorb $ii_manual_path"
+	elif [ -e "$ii_manual_path/.gitrepo" ]; then
+		ii_run_command "absorb --subrepo $ii_manual_path"
+	else
+		ii_read_line "Remote URL for $ii_manual_path: " || {
+			II_QUIT=1
+			return 1
+		}
+		if [ -n "$II_LINE" ]; then
+			ii_run_command "absorb $ii_manual_path $II_LINE"
+		else
+			printf 'Cancelled.\n'
+		fi
+	fi
+}
+
+# Take-out flow: show the whole nest first (tree --all marks managed and
+# unmanaged findings), then pick a managed subproject and choose inline,
+# detach, or remove -- each confirmed before it runs.
+ii_pick_takeout() {
+	ii_run_command "tree --all"
+	if ! ii_pick_subproject; then
+		return 0
+	fi
+	ii_read_line "Take out $II_PATH: inline (i), detach (d), or remove (r)? " || {
+		II_QUIT=1
+		return 0
+	}
+	case "$II_LINE" in
+	i | I) ii_takeout_verb="inline" ;;
+	d | D) ii_takeout_verb="detach" ;;
+	r | R) ii_takeout_verb="remove" ;;
+	*)
+		printf 'Cancelled.\n'
+		return 0
+		;;
+	esac
+	ii_read_line "Run git-nest $ii_takeout_verb $II_PATH? [y/N]: " || {
+		II_QUIT=1
+		return 0
+	}
+	case "$II_LINE" in
+	y | Y | yes | YES) ii_run_command "$ii_takeout_verb $II_PATH" ;;
+	*) printf 'Cancelled.\n' ;;
+	esac
+}
+
 # Dispatch one menu entry by its kind: run, prompt-for-text, pick a
-# subproject, pick plus text, or directory browsing.
+# subproject, pick plus text, directory browsing, or one of the
+# membership flows.
 ii_exec_entry() {
 	ii_entry=$1
 	II_ENTRY_LABEL=${ii_entry%%|*}
@@ -374,7 +502,16 @@ ii_exec_entry() {
 		fi
 		;;
 	cd)
-		ii_pick_directory
+		# The pickers return 1 to signal quit/EOF; the loop only acts on
+		# II_QUIT, so the dispatch arm must not propagate that status
+		# (the session runs under set -e).
+		ii_pick_directory || true
+		;;
+	absorb-flow)
+		ii_pick_absorb || true
+		;;
+	takeout-flow)
+		ii_pick_takeout || true
 		;;
 	esac
 }

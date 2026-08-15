@@ -83,6 +83,20 @@ printf '%s\n' "$nest_menu" | grep -q '^tidy|run|tidy|' || {
     printf 'UNEXPECTED RESULT: nest menu must offer tidy\n' >&2
     exit 1
 }
+printf '%s\n' "$nest_menu" | grep -q '^bring in (absorb)|absorb-flow|' || {
+    printf 'UNEXPECTED RESULT: nest menu must offer the bring-in flow\n' >&2
+    exit 1
+}
+printf '%s\n' "$nest_menu" | grep -q '^take out (inline/detach/remove)|takeout-flow|' || {
+    printf 'UNEXPECTED RESULT: nest menu must offer the take-out flow\n' >&2
+    exit 1
+}
+for gone in '^absorb|text|' '^absorb-all|run|' '^inline|path|' '^detach|path|' '^remove|path|'; do
+    printf '%s\n' "$nest_menu" | grep -q "$gone" && {
+        printf 'UNEXPECTED RESULT: standalone membership entries must be folded into the flows (%s)\n' "$gone" >&2
+        exit 1
+    }
+done
 for menu in "$none_menu" "$git_menu" "$nest_menu"; do
     printf '%s\n' "$menu" | grep -q '^change directory|cd|' || {
         printf 'UNEXPECTED RESULT: every menu must offer directory navigation\n' >&2

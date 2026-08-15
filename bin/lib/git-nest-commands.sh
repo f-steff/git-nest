@@ -139,7 +139,7 @@ usage() {
 	help_usage "foreach-modified" "[--continue-on-error] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 	help_usage "foreach-clean" "[--continue-on-error] [--finally <cmd>] [--finally-no-error <cmd>] [--finally-on-error <cmd>] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 
-	help_usage_group "Export and nest membership"
+	help_usage_group "Nest contents"
 	help_usage "export" "--output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]"
 	help_usage "absorb" "<path> [<remote-url>] [--branch <name>] [--clone-mode <full|partial>] [--preserve-history] [--push] [--message <msg>] [--force] [--dry-run] [--json|--json-pretty]"
 	help_usage "absorb" "--subrepo <path> [<remote-url>] [--force] [--dry-run] [--json|--json-pretty]"
@@ -333,7 +333,7 @@ usage() {
 	help_command "foreach-clean [--continue-on-error] [--porcelain | --json | --json-pretty] [-- <command> [args...]]"
 	help_text "Run a command in clean checked-out subprojects, or list them with machine output."
 
-	help_command_group "Export and outer-repo conversion"
+	help_command_group "Nest contents"
 	help_command "export --output <path> [--format <tar.gz|zip|dir>] [--include-git] [--deterministic] [--allow-dirty]"
 	help_text "Export a source snapshot with .gitnest and MANIFEST.lock."
 	help_detail "dir output uses shell file copy; tar.gz requires system tar; zip requires python or python3."
@@ -1256,7 +1256,7 @@ confirm_startup_directory() {
 
 # Return the current branch name, or HEAD when detached.
 
-# Infer the target branch from origin refs, defaulting to main.
+# Infer the target branch from local refs without assuming any name.
 
 # Extract the ticket key from branch names such as XX-123-description.
 
@@ -4088,7 +4088,6 @@ restore_current() {
 			tag=$(subproject_key "$path" tag || true)
 			revision=$(subproject_key "$path" revision || true)
 			target=$(subproject_key "$path" target_branch || true)
-			[ -n "$target" ] || target=main
 			if [ "$dry_run" -eq 1 ]; then
 				if [ ! -d "$path/.git" ]; then
 					printf '[dry-run] would clone %s into %s using clone=%s\n' "$repo" "$path" "$clone_mode"
@@ -4114,7 +4113,14 @@ restore_current() {
 				elif [ -n "$revision" ]; then
 					printf '[dry-run] would check out revision %s in %s\n' "$revision" "$path"
 				elif [ ! -d "$path/.git" ] && [ "$clone_mode" = partial ]; then
-					printf '[dry-run] would check out target branch %s in %s after partial clone\n' "$target" "$path"
+					if [ -n "$target" ]; then
+						printf '[dry-run] would check out target branch %s in %s after partial clone\n' "$target" "$path"
+					else
+						# Legacy entries may lack target_branch; the name is
+						# never assumed, so ask the remote for its default.
+						remote_head=$(git ls-remote --symref "$repo" HEAD 2>/dev/null | sed -n 's/^ref: refs\/heads\/\([^\t]*\)\tHEAD$/\1/p' || true)
+						printf '[dry-run] would check out the remote default branch (%s) in %s after partial clone\n' "$remote_head" "$path"
+					fi
 				else
 					printf '[dry-run] would leave checkout state unchanged for %s\n' "$path"
 				fi
@@ -4163,6 +4169,10 @@ restore_current() {
 				revision=$(resolve_commit "$path" "$revision" "cannot restore $path revision")
 				git -C "$path" checkout "$revision" || die "failed to check out revision $revision in $path"
 			elif [ "$created" -eq 1 ] && [ "$clone_mode" = partial ]; then
+				# Legacy entries may lack target_branch; the fresh clone
+				# has exactly one branch (the remote default), so derive
+				# the name from it instead of assuming one.
+				[ -n "$target" ] || target=$(default_target_branch "$path")
 				checkout_target_branch "$path" "$target"
 			fi
 			printf 'Restored %s.\n' "$path"

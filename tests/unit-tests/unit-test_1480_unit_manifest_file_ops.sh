@@ -14,10 +14,12 @@ ensure_manifest
 assert_ok ".gitnest was created" -- test -f .gitnest
 grep -qF '[project]' .gitnest || { echo "FAIL: project section missing" >&2; exit 1; }
 
-# ensure_config: creates .gitnest-rc with defaults.
+# ensure_config: creates .gitnest-rc with defaults. No branch name is
+# written: target_branch is inferred at use time, never assumed.
 ensure_config
 assert_ok ".gitnest-rc was created" -- test -f .gitnest-rc
-grep -qF 'target_branch=main' .gitnest-rc || { echo "FAIL: default config" >&2; exit 1; }
+grep -qF 'target_branch=' .gitnest-rc && { echo "FAIL: rc must not hardcode a target branch" >&2; exit 1; }
+grep -qF '[clone]' .gitnest-rc || { echo "FAIL: clone section missing" >&2; exit 1; }
 
 # print_gitattributes_guard: writes the attribute guard block.
 GITATTRIBUTES_BEGIN='# BEGIN git-nest attributes'

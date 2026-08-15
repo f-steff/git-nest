@@ -605,7 +605,6 @@ ensure_config() {
 			printf '[ticket]\n'
 			printf 'regex=[A-Z]+-[0-9]+\n\n'
 			printf '[defaults]\n'
-			printf 'target_branch=main\n'
 			printf 'manifest=%s\n\n' "$MANIFEST_FILE"
 			printf '[clone]\n'
 			printf 'mode=manifest\n'
@@ -1552,16 +1551,47 @@ current_branch() {
 	git symbolic-ref --quiet --short HEAD 2>/dev/null || printf 'HEAD\n'
 }
 
-# Infer the target branch from origin refs, defaulting to main.
+# Infer the branch that origin (or a fresh repository) treats as its
+# default. No branch name is assumed: the answer comes from the remote
+# HEAD symref when present, the single existing remote branch, the
+# single local branch (whatever name a `git init` created), the current
+# branch, the first origin ref, and only as an absolute last resort
+# "main". All checks are local refs, so this never contacts a network.
 default_target_branch() {
 	path=${1:-.}
-	if git -C "$path" show-ref --verify --quiet refs/remotes/origin/main; then
-		printf 'main\n'
-	elif git -C "$path" show-ref --verify --quiet refs/remotes/origin/master; then
-		printf 'master\n'
-	else
-		printf 'main\n'
+	# The remote's default branch is recorded locally as origin/HEAD
+	# (created by clone and remote set-head).
+	head_ref=$(git -C "$path" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+	if [ -n "$head_ref" ]; then
+		printf '%s\n' "${head_ref#refs/remotes/origin/}"
+		return 0
 	fi
+	# Sole remote branch (origin/HEAD itself is filtered out): whatever
+	# single remote branch exists is the default by definition.
+	remote_count=$(git -C "$path" for-each-ref --format='%(refname:short)' 'refs/remotes/origin/*' 2>/dev/null | grep -cv '^origin/HEAD$' || true)
+	if [ "$remote_count" -eq 1 ]; then
+		git -C "$path" for-each-ref --format='%(refname:short)' 'refs/remotes/origin/*' 2>/dev/null | grep -v '^origin/HEAD$' | sed 's|^origin/||'
+		return 0
+	fi
+	# Sole local branch: the single branch any `git init` created.
+	local_count=$(git -C "$path" for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null | grep -c . || true)
+	if [ "$local_count" -eq 1 ]; then
+		git -C "$path" for-each-ref --format='%(refname:short)' refs/heads
+		return 0
+	fi
+	# Current branch, skipping a detached HEAD.
+	current=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+	if [ -n "$current" ]; then
+		printf '%s\n' "$current"
+		return 0
+	fi
+	# First origin ref as a best guess before the final fallback.
+	first_origin=$(git -C "$path" for-each-ref --format='%(refname:short)' 'refs/remotes/origin/*' 2>/dev/null | grep -v '^origin/HEAD$' | sed -n '1p')
+	if [ -n "$first_origin" ]; then
+		printf '%s\n' "${first_origin#origin/}"
+		return 0
+	fi
+	printf 'main\n'
 }
 
 # Extract the ticket key from branch names such as XX-123-description.
@@ -2365,13 +2395,9 @@ current_branch_safety_reason() {
 		base_ref=$target
 	fi
 	if [ -z "$base_ref" ]; then
-		case "$current" in
-		main | master) return 0 ;;
-		*)
-			printf '%s has current branch %s without an upstream or target comparison ref' "$path" "$current"
-			return 0
-			;;
-		esac
+		# No comparison ref exists, so there is nothing to measure. The
+		# branch name must never be special-cased: any name is valid.
+		return 0
 	fi
 	ahead=$(git -C "$path" rev-list --count "$base_ref..HEAD" 2>/dev/null || printf '0')
 	if [ "$ahead" -gt 0 ] 2>/dev/null; then
@@ -2429,7 +2455,10 @@ remote_head_commit_for_url() {
 }
 
 # Pick the branch used for remote query checks. Existing finalized
-# entries may not record target_branch, so follow the normal target inference.
+# entries may not record target_branch, so follow the normal target
+# inference; a missing checkout asks the remote which branch is its
+# default (outdated is inherently a remote query, so a network call is
+# acceptable here).
 outdated_target_branch() {
 	path=$1
 	target=$(subproject_key "$path" target_branch || true)
@@ -2438,7 +2467,9 @@ outdated_target_branch() {
 	elif [ -d "$path/.git" ]; then
 		default_target_branch "$path"
 	else
-		printf 'main\n'
+		repo=$(subproject_repo "$path" || true)
+		remote_head=$(git ls-remote --symref "$repo" HEAD 2>/dev/null | sed -n 's/^ref: refs\/heads\/\([^\t]*\)\tHEAD$/\1/p' || true)
+		[ -n "$remote_head" ] && printf '%s\n' "$remote_head"
 	fi
 }
 

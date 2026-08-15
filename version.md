@@ -15,8 +15,22 @@
     `git init` followed by `git-nest init` steps the menus forward.
   * `change directory` moves the session one folder at a time (with
     `..` to go up); `b`/empty line goes back, `q` exits gracefully.
-  * Commands needing arguments prompt on the next line; commands taking
-    a subproject show a numbered subproject picker.
+  * The "Nest contents" group folds membership verbs into two flows:
+    `bring in (absorb)` runs survey, lists detected targets by kind, and
+    absorbs a picked one through the right form (with bulk absorb-all
+    and a manual folder path that prompts for the remote URL); `take
+    out (inline/detach/remove)` shows the tree, picks a managed
+    subproject, and offers inline/detach/remove with confirmation.
+  * Branch names are never assumed: `default_target_branch` infers from
+    the remote HEAD symref, the sole remote branch, the sole local
+    branch (any name a `git init` created), or the current branch
+    before a `main` last resort; the main/master special case in the
+    branch safety check was removed, legacy restore entries no longer
+    force `main`, subrepo/submodule absorb defaults follow the remote,
+    and the files-source absorb honors `init.defaultBranch` before
+    falling back to `main`.
+  * Commands needing arguments prompt on the next line; `move` and
+    `update` show a numbered subproject picker.
   * Internal test switches `--ii-test <token>...` (scripted input) and
     `--ii-skip <n>` (drop leading tokens) let tests drive the loop
     without a terminal; they are not part of completion.

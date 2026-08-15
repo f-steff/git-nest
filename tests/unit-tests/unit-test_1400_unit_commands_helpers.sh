@@ -8,9 +8,30 @@ set -eu
 setup_unit_test
 load_lib "git-nest-manifest.sh"
 
-# default_target_branch: checks for origin refs via show-ref.
-# The default mock has show-ref for main, so it should return "main".
-assert_eq "$(default_target_branch ".")" "main" "default target branch is main"
+# default_target_branch: infers without assuming any branch name.
+# The default mock's catch-all symbolic-ref response is "main", so the
+# origin/HEAD symref path resolves to main.
+assert_eq "$(default_target_branch ".")" "main" "origin/HEAD symref default"
+
+# The remote HEAD symref wins with whatever name it carries.
+mock_git_response "symbolic-ref" "--quiet" "refs/remotes/origin/HEAD" "refs/remotes/origin/trunk"
+assert_eq "$(default_target_branch ".")" "trunk" "remote HEAD symref name is used"
+
+# A single local branch (whatever name git init created) is the answer
+# when no remote HEAD exists.
+mock_git_response "symbolic-ref" "--quiet" "refs/remotes/origin/HEAD" ""
+mock_git_response "for-each-ref" "--format=%(refname:short)" "refs/remotes/origin/*" ""
+mock_git_response "for-each-ref" "--format=%(refname:short)" "refs/heads" "release/candidate"
+assert_eq "$(default_target_branch ".")" "release/candidate" "sole local branch is used"
+
+# The current branch answers before the last-resort fallback.
+mock_git_response "for-each-ref" "--format=%(refname:short)" "refs/heads" ""
+mock_git_response "symbolic-ref" "--quiet" "--short" "HEAD" "develop"
+assert_eq "$(default_target_branch ".")" "develop" "current branch is used"
+
+# Nothing to infer from: the absolute last resort is still main.
+mock_git_response "symbolic-ref" "--quiet" "--short" "HEAD" ""
+assert_eq "$(default_target_branch ".")" "main" "main is the absolute last resort"
 
 # first_line: returns the first line of a file.
 printf 'line one\nline two\nline three\n' >test_lines.txt

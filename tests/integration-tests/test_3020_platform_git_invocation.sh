@@ -35,7 +35,7 @@ git nest help absorb >help_absorb.txt
 assert_file_contains help.txt "  Nest setup"
 assert_file_contains help.txt "  Workspace state"
 assert_file_contains help.txt "  Branch bookmarks"
-assert_file_contains help.txt "  Export and outer-repo conversion"
+assert_file_contains help.txt "  Nest contents"
 if LC_ALL=C grep "$(printf '\033')" help.txt >/dev/null 2>&1; then
     echo "redirected help should not contain ANSI color escapes" >&2
     exit 1

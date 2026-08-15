@@ -34,11 +34,16 @@ Nest setup
   2. clone            - Clone a nest repository and restore it here
 Subprojects
   3. add              - Add a repository as a managed subproject (URL + path)
-  4. remove           - Remove a subproject and delete its checkout
+  4. move             - Move a subproject to a new path
   ...
- 36. version          - Show the git-nest version
+Nest contents
+ 30. bring in (absorb)               - Show detected repos/submodules, then absorb them
+ 31. take out (inline/detach/remove) - Show the tree, pick a subproject, inline/detach/remove
+ 32. export                          - Export a source snapshot with MANIFEST.lock
+Tooling
+ 33. version          - Show the git-nest version
 Navigation
- 37. change directory - Move one level into a subfolder
+ 34. change directory - Move one level into a subfolder
   b. back             - Return to the previous menu
   q. quit             - Exit git-nest interactive
 ```
@@ -116,13 +121,13 @@ Enter arguments for git-nest clone (empty cancels): https://example.invalid/acme
 - `foreach`, `foreach-modified`, and `foreach-clean` take the shell
   command to run in each subproject, e.g. `git status --short`.
 - `branch-unmark` takes a branch name.
-- `export` takes the output path; `absorb` takes the path to bring in.
+- `export` takes the output path.
 - An empty line cancels the command.
 
 ## Commands that need a subproject
 
-`remove`, `detach`, `move`, `update`, and `inline` first show a picker
-with one numbered entry per managed subproject:
+`move` and `update` first show a picker with one numbered entry per
+managed subproject:
 
 ```
 > 4
@@ -130,10 +135,70 @@ with one numbered entry per managed subproject:
   b. back      - Return to the previous menu
   q. quit      - Exit git-nest interactive
 > 1
-/home/you/acme-app>git-nest remove libs/team
+/home/you/acme-app>git-nest move libs/team
 ```
 
-`move` (and `update`) then ask for one more value on the next line.
+The chosen path is then followed by the free-text value on the next
+line.
+
+## Membership flows (bring in / take out)
+
+The "Nest contents" group combines seeing with acting, so the options
+are easy to discover.
+
+**Bring in (absorb)** first runs `survey` (live output showing what it
+found and the suggested next step), then shows a picker of the detected
+targets with their kinds:
+
+```
+> 30
+/home/you/acme-app>git-nest survey
+Unmanaged repositories discovered under the current nest:
+  R  libs/team                    nested-repo  run git-nest absorb libs/team to manage it
+  G  vendor/thing                 subrepo      run git-nest absorb --subrepo vendor/thing to manage it
+  1. libs/team   - nested-repo
+  2. vendor/thing - subrepo
+  a. absorb all detected
+  m. type a folder or path manually
+  b. back - Return to the previous menu
+  q. quit - Exit git-nest interactive
+> 1
+/home/you/acme-app>git-nest absorb libs/team
+```
+
+- Picking a target runs the right absorb form automatically:
+  submodules, nested repos, nest roots, and detached former subprojects
+  absorb plainly; git-subrepos get the explicit `--subrepo` flag.
+- `a` absorbs every detected target in one batch (confirmed with
+  `[y/N]`), equivalent to `git-nest absorb-all`.
+- `m` accepts a manually typed path. Folders (outer-repo files) have no
+  `.git`, so the flow asks for the remote URL before running:
+  `absorb <path> <url>`; repositories and subrepos absorb without one.
+  Subtree-shaped directories have no marker and are always reached
+  through `m` with a remote URL.
+- After every action the picker re-renders from a fresh survey, so
+  absorbed items disappear.
+
+**Take out (inline/detach/remove)** first runs `tree --all` (the whole
+nest, managed and unmanaged), then lets you pick a managed subproject
+and choose what to do with it:
+
+```
+> 31
+/home/you/acme-app>git-nest tree --all
+...
+  1. libs/team - managed subproject
+  b. back      - Return to the previous menu
+  q. quit      - Exit git-nest interactive
+> 1
+Take out libs/team: inline (i), detach (d), or remove (r)? d
+Run git-nest detach libs/team? [y/N]: y
+/home/you/acme-app>git-nest detach libs/team
+```
+
+`i` dissolves the subproject into outer tracked files (inline), `d`
+detaches it as a standalone still-ignored repository, `r` removes it
+and deletes the checkout. Each verb is confirmed before it runs.
 
 ## Navigating the filesystem
 
@@ -143,7 +208,7 @@ current folder has a parent) goes up one level; `b` returns to the main
 menu, where the context is re-detected for the new location:
 
 ```
-> 37
+> 34
   1. ..  - Go up one level
   2. sub - Open this folder
   b. back - Return to the previous menu
@@ -153,7 +218,7 @@ menu, where the context is re-detected for the new location:
   b. back - Return to the previous menu
   q. quit - Exit git-nest interactive
 > b
-> 36
+> 33
 /home/you/acme-app/sub>git-nest version
 ```
 

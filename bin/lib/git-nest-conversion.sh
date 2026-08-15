@@ -720,7 +720,12 @@ absorb_subrepo() {
 	sr_branch=$(gitrepo_get "$gitrepo_file" branch)
 	[ -n "$sr_remote" ] || precondition_error "$gitrepo_file has no remote entry; cannot determine the subrepo's upstream URL"
 	url=${repo_arg:-$sr_remote}
-	target=${sr_branch:-main}
+	# Target branch: the .gitrepo branch, else the subrepo's own remote
+	# default (the subrepo path is tracked by the outer repo, so there is
+	# no local checkout to infer from). main is the absolute last resort.
+	target=$sr_branch
+	[ -n "$target" ] || target=$(git ls-remote --symref "$url" HEAD 2>/dev/null | sed -n 's/^ref: refs\/heads\/\([^\t]*\)\tHEAD$/\1/p' || true)
+	[ -n "$target" ] || target=main
 	assert_path_not_containing_nested_project "$path"
 	[ -d "$path" ] || precondition_error "$path is not a directory"
 	if ! git ls-files -- "$path" | sed -n '1p' | grep . >/dev/null 2>&1; then
@@ -891,13 +896,17 @@ absorb_existing_repo() {
 		revision=$(git ls-files -s -- "$path" 2>/dev/null | awk 'NR == 1 { print $2 }')
 	fi
 	[ -n "$revision" ] || precondition_error "cannot resolve a commit for $path; check the repository state"
-	# Choose the target branch: an explicit submodule branch, else the current
-	# branch, else the origin default.
+	# Choose the target branch: an explicit submodule branch, else the
+	# current branch, else the origin default. No name is assumed; the
+	# main fallback below applies only when nothing exists to infer from.
 	target=$sub_branch
 	if [ -z "$target" ] && [ -e "$path/.git" ]; then
 		target=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
 		[ -n "$target" ] || target=$(default_target_branch "$path")
 	fi
+	# Absolute last resort for a submodule with no checkout and no
+	# recorded branch; the materialized checkout later follows the
+	# remote default instead of trusting this guess.
 	[ -n "$target" ] || target=main
 
 	# Snapshot output values before any mutating helper runs. Helpers such as
@@ -969,7 +978,11 @@ absorb_existing_repo() {
 # a submodule. It is the single into-the-nest conversion verb; add clones a new
 # remote, while inline, detach, and remove take subprojects back out of the nest.
 cmd_absorb() {
-	branch=main
+	# Default branch for a newly created files-source repo. This is a
+	# creation choice, not an assumption about an existing repository:
+	# honor the user's init.defaultBranch, falling back to main.
+	branch=$(git config --get init.defaultBranch 2>/dev/null || true)
+	[ -n "$branch" ] || branch=main
 	branch_set=0
 	clone_mode=
 	preserve_history=0
