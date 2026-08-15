@@ -647,6 +647,27 @@ assert_safe_project_path() {
 		precondition_error "path must be a relative path inside the current project: $path"
 }
 
+# Refuse a subproject path that resolves through a symlink or junction.
+# A symlinked component can point outside the nest, so a checkout,
+# clone, or conversion through it would manage (or clobber) files that
+# do not belong to the nest. Links are detected with -L, which also
+# covers Windows junctions (MSYS exposes them as symlinks).
+assert_no_symlink_components() {
+	ansc_path=$1
+	ansc_cur=.
+	ansc_rest=$ansc_path
+	while [ -n "$ansc_rest" ]; do
+		ansc_comp=${ansc_rest%%/*}
+		ansc_rest=${ansc_rest#*/}
+		[ "$ansc_rest" = "$ansc_comp" ] && ansc_rest=
+		[ -n "$ansc_comp" ] || continue
+		ansc_cur="$ansc_cur/$ansc_comp"
+		if [ -L "$ansc_cur" ]; then
+			precondition_error "path $ansc_path resolves through symlink $ansc_cur; refusing to manage paths that leave the nest (use the real path instead)"
+		fi
+	done
+}
+
 # Refuse a candidate path that lies inside any existing managed subproject,
 # whether or not that subproject is itself a nested nest. A subproject's
 # checkout belongs to its own repository, not the outer nest, so no new

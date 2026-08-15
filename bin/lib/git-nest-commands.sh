@@ -1524,6 +1524,9 @@ cmd_add() {
 	ensure_manifest
 	validate_manifest_schema
 	assert_path_not_inside_nested_project "$path"
+	# A symlinked target can point outside the nest; adding through it
+	# would record a subproject whose checkout lives elsewhere.
+	assert_no_symlink_components "$path"
 	assert_no_case_collision "$path"
 	project_invocation_warnings
 
@@ -1761,6 +1764,10 @@ cmd_mv() {
 	validate_manifest_schema
 	assert_path_not_inside_nested_project "$old_path"
 	assert_path_not_inside_nested_project "$new_path"
+	# Neither endpoint may resolve through a symlink: the checkout (and
+	# any relocation of it) must stay inside the nest.
+	assert_no_symlink_components "$old_path"
+	assert_no_symlink_components "$new_path"
 	repo=$(subproject_repo "$old_path" || true)
 	[ -n "$repo" ] || precondition_error "$old_path is not a tracked subproject in $MANIFEST_FILE"
 	[ -z "$(subproject_repo "$new_path" || true)" ] || precondition_error "$new_path is already a tracked subproject"

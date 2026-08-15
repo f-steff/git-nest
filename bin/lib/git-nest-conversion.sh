@@ -1070,6 +1070,9 @@ cmd_absorb() {
 	ensure_manifest
 	validate_manifest_schema
 	assert_path_not_inside_nested_project "$path"
+	# A symlinked path can point outside the nest; absorbing through it
+	# would manage files that do not belong to the workspace.
+	assert_no_symlink_components "$path"
 
 	# --subrepo and --subtree are explicit, conscious conversions: they touch
 	# actual tracked files in the outer repository, so they are never

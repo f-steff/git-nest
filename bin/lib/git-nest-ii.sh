@@ -177,10 +177,17 @@ ii_context() {
 
 # List the subdirectories one level down (hidden ones excluded, sorted),
 # one per line. The glob skips dot-directories without needing find.
+# Symlinked directories are excluded too: entering one (or selecting it
+# as a move destination) could carry the session outside the nest, and
+# the path commands refuse symlink components anyway.
 ii_subdirs() {
 	for ii_d in */; do
 		[ -d "$ii_d" ] || continue
-		printf '%s\n' "${ii_d%/}"
+		# The glob carries a trailing slash; -L on "link/" dereferences
+		# the link and always fails, so strip it before testing.
+		ii_d=${ii_d%/}
+		[ -L "$ii_d" ] && continue
+		printf '%s\n' "$ii_d"
 	done | sort
 }
 
