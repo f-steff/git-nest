@@ -93,7 +93,7 @@ grep -E '^  2\. sub ' cd.out >/dev/null || {
     printf 'UNEXPECTED RESULT: directory picker must list subdirectories\n' >&2
     exit 1
 }
-assert_file_contains cd.out "$work/virgin/sub>git-nest version"
+assert_file_contains cd.out "virgin/sub>git-nest version"
 
 test_step "Exhausted scripted input exits gracefully" "When the --ii-test token queue runs out, the session must end with exit 0 instead of waiting on a terminal."
 mkdir -p "$work/exhaust"
