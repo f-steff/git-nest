@@ -13,8 +13,15 @@
     Git repo offers `git-nest init`, and a nest offers the grouped full
     command surface. Context is re-detected after every action, so
     `git init` followed by `git-nest init` steps the menus forward.
-  * `change directory` moves the session one folder at a time (with
-    `..` to go up); `b`/empty line goes back, `q` exits gracefully.
+  * `change directory` moves the session one folder at a time through
+    a shared folder browser: `0` goes to the parent, the nest root /
+    start cwd / current cwd anchors are offered on the first screen,
+    and `b`/empty line goes back, `q` exits gracefully. `move` reuses
+    the browser (capped at the nest root) with `s` to select a folder
+    and `n` to select a folder plus a new name.
+  * `jump nest` (all contexts) lists nested nests (managed composites
+    and unmanaged nest roots) and the session's visited-nest history,
+    and moves the session to the picked nest root.
   * The "Nest contents" group folds membership verbs into two flows:
     `bring in (absorb)` runs survey, lists detected targets by kind, and
     absorbs a picked one through the right form (with bulk absorb-all

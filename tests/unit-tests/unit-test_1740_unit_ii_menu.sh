@@ -1,13 +1,25 @@
 #!/bin/sh
 # Unit test: interactive menu input parsing and rendering (ii_parse_input,
-# ii_menu_show, ii_table_entry, ii_menu_for).
-# Coverage: ii_parse_input, ii_menu_show, ii_table_entry, ii_menu_for
+# ii_menu_show, ii_table_entry, ii_menu_for, ii_truncate_path).
+# Coverage: ii_parse_input, ii_menu_show, ii_table_entry, ii_menu_for, ii_truncate_path
 
 set -eu
 . "$(dirname "$0")/helper.sh"
 
 setup_unit_test
 load_lib "git-nest-ii.sh"
+
+# --- ii_truncate_path: display truncation for long anchor paths ---
+assert_eq "$(ii_truncate_path 'src/lib')" "src/lib" "short path passes through"
+long=
+i=0
+while [ "$i" -lt 60 ]; do
+    long="${long}x"
+    i=$((i + 1))
+done
+trunc=$(ii_truncate_path "$long")
+assert_eq "$(printf '%s' "$trunc" | cut -c1-3)" "..." "long path is prefixed with dots"
+assert_eq "$(printf '%s' "$trunc" | wc -c | tr -d ' ')" "45" "long path is capped at 45 chars"
 
 # --- ii_parse_input: choice tokens ---
 assert_eq "$(ii_parse_input 1 5)" "run" "first entry"
@@ -91,7 +103,11 @@ printf '%s\n' "$nest_menu" | grep -q '^take out (inline/detach/remove)|takeout-f
     printf 'UNEXPECTED RESULT: nest menu must offer the take-out flow\n' >&2
     exit 1
 }
-for gone in '^absorb|text|' '^absorb-all|run|' '^inline|path|' '^detach|path|' '^remove|path|'; do
+printf '%s\n' "$nest_menu" | grep -q '^move|path-browse|move|' || {
+    printf 'UNEXPECTED RESULT: move must use the path-browse kind\n' >&2
+    exit 1
+}
+for gone in '^absorb|text|' '^absorb-all|run|' '^inline|path|' '^detach|path|' '^remove|path|' '^move|path-text|'; do
     printf '%s\n' "$nest_menu" | grep -q "$gone" && {
         printf 'UNEXPECTED RESULT: standalone membership entries must be folded into the flows (%s)\n' "$gone" >&2
         exit 1
@@ -100,6 +116,10 @@ done
 for menu in "$none_menu" "$git_menu" "$nest_menu"; do
     printf '%s\n' "$menu" | grep -q '^change directory|cd|' || {
         printf 'UNEXPECTED RESULT: every menu must offer directory navigation\n' >&2
+        exit 1
+    }
+    printf '%s\n' "$menu" | grep -q '^jump nest|jump-nest-flow|' || {
+        printf 'UNEXPECTED RESULT: every menu must offer jump nest\n' >&2
         exit 1
     }
 done

@@ -21,6 +21,9 @@ ii_menu_number() {
 }
 
 work=$(test_workspace command_interactive)
+# make_bare_remote reassigns the global `work` variable, so keep the
+# workspace root in its own variable for the later steps.
+work_root=$work
 mkdir -p "$work"
 cd "$work"
 
@@ -67,21 +70,21 @@ assert_file_not_contains gitonly.out ">git init"
     exit 1
 }
 
-test_step "Inside a nest the full menu appears with change directory last" "The nest menu must group the whole command surface, and change directory must be the highest-numbered entry. Number alignment itself is covered by the unit suite."
+test_step "Inside a nest the full menu appears with jump nest last" "The nest menu must group the whole command surface, and jump nest must be the highest-numbered entry. Number alignment itself is covered by the unit suite."
 run_capture "menu probe in a nest" probe.out probe.err -- "$GIT_NEST" interactive --ii-test q
 status_num=$(ii_menu_number probe.out "status")
-cd_num=$(ii_menu_number probe.out "change directory")
+jump_num=$(ii_menu_number probe.out "jump nest")
 [ -n "$status_num" ] || {
     printf 'UNEXPECTED RESULT: nest menu must offer status\n' >&2
     exit 1
 }
-[ -n "$cd_num" ] || {
-    printf 'UNEXPECTED RESULT: nest menu must offer change directory\n' >&2
+[ -n "$jump_num" ] || {
+    printf 'UNEXPECTED RESULT: nest menu must offer jump nest\n' >&2
     exit 1
 }
 last_num=$(grep -E '^ *[0-9][0-9]*\. ' probe.out | sed 's/^ *\([0-9][0-9]*\)\..*/\1/' | sort -n | sed -n '$p')
-[ "$cd_num" = "$last_num" ] || {
-    printf 'UNEXPECTED RESULT: change directory must be the last numbered entry (got %s, last %s)\n' "$cd_num" "$last_num" >&2
+[ "$jump_num" = "$last_num" ] || {
+    printf 'UNEXPECTED RESULT: jump nest must be the last numbered entry (got %s, last %s)\n' "$jump_num" "$last_num" >&2
     exit 1
 }
 run_capture "interactive in a nest" nest.out nest.err -- "$GIT_NEST" interactive --ii-test "$status_num" q
@@ -107,22 +110,39 @@ assert_file_contains skip.out ">git-nest status"
 assert_file_not_contains skip.out ">git-nest tidy"
 assert_file_not_contains skip.out ">git-nest clone"
 
-test_step "Directory navigation changes the cwd one layer at a time" "The change directory entry lists subdirectories; choosing one enters it, b returns to the main menu, and the next command echoes the new cwd."
+test_step "Directory navigation changes the cwd one layer at a time" "The change directory entry lists the parent as entry 0, then subdirectories; choosing one enters it, b returns to the main menu, and the next command echoes the new cwd."
 mkdir -p "$work/virgin/sub"
 cd "$work/virgin"
 run_capture "menu probe for directory step" probe.out probe.err -- "$GIT_NEST" interactive --ii-test q
 cd_num=$(ii_menu_number probe.out "change directory")
 version_num=$(ii_menu_number probe.out "version")
 run_capture "directory navigation" cd.out cd.err -- "$GIT_NEST" interactive --ii-test "$cd_num" 2 b "$version_num" q
-grep -E '^  1\. \.\. ' cd.out >/dev/null || {
-    printf 'UNEXPECTED RESULT: directory picker must offer the parent first\n' >&2
+grep -E '^  0\. \.\. ' cd.out >/dev/null || {
+    printf 'UNEXPECTED RESULT: directory picker must offer the parent as entry 0\n' >&2
     exit 1
 }
-grep -E '^  2\. sub ' cd.out >/dev/null || {
-    printf 'UNEXPECTED RESULT: directory picker must list subdirectories\n' >&2
+grep -E '^  2\. sub/ ' cd.out >/dev/null || {
+    printf 'UNEXPECTED RESULT: directory picker must list subdirectories after the parent\n' >&2
     exit 1
 }
 assert_file_contains cd.out "virgin/sub>git-nest version"
+
+test_step "The browser offers nest-root and start-cwd anchors" "When the browser is entered from a folder inside the nest, the first render must offer the nest root and the folder the session started in as jump entries."
+mkdir -p "$work/virgin/sub2"
+cd "$work/virgin/sub2"
+run_capture "menu probe for anchor step" probe.out probe.err -- "$GIT_NEST" interactive --ii-test q
+cd_num=$(ii_menu_number probe.out "change directory")
+version_num=$(ii_menu_number probe.out "version")
+run_capture "anchor jump to the nest root" anchors.out anchors.err -- "$GIT_NEST" interactive --ii-test "$cd_num" 1 b "$version_num" q
+grep -E '^  1\. nest root  \(' anchors.out >/dev/null || {
+    printf 'UNEXPECTED RESULT: browser must offer the nest root anchor first\n' >&2
+    exit 1
+}
+grep -E '^  2\. start cwd  \(' anchors.out >/dev/null || {
+    printf 'UNEXPECTED RESULT: browser must offer the start cwd anchor\n' >&2
+    exit 1
+}
+assert_file_contains anchors.out "virgin>git-nest version"
 
 test_step "Exhausted scripted input exits gracefully" "When the --ii-test token queue runs out, the session must end with exit 0 instead of waiting on a terminal."
 mkdir -p "$work/exhaust"
@@ -183,4 +203,57 @@ assert_file_contains flowout.out "Take out bar: inline (i), detach (d), or remov
 assert_file_contains flowout.out "Run git-nest detach bar? [y/N]: y"
 assert_file_contains flowout.out ">git-nest detach bar"
 
-describe_result "git-nest interactive drives the full command surface from line-based menus: virgin->git init->git-nest init->nest transitions, invalid/back handling, --ii-skip fast-forward, one-layer directory navigation, graceful EOF, and the bring-in/take-out membership flows. Entry numbers are probed from the rendered menu, never hardcoded."
+test_step "move browses the nest for the destination and adds a name" "move must pick the source subproject, browse the nest (select mode, capped at the nest root), and let the user select a folder plus a new name, then run move with the composed path."
+move_dir="$work_root/move-nest"
+mkdir -p "$move_dir"
+cd "$move_dir"
+"$GIT_NEST" init >/dev/null
+# make_bare_remote reassigns the test's global `work` variable, so the
+# move dir is kept in its own variable and paths stay absolute.
+make_bare_remote "$move_dir/remotes/bar.git" "$work_root/move-seed"
+git clone -q "$move_dir/remotes/bar.git" libs/bar
+"$GIT_NEST" absorb libs/bar >/dev/null
+run_capture "menu probe for move step" probe.out probe.err -- "$GIT_NEST" interactive --ii-test q
+move_num=$(ii_menu_number probe.out "move")
+[ -n "$move_num" ] || {
+    printf 'UNEXPECTED RESULT: nest menu must offer move\n' >&2
+    exit 1
+}
+run_capture "browse-move" move.out move.err -- "$GIT_NEST" interactive --ii-test "$move_num" 1 2 n tools q
+assert_file_contains move.out ">git-nest move libs/bar libs/tools"
+grep -q 'subproject "libs/tools"' .gitnest || {
+    printf 'UNEXPECTED RESULT: browse-move did not record the new subproject path\n' >&2
+    exit 1
+}
+
+test_step "jump nest finds nested nests and returns to visited ones" "jump nest must list a managed subproject that is itself a nest, jump into it, and on the next jump offer the previous nest from the session history."
+jump_dir="$work_root/jump"
+mkdir -p "$jump_dir"
+cd "$jump_dir"
+"$GIT_NEST" init >/dev/null
+make_bare_remote "$jump_dir/remotes/bar.git" "$work_root/jump-seed"
+git clone -q "$jump_dir/remotes/bar.git" libs/nested-app
+# Make the subproject a nest itself (composite), then absorb it.
+cd libs/nested-app
+"$GIT_NEST" init --sure >/dev/null
+cd "$jump_dir"
+"$GIT_NEST" absorb libs/nested-app >/dev/null
+run_capture "menu probe for jump step" probe.out probe.err -- "$GIT_NEST" interactive --ii-test q
+jump_num=$(ii_menu_number probe.out "jump nest")
+[ -n "$jump_num" ] || {
+    printf 'UNEXPECTED RESULT: nest menu must offer jump nest\n' >&2
+    exit 1
+}
+run_capture "jump nest flow" jump.out jump.err -- "$GIT_NEST" interactive --ii-test "$jump_num" 1 "$jump_num" 1 q
+assert_file_contains jump.out "composite nest"
+assert_file_contains jump.out "previously visited"
+[ "$(grep -c 'Now in nest:' jump.out)" -eq 2 ] || {
+    printf 'UNEXPECTED RESULT: jump nest must move the session twice (in and back)\n' >&2
+    exit 1
+}
+grep 'Now in nest:' jump.out | grep -q 'nested-app' || {
+    printf 'UNEXPECTED RESULT: first jump must land in the nested nest\n' >&2
+    exit 1
+}
+
+describe_result "git-nest interactive drives the full command surface from line-based menus: virgin->git init->git-nest init->nest transitions, invalid/back handling, --ii-skip fast-forward, one-layer directory navigation with anchors, graceful EOF, the bring-in/take-out membership flows, browse-move, and jump nest. Entry numbers are probed from the rendered menu, never hardcoded."

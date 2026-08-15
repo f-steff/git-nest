@@ -31,7 +31,8 @@ git init|run|git init|Initialize a Git repository in this folder
 :Tooling
 version|run|version|Show the git-nest version
 :Navigation
-change directory|cd|-|Move one level into a subfolder"
+change directory|cd|-|Move one level into a subfolder
+jump nest|jump-nest-flow|-|Jump to a nested or previously visited nest"
 
 II_ACTIONS_GIT_ONLY="
 :Nest setup
@@ -40,7 +41,8 @@ git-nest clone|text|clone|Clone a nest repository and restore it here
 :Tooling
 version|run|version|Show the git-nest version
 :Navigation
-change directory|cd|-|Move one level into a subfolder"
+change directory|cd|-|Move one level into a subfolder
+jump nest|jump-nest-flow|-|Jump to a nested or previously visited nest"
 
 II_ACTIONS_NEST="
 :Nest setup
@@ -48,7 +50,7 @@ tidy|run|tidy|Refresh managed support files
 clone|text|clone|Clone a nest repository and restore it here
 :Subprojects
 add|text|add|Add a repository as a managed subproject (URL + path)
-move|path-text|move|Move a subproject to a new path
+move|path-browse|move|Move a subproject to a new path
 config|text|config|Read or update manifest and local settings
 update|path-text|update|Move a subproject to a selected revision
 :Workspace state
@@ -86,7 +88,8 @@ export|text|export|Export a source snapshot with MANIFEST.lock
 :Tooling
 version|run|version|Show the git-nest version
 :Navigation
-change directory|cd|-|Move one level into a subfolder"
+change directory|cd|-|Move one level into a subfolder
+jump nest|jump-nest-flow|-|Jump to a nested or previously visited nest"
 
 # Pick the menu table for a context so the offered actions always match
 # the workspace state (virgin folder, git repo, or nest).
@@ -271,32 +274,254 @@ EOF
 	done
 }
 
-# Directory browser: move the interactive shell's own cwd one layer at a
-# time. Subdirectories are numbered entries; `..` goes up one level;
-# `b` returns to the main menu, where the context (and therefore the
-# menu) is re-detected for the new location.
-ii_pick_directory() {
+# The path the browser's select actions would return: the current folder
+# relative to the browser cap, or `.` at the cap itself. The cap is the
+# nest root in select mode, so the result is always nest-relative.
+ii_browse_rel() {
+	ii_bmin2=$1
+	ii_bpwd=$(pwd)
+	if [ -n "$ii_bmin2" ] && [ "$ii_bpwd" != "$ii_bmin2" ]; then
+		printf '%s' "${ii_bpwd#"$ii_bmin2"/}"
+	else
+		printf '.'
+	fi
+}
+
+# Truncate a displayed path so anchor rows do not stretch the menu to
+# the full path width; the tail keeps the folder names readable.
+ii_truncate_path() {
+	ii_tp=$1
+	if [ "${#ii_tp}" -gt 45 ]; then
+		printf '...%s' "$(printf '%s' "$ii_tp" | tail -c 42)"
+	else
+		printf '%s' "$ii_tp"
+	fi
+}
+
+# Generic folder browser: navigate one level at a time and either move
+# the session cwd (cd mode) or return a selected path (select mode).
+# The three relevant start points (nest root, the folder the session
+# started in, the session cwd) are offered as the first numbered
+# entries on the first render only; `0` goes to the parent (hidden at
+# the cap or the filesystem root); `s` returns the current folder,
+# `n` returns it plus a new name. In select mode the session cwd is
+# restored on exit, so only cd mode actually moves the session.
+ii_browse_path() {
+	ii_bmin=$1
+	ii_bmode=$2
+	ii_bentry=$(pwd)
+	ii_banchors=1
 	while :; do
-		ii_cd_table=
-		ii_parent=$(cd .. 2>/dev/null && pwd || true)
-		if [ -n "$ii_parent" ] && [ "$ii_parent" != "$(pwd)" ]; then
-			ii_cd_table="..|run|..|Go up one level
+		ii_btable=
+		# Anchors: nest root, start cwd, session cwd, deduplicated by
+		# path so identical locations collapse into one entry.
+		if [ "$ii_banchors" -eq 1 ]; then
+			ii_broot=$(find_project_root 2>/dev/null || true)
+			ii_banchors_list=
+			[ -n "$ii_broot" ] && ii_banchors_list="$ii_broot"
+			[ "$II_START_CWD" != "$ii_broot" ] && ii_banchors_list="$ii_banchors_list
+$II_START_CWD"
+			[ "$II_SESSION_CWD" != "$ii_broot" ] && [ "$II_SESSION_CWD" != "$II_START_CWD" ] &&
+				ii_banchors_list="$ii_banchors_list
+$II_SESSION_CWD"
+			while IFS= read -r ii_ba; do
+				[ -n "$ii_ba" ] || continue
+				case "$ii_ba" in
+				"$ii_broot") ii_blabel="nest root" ;;
+				"$II_START_CWD") ii_blabel="start cwd" ;;
+				*) ii_blabel="current cwd" ;;
+				esac
+				ii_btable="$ii_btable$ii_blabel  ($(ii_truncate_path "$ii_ba"))|anchor|$ii_ba|jump to this start point
 "
+			done <<EOF
+$ii_banchors_list
+EOF
 		fi
-		ii_dirs=$(ii_subdirs)
-		while IFS= read -r ii_d; do
-			[ -n "$ii_d" ] || continue
-			ii_cd_table="$ii_cd_table$ii_d|run|$ii_d|Open this folder
+		# Parent entry: hidden when at the cap or the filesystem root.
+		ii_bup=0
+		if [ -z "$ii_bmin" ] || [ "$(pwd)" != "$ii_bmin" ]; then
+			ii_bparent=$(cd .. 2>/dev/null && pwd || true)
+			[ -n "$ii_bparent" ] && [ "$ii_bparent" != "$(pwd)" ] && ii_bup=1
+		fi
+		# Subdirectories one level down (hidden excluded, sorted).
+		ii_bsubdirs=$(ii_subdirs)
+		while IFS= read -r ii_bs; do
+			[ -n "$ii_bs" ] || continue
+			ii_btable="$ii_btable$ii_bs/|run|$ii_bs|open this folder
 "
 		done <<EOF
-$ii_dirs
+$ii_bsubdirs
 EOF
-		if [ -z "$ii_cd_table" ]; then
-			printf 'No subdirectories here.\n'
-			return 1
+		# Render the browser itself: the shared renderer numbers its
+		# tables from 1, so the `0. ..` line and the mode tokens are
+		# printed around it.
+		ii_w=0
+		ii_n=0
+		while IFS='|' read -r ii_bl ii_bk ii_bc ii_bd; do
+			[ -n "$ii_bl" ] || continue
+			ii_n=$((ii_n + 1))
+			[ "${#ii_bl}" -gt "$ii_w" ] && ii_w=${#ii_bl}
+		done <<EOF
+$ii_btable
+EOF
+		II_MENU_COUNT=$ii_n
+		if [ "$ii_bup" -eq 1 ]; then
+			printf '%3d. %-*s - %s\n' 0 "$ii_w" '..' '(parent)'
 		fi
+		ii_n=0
+		while IFS='|' read -r ii_bl ii_bk ii_bc ii_bd; do
+			[ -n "$ii_bl" ] || continue
+			ii_n=$((ii_n + 1))
+			printf '%3d. %-*s - %s\n' "$ii_n" "$ii_w" "$ii_bl" "$ii_bd"
+		done <<EOF
+$ii_btable
+EOF
+		if [ "$ii_bmode" = select ]; then
+			ii_bsel=$(ii_browse_rel "$ii_bmin")
+			printf '%3s. %-*s - %s\n' s "$ii_w" "Select $ii_bsel" '(use this folder)'
+			printf '%3s. %-*s - %s\n' n "$ii_w" "Select $ii_bsel and name" '(add a subfolder name)'
+		fi
+		printf '%3s. %-*s - %s\n' b "$ii_w" back '(return to the menu)'
+		printf '%3s. %-*s - %s\n' q "$ii_w" quit '(exit git-nest interactive)'
+		ii_read_line '> ' || {
+			II_QUIT=1
+			[ "$ii_bmode" = select ] && cd "$ii_bentry"
+			return 1
+		}
+		case "$II_LINE" in
+		0)
+			if [ "$ii_bup" -eq 1 ]; then
+				cd .. 2>/dev/null || true
+				ii_banchors=0
+				[ "$ii_bmode" = cd ] && II_SESSION_CWD=$(pwd)
+			else
+				printf 'Already at the top.\n'
+			fi
+			;;
+		s | S)
+			if [ "$ii_bmode" = select ]; then
+				ii_bsel=$(ii_browse_rel "$ii_bmin")
+				if [ "$ii_bsel" = . ]; then
+					printf 'The base folder itself cannot be selected; use n to add a name.\n'
+				else
+					II_BROWSE_PATH=$ii_bsel
+					cd "$ii_bentry"
+					return 0
+				fi
+			else
+				printf 'Unknown choice: %s\n' "$II_LINE"
+			fi
+			;;
+		n | N)
+			if [ "$ii_bmode" = select ]; then
+				ii_bsel=$(ii_browse_rel "$ii_bmin")
+				ii_read_line "Name within $ii_bsel (empty cancels): " || {
+					II_QUIT=1
+					cd "$ii_bentry"
+					return 1
+				}
+				if [ -n "$II_LINE" ]; then
+					if [ "$ii_bsel" = . ]; then
+						II_BROWSE_PATH=$II_LINE
+					else
+						II_BROWSE_PATH="$ii_bsel/$II_LINE"
+					fi
+					cd "$ii_bentry"
+					return 0
+				fi
+				printf 'Cancelled.\n'
+			else
+				printf 'Unknown choice: %s\n' "$II_LINE"
+			fi
+			;;
+		b)
+			[ "$ii_bmode" = select ] && cd "$ii_bentry"
+			return 1
+			;;
+		q)
+			II_QUIT=1
+			[ "$ii_bmode" = select ] && cd "$ii_bentry"
+			return 1
+			;;
+		*)
+			case "$(ii_parse_input "$II_LINE" "$II_MENU_COUNT")" in
+			invalid) printf 'Unknown choice: %s\n' "$II_LINE" ;;
+			run)
+				ii_btarget=$(printf '%s\n' "$ii_btable" | ii_table_entry "$II_LINE" | cut -d'|' -f3)
+				if [ -n "$ii_btarget" ]; then
+					cd "$ii_btarget" 2>/dev/null || printf 'Cannot enter %s.\n' "$ii_btarget"
+					ii_banchors=0
+					[ "$ii_bmode" = cd ] && II_SESSION_CWD=$(pwd)
+				fi
+				;;
+			esac
+			;;
+		esac
+	done
+}
+
+# Directory browser: move the session's own cwd one layer at a time via
+# the shared browser in cd mode (uncapped, anchors offered first, `0` up
+# one level, `b` returns to the main menu where the context re-detects).
+ii_pick_directory() {
+	ii_browse_path "" cd
+}
+
+# Jump to another nest: nested nests found inside the current one
+# (managed composites carrying their own manifest plus unmanaged nest
+# roots from survey) and nests the session visited earlier. Selecting an
+# entry moves the session cwd there and returns to the main menu.
+ii_jump_nest() {
+	ii_jroot=$(find_project_root 2>/dev/null || pwd)
+	ii_jtable=
+	ii_jseen=
+	# Managed composites: subprojects with a checked-out manifest.
+	ii_jrows=$("$II_GIT_NEST" list --porcelain 2>/dev/null | cut -f2 || true)
+	while IFS= read -r ii_jp; do
+		[ -n "$ii_jp" ] || continue
+		if [ -e "$ii_jroot/$ii_jp/.git" ] && [ -f "$ii_jroot/$ii_jp/.gitnest" ]; then
+			ii_jabs="$ii_jroot/$ii_jp"
+			ii_jtable="$ii_jtable$ii_jabs|run|$ii_jabs|composite nest
+"
+			ii_jseen="$ii_jseen
+$ii_jabs"
+		fi
+	done <<EOF
+$ii_jrows
+EOF
+	# Unmanaged nested nest roots from survey, deduplicated against the
+	# composite list above.
+	ii_jsurvey=$("$II_GIT_NEST" survey --porcelain 2>/dev/null || true)
+	while IFS='	' read -r ii_jcode ii_jpath ii_jstate ii_jrest; do
+		[ "$ii_jstate" = nest-root ] || continue
+		ii_jabs="$ii_jroot/$ii_jpath"
+		printf '%s\n' "$ii_jseen" | grep -Fx "$ii_jabs" >/dev/null 2>&1 && continue
+		ii_jtable="$ii_jtable$ii_jabs|run|$ii_jabs|unmanaged nest root
+"
+		ii_jseen="$ii_jseen
+$ii_jabs"
+	done <<EOF
+$ii_jsurvey
+EOF
+	# Session history, excluding the nest the session is currently in.
+	while IFS= read -r ii_jh; do
+		[ -n "$ii_jh" ] || continue
+		[ "$ii_jh" != "$ii_jroot" ] || continue
+		printf '%s\n' "$ii_jseen" | grep -Fx "$ii_jh" >/dev/null 2>&1 && continue
+		ii_jtable="$ii_jtable$ii_jh|run|$ii_jh|previously visited
+"
+		ii_jseen="$ii_jseen
+$ii_jh"
+	done <<EOF
+$II_NEST_HISTORY
+EOF
+	if [ -z "$ii_jtable" ]; then
+		printf 'No other nests found (none nested here, none visited earlier).\n'
+		return 0
+	fi
+	while :; do
 		ii_menu_show <<EOF
-$ii_cd_table
+$ii_jtable
 EOF
 		ii_read_line '> ' || {
 			II_QUIT=1
@@ -310,12 +535,14 @@ EOF
 			;;
 		invalid) printf 'Unknown choice: %s\n' "$II_LINE" ;;
 		run)
-			ii_target=$(printf '%s\n' "$ii_cd_table" | ii_table_entry "$II_LINE" | cut -d'|' -f1)
-			if [ "$ii_target" = ".." ]; then
-				cd .. 2>/dev/null || printf 'Cannot go up from here.\n'
+			ii_jtarget=$(printf '%s\n' "$ii_jtable" | ii_table_entry "$II_LINE" | cut -d'|' -f1)
+			if [ -d "$ii_jtarget" ] && cd "$ii_jtarget" 2>/dev/null; then
+				II_SESSION_CWD=$(pwd)
+				printf 'Now in nest: %s\n' "$(pwd)"
 			else
-				cd "$ii_target" 2>/dev/null || printf 'Cannot enter %s.\n' "$ii_target"
+				printf 'Cannot enter %s.\n' "$ii_jtarget"
 			fi
+			return 0
 			;;
 		esac
 	done
@@ -501,6 +728,14 @@ ii_exec_entry() {
 			printf 'Cancelled.\n'
 		fi
 		;;
+	path-browse)
+		# move: pick the source subproject, then browse the nest for the
+		# destination in select mode (capped at the nest root, so the
+		# result is always a valid nest-relative path).
+		ii_pick_subproject || return 0
+		ii_browse_path "$(find_project_root 2>/dev/null || pwd)" select || return 0
+		ii_run_command "move $II_PATH $II_BROWSE_PATH"
+		;;
 	cd)
 		# The pickers return 1 to signal quit/EOF; the loop only acts on
 		# II_QUIT, so the dispatch arm must not propagate that status
@@ -512,6 +747,9 @@ ii_exec_entry() {
 		;;
 	takeout-flow)
 		ii_pick_takeout || true
+		;;
+	jump-nest-flow)
+		ii_jump_nest || true
 		;;
 	esac
 }
@@ -527,6 +765,18 @@ ii_run() {
 	while :; do
 		[ "$II_QUIT" -eq 1 ] && break
 		II_CTX=$(ii_context)
+		if [ "$II_CTX" = nest ]; then
+			# Record the active nest root in the visit history so jump
+			# nest can return to it; consecutive repeats are collapsed
+			# and the list is capped at ten entries.
+			ii_nr=$(find_project_root 2>/dev/null || true)
+			if [ -n "$ii_nr" ] && [ "$ii_nr" != "$II_LAST_NEST" ]; then
+				II_LAST_NEST=$ii_nr
+				II_NEST_HISTORY="$ii_nr
+$II_NEST_HISTORY"
+				II_NEST_HISTORY=$(printf '%s\n' "$II_NEST_HISTORY" | sed '/^$/d' | sed '11,$d')
+			fi
+		fi
 		II_TABLE=$(ii_menu_for "$II_CTX")
 		printf '\n'
 		# Here-doc, not a pipe: the renderer must set II_MENU_COUNT in
@@ -566,6 +816,14 @@ cmd_interactive() {
 	II_ENTRY_LABEL=
 	II_ENTRY_KIND=
 	II_ENTRY_CMD=
+	# Navigation state: where the session started, where it is now, the
+	# browser's selection result, and the visited-nest history (deduped
+	# consecutive, capped, most recent first) used by jump nest.
+	II_START_CWD=$(pwd)
+	II_SESSION_CWD=$(pwd)
+	II_BROWSE_PATH=
+	II_NEST_HISTORY=
+	II_LAST_NEST=
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--ii-test)

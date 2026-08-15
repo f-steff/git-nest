@@ -127,7 +127,8 @@ Enter arguments for git-nest clone (empty cancels): https://example.invalid/acme
 ## Commands that need a subproject
 
 `move` and `update` first show a picker with one numbered entry per
-managed subproject:
+managed subproject. `move` then opens the folder browser for the
+destination (see below); `update` asks for its target on the next line.
 
 ```
 > 4
@@ -135,11 +136,83 @@ managed subproject:
   b. back      - Return to the previous menu
   q. quit      - Exit git-nest interactive
 > 1
-/home/you/acme-app>git-nest move libs/team
 ```
 
-The chosen path is then followed by the free-text value on the next
-line.
+## The folder browser
+
+`change directory` and `move` share one folder browser that navigates
+one level at a time:
+
+```
+  0. .. (parent)
+  1. nest root  (.../acme)
+  2. start cwd  (.../where-you-started)
+  3. libs/
+  4. src/
+  s. Select libs      (use this folder)          [move only]
+  n. Select libs and name (add a subfolder name) [move only]
+  b. back      - Return to the previous menu
+  q. quit      - Exit git-nest interactive
+```
+
+- The three relevant start points -- the **nest root**, the folder the
+  session **started** in, and the session's **current** folder -- are
+  offered as the first numbered entries on the first screen only, so
+  you can jump straight to the base you want (identical paths collapse
+  into one entry).
+- `0` goes to the parent directory (hidden when already at the browser
+  cap or the filesystem root); a number enters that folder and stays in
+  browse mode.
+- In `change directory` the navigation persists: entering a folder
+  moves the session's working directory, `b` returns to the main menu,
+  where the context (and therefore the menu) is re-detected.
+- In `move`, after the source subproject is picked, the browser is
+  capped at the nest root so the result is always a valid nest-relative
+  path: `s` selects the current folder as the destination
+  (`move <old> <folder>`), `n` asks for a name inside it
+  (`move <old> <folder>/<name>`). Selecting the nest root itself with
+  `s` is refused; use `n` to add a name.
+
+Example (`change directory`):
+
+```
+> 34
+  0. .. - (parent)
+  1. nest root  (.../acme)
+  2. sub - open this folder
+  b. back - (return to the menu)
+  q. quit - (exit git-nest interactive)
+> 2
+  0. .. - (parent)
+  b. back - (return to the menu)
+  q. quit - (exit git-nest interactive)
+> b
+> 33
+/home/you/acme-app/sub>git-nest version
+```
+
+Hidden directories are excluded.
+
+## Jumping between nests
+
+`jump nest` lists the nests you can move to in one step: **nested
+nests** inside the current one (managed subprojects that are themselves
+nests, plus unmanaged nested nest roots found by survey) and **nests
+this session has visited earlier**. Picking one moves the session
+there; the main menu re-renders in the new nest.
+
+```
+> 35
+  1. /home/you/acme/libs/app - composite nest
+  2. /home/you/acme-old      - previously visited
+  b. back - Return to the previous menu
+  q. quit - Exit git-nest interactive
+> 1
+Now in nest: /home/you/acme/libs/app
+```
+
+The visit history is session-scoped (deduplicated, most recent first,
+capped at ten entries) and the current nest is never listed.
 
 ## Membership flows (bring in / take out)
 
@@ -203,27 +276,8 @@ and deletes the checkout. Each verb is confirmed before it runs.
 ## Navigating the filesystem
 
 The `change directory` entry moves the session's working directory one
-layer at a time. Subdirectories are numbered entries; `..` (when the
-current folder has a parent) goes up one level; `b` returns to the main
-menu, where the context is re-detected for the new location:
-
-```
-> 34
-  1. ..  - Go up one level
-  2. sub - Open this folder
-  b. back - Return to the previous menu
-  q. quit - Exit git-nest interactive
-> 2
-  1. .. - Go up one level
-  b. back - Return to the previous menu
-  q. quit - Exit git-nest interactive
-> b
-> 33
-/home/you/acme-app/sub>git-nest version
-```
-
-Hidden directories are excluded, and the current folder is never
-changed unless the chosen entry is selected.
+layer at a time through the folder browser described above (see "The
+folder browser").
 
 ## Scripted input (testing)
 
