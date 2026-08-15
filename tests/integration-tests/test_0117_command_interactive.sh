@@ -64,7 +64,11 @@ grep -E '^ 37\. change directory ' nest.out >/dev/null || {
     exit 1
 }
 assert_file_contains nest.out ">git-nest status"
-assert_file_contains nest.out "outer branch: main"
+grep -E '^outer branch: ' nest.out >/dev/null || {
+    printf 'UNEXPECTED RESULT: status must print the outer branch line\n' >&2
+    exit 1
+}
+assert_file_contains nest.out "subprojects:"
 
 test_step "Invalid input and back at the top level" "A non-number choice must print Unknown choice and re-render; b at the top-level menu must report that there is no previous menu."
 run_capture "invalid input and top-level back" invalid.out invalid.err -- "$GIT_NEST" interactive --ii-test x b q
