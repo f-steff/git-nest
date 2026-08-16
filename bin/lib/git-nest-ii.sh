@@ -353,7 +353,10 @@ EOF
 			ii_bparent=$(cd .. 2>/dev/null && pwd -P || true)
 			[ -n "$ii_bparent" ] && [ "$ii_bparent" != "$(pwd -P)" ] && ii_bup=1
 		fi
-		# Subdirectories one level down (hidden excluded, sorted).
+		# Subdirectories one level down (hidden and symlinked entries
+		# excluded, sorted); the skipped links are collected so the
+		# browser can say they were ignored instead of hiding them.
+		ii_bskipped=
 		ii_bsubdirs=$(ii_subdirs)
 		while IFS= read -r ii_bs; do
 			[ -n "$ii_bs" ] || continue
@@ -362,6 +365,12 @@ EOF
 		done <<EOF
 $ii_bsubdirs
 EOF
+		for ii_bl_ in */; do
+			[ -d "$ii_bl_" ] || continue
+			ii_bl_=${ii_bl_%/}
+			[ -L "$ii_bl_" ] || continue
+			ii_bskipped="$ii_bskipped $ii_bl_"
+		done
 		# Render the browser itself: the shared renderer numbers its
 		# tables from 1, so the `0. ..` line and the mode tokens are
 		# printed around it.
@@ -375,6 +384,11 @@ EOF
 $ii_btable
 EOF
 		II_MENU_COUNT=$ii_n
+		if [ -n "$ii_bskipped" ]; then
+			# Skipping links is deliberate (they could leave the nest);
+			# say so instead of hiding them silently.
+			printf '(ignored symlinked directories:%s)\n' "$ii_bskipped"
+		fi
 		if [ "$ii_bup" -eq 1 ]; then
 			printf '%3d. %-*s - %s\n' 0 "$ii_w" '..' '(parent)'
 		fi

@@ -49,6 +49,11 @@ if make_dir_link "lib-escaped" "$work_root/outside-repo"; then
 	assert_file_not_contains survey.out "lib-escaped"
 	"$GIT_NEST" tree --all >tree.out 2>&1 || true
 	assert_file_not_contains tree.out "lib-escaped"
+	# Human survey output must name the skipped link instead of hiding
+	# it silently.
+	"$GIT_NEST" survey >survey-human.out 2>&1 || true
+	assert_file_contains survey-human.out "Ignored symlinked directories (git-nest never follows links)"
+	assert_file_contains survey-human.out "lib-escaped"
 	links_available=1
 else
 	echo "SKIP link steps: platform cannot create real directory links"
@@ -98,7 +103,15 @@ if [ "$links_available" -eq 1 ]; then
 	run_capture "menu probe for browser step" probe.out probe.err -- "$GIT_NEST" interactive --ii-test q
 	cd_num=$(sed -n "s|^ *\([0-9][0-9]*\)\. change directory .*|\1|p" probe.out | sed -n '1p')
 	run_capture "browser hides links" browser.out browser.err -- "$GIT_NEST" interactive --ii-test "$cd_num" b q
-	assert_file_not_contains browser.out "lib-escaped"
+	# The link must not be a navigable entry (its name only appears in
+	# the ignored-links notice below).
+	grep -E '^ *[0-9]+\. lib-escaped' browser.out >/dev/null && {
+		printf 'UNEXPECTED RESULT: the browser must not list the link as an entry\n' >&2
+		exit 1
+	}
+	# The browser must say the link was ignored rather than hiding it.
+	assert_file_contains browser.out "ignored symlinked directories"
+	assert_file_contains browser.out "lib-escaped"
 
 	test_step "Anchors deduplicate when the session starts through a link" "The nest root, start cwd, and current cwd anchors must compare as one entry even when the session was launched through a symlink (physical path normalization)."
 	make_repo "$work_root/outside-repo"

@@ -100,6 +100,13 @@ repositories or command end-to-end flow.
   cross-shell runner covers syntax, unit, and `__complete` checks.
   `git-nest doctor --offline` is a useful preflight before running the suite.
 
+- **Before pushing, the complete local suite must pass**; CI is the
+  expensive confirmation, not the first-line debugger. When a CI-only
+  failure is fixed, add the lesson to
+  `development/local-vs-ci-testing.md` (CI runs `--stop-on-fail`, so
+  analyze from the first failure; locally-skipped tests still run and
+  gate on CI).
+
 Name tests by feature, never by development phase, and give each a globally unique four-digit ID prefix so the runner can list and select them. Files are named `test_<NNNN>_<category>_<behavior>.sh` under `tests/integration-tests/`, where the ID blocks are: `command_*` from 0010, `contract_*` from 2000, `platform_*` from 3000, `symmetry_*` from 4000, and `workflow_*` from 5000, each stepping by 10 so new tests can be inserted (IDs `0000` for the unit-suite bridge and `0004` for static code analysis are reserved exceptions; a `0205`-style insertion is allowed between blocks). Unit tests use `unit-test_<NNNN>_<name>.sh` under `tests/unit-tests/`. Categories follow `test_<NNNN>_command_<command>_<behavior>.sh`, `test_<NNNN>_command_option_<command>_<option>_<behavior>.sh`, `test_<NNNN>_symmetry_<command_a>_<command_b>.sh`, `test_<NNNN>_workflow_<scenario>.sh`, `test_<NNNN>_contract_<area>.sh`, or `test_<NNNN>_platform_<area>.sh`. Each test file's second line is a `# Test: <one-line description>` header used by `run-all-tests.sh list`. Do not use `wave`, `vawe`, milestone, or implementation-phase names. Tests should print steps with what/why context, show important commands being exercised, state expected results in plain English, and describe concise results. Unexpected assertion results should include `UNEXPECTED RESULT:`. The full suite is long-running and may exceed 30 minutes; that is acceptable while stdio output continues. A test with no output for more than `TEST_WATCHDOG_SECONDS` seconds, default 180, is treated as hung and stops the suite.
 
 ## Commit & Pull Request Guidelines

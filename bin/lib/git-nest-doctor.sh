@@ -332,6 +332,55 @@ survey_scan() {
 	"$@" 2>/dev/null
 }
 
+# Print every symlinked directory under the same scan roots, bounds, and
+# pruning as survey_scan, one per line. The human survey output uses this
+# to report the links it deliberately does not follow. find -type l names
+# the links themselves (never their targets); a following -d check keeps
+# only directory links, because symlinked files are ordinary Git content
+# and are not a nesting concern.
+survey_scan_links() {
+	dsl_depth=$1
+	dsl_excludes=$2
+	dsl_includes_file=$3
+	dsl_find_depth=$((dsl_depth + 1))
+	dsl_have_prune=0
+
+	set -- find
+	if [ -s "$dsl_includes_file" ]; then
+		while IFS= read -r dsl_root; do
+			[ -n "$dsl_root" ] || continue
+			set -- "$@" "$dsl_root"
+		done <"$dsl_includes_file"
+	else
+		set -- "$@" .
+	fi
+	set -- "$@" -maxdepth "$dsl_find_depth"
+
+	set -f
+	for dsl_name in $dsl_excludes; do
+		[ -n "$dsl_name" ] || continue
+		if [ "$dsl_have_prune" -eq 0 ]; then
+			set -- "$@" '('
+			dsl_have_prune=1
+		else
+			set -- "$@" -o
+		fi
+		set -- "$@" -name "$dsl_name"
+	done
+	set +f
+
+	if [ "$dsl_have_prune" -eq 1 ]; then
+		set -- "$@" ')' -prune -o -type l -print
+	else
+		set -- "$@" -type l -print
+	fi
+
+	"$@" 2>/dev/null | while IFS= read -r dsl_link; do
+		[ -d "$dsl_link" ] || continue
+		printf '%s\n' "${dsl_link#./}"
+	done
+}
+
 # Classify one discovered repository and append a porcelain row describing it.
 # Rows reuse the shared 7-column layout: code, path, state, target, current,
 # expected, detail. code is S(ubmodule)/R(nested-repo)/U(nmanaged nested nest root)/D(etached)/
@@ -527,6 +576,10 @@ cmd_survey() {
 	rows=$(mktemp)
 	empty=$(mktemp)
 	survey_collect_rows "$max_depth" "$excludes" "$includes_file" "$rows"
+	# Directory links the scan will not follow; reported in human output
+	# so skipping them is never silent. Must run before the includes
+	# file is removed.
+	skipped_links=$(survey_scan_links "$max_depth" "$excludes" "$includes_file")
 	rm -f "$includes_file"
 
 	if [ "$json" -eq 1 ]; then
@@ -542,6 +595,12 @@ cmd_survey() {
 			done <"$rows"
 		else
 			printf 'No unmanaged repositories found under the current nest (max depth %s).\n' "$max_depth"
+		fi
+		if [ -n "$skipped_links" ]; then
+			# The scan never follows directory links; name the skipped
+			# ones so the user can act on them (e.g. via the real path).
+			printf 'Ignored symlinked directories (git-nest never follows links): %s\n' \
+				"$(printf '%s\n' "$skipped_links" | paste -sd, -)"
 		fi
 	fi
 	rm -f "$rows" "$empty"

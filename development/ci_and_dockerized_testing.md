@@ -6,6 +6,9 @@ This document describes the CI workflows, the Docker cross-shell runner, and
 how to run everything locally. For the test suites themselves, see
 [`tests/tests.md`](../tests/tests.md) and
 [`tests/unit-tests/unit-tests.md`](../tests/unit-tests/unit-tests.md).
+For the differences between local and CI environments (and the lessons
+learned from CI-only failures), see
+[`local-vs-ci-testing.md`](local-vs-ci-testing.md).
 
 ## Continuous Integration (GitHub Actions)
 

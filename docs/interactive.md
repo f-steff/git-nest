@@ -163,6 +163,9 @@ one level at a time:
 - `0` goes to the parent directory (hidden when already at the browser
   cap or the filesystem root); a number enters that folder and stays in
   browse mode.
+- Symlinked directories are excluded (a link can point outside the
+  nest); when any were skipped, a notice line above the picker names
+  them.
 - In `change directory` the navigation persists: entering a folder
   moves the session's working directory, `b` returns to the main menu,
   where the context (and therefore the menu) is re-detected.
